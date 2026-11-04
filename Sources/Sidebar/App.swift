@@ -1,0 +1,214 @@
+import AppKit
+import SwiftUI
+
+@main
+enum SidebarMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        withExtendedLifetime(delegate) {
+            app.run()
+        }
+    }
+}
+
+/// Ziel für Menüeinträge mit Closure.
+final class MenuAction: NSObject {
+    private let handler: @MainActor () -> Void
+
+    init(_ handler: @escaping @MainActor () -> Void) {
+        self.handler = handler
+    }
+
+    @MainActor @objc func fire(_ sender: Any?) {
+        handler()
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private var store: ConfigStore!
+    private var sidebar: SidebarController!
+    private var statusItem: NSStatusItem!
+    private var settingsWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        store = ConfigStore.shared
+        NSApp.setActivationPolicy(.accessory)
+        installMainMenu()
+
+        let actions = SidebarActions(
+            open: { [weak self] item, mode in
+                guard let self else { return }
+                LinkOpener.open(item, mode: mode, settings: self.store.config.settings)
+            },
+            openSettings: { [weak self] in
+                self?.showSettings()
+            }
+        )
+        sidebar = SidebarController(store: store, actions: actions)
+        setupStatusItem()
+
+        // Dock-Symbol wieder ausblenden, sobald das letzte Fenster geschlossen ist.
+        _ = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in DockPresence.update() }
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return true
+    }
+
+    // MARK: - Einstellungen
+
+    @objc func showSettingsAction(_ sender: Any?) {
+        showSettings()
+    }
+
+    func showSettings() {
+        if settingsWindow == nil {
+            let host = NSHostingController(rootView: SettingsView(store: store))
+            host.sizingOptions = [.minSize]
+            let window = NSWindow(contentViewController: host)
+            window.title = "Sidebar – Einstellungen"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 820, height: 580))
+            window.isReleasedWhenClosed = false
+            window.center()
+            window.setFrameAutosaveName("SettingsWindow")
+            settingsWindow = window
+        }
+        if let settingsWindow {
+            DockPresence.present(settingsWindow)
+        }
+    }
+
+    // MARK: - Menüleisten-Symbol
+
+    private func setupStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = statusItem.button {
+            let image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Sidebar")
+            image?.isTemplate = true
+            button.image = image
+        }
+        let menu = NSMenu()
+        menu.delegate = self
+        statusItem.menu = menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let settings = store.config.settings
+
+        menu.addItem(menuItem("Einstellungen …", key: ",") { [weak self] in self?.showSettings() })
+        menu.addItem(.separator())
+
+        let visible = sidebar.isVisible
+        menu.addItem(menuItem(visible ? "Sidebar ausblenden" : "Sidebar einblenden") { [weak self] in
+            self?.sidebar.setVisible(!visible)
+        })
+
+        let pin = menuItem("Offen halten") { [weak self] in
+            self?.sidebar.state.isPinned.toggle()
+        }
+        pin.state = sidebar.state.isPinned ? .on : .off
+        menu.addItem(pin)
+        menu.addItem(.separator())
+
+        // Seite
+        let edgeMenu = NSMenu()
+        for edge in ScreenEdge.allCases {
+            let item = menuItem(edge.title) { [weak self] in
+                self?.store.config.settings.edge = edge
+            }
+            item.state = settings.edge == edge ? .on : .off
+            edgeMenu.addItem(item)
+        }
+        let edgeItem = NSMenuItem(title: "Seite", action: nil, keyEquivalent: "")
+        edgeItem.submenu = edgeMenu
+        menu.addItem(edgeItem)
+
+        // Bildschirm
+        let screenMenu = NSMenu()
+        let current = sidebar.currentScreen
+        for screen in NSScreen.screens {
+            let item = menuItem(screen.localizedName) { [weak self] in
+                self?.store.setScreen(screen)
+            }
+            item.state = screen == current ? .on : .off
+            screenMenu.addItem(item)
+        }
+        let screenItem = NSMenuItem(title: "Bildschirm", action: nil, keyEquivalent: "")
+        screenItem.submenu = screenMenu
+        menu.addItem(screenItem)
+
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Sidebar beenden", key: "q") { NSApp.terminate(nil) })
+    }
+
+    private func menuItem(_ title: String, key: String = "", action: @escaping @MainActor () -> Void) -> NSMenuItem {
+        let target = MenuAction(action)
+        let item = NSMenuItem(title: title, action: #selector(MenuAction.fire(_:)), keyEquivalent: key)
+        item.target = target
+        item.representedObject = target // hält das Ziel am Leben
+        return item
+    }
+
+    // MARK: - Hauptmenü (für ⌘C/⌘V/⌘W … in Einstellungen und App-Fenstern)
+
+    private func installMainMenu() {
+        let main = NSMenu()
+
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Einstellungen …", action: #selector(showSettingsAction(_:)), keyEquivalent: ",")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Sidebar beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let appItem = NSMenuItem()
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editMenu = NSMenu(title: "Bearbeiten")
+        editMenu.addItem(withTitle: "Widerrufen", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Wiederholen", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Ausschneiden", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Kopieren", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Einsetzen", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Alles auswählen", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+        main.addItem(editItem)
+
+        let viewMenu = NSMenu(title: "Darstellung")
+        viewMenu.addItem(withTitle: "Neu laden", action: #selector(WKWebViewActions.reload(_:)), keyEquivalent: "r")
+        viewMenu.addItem(withTitle: "Zurück", action: #selector(WKWebViewActions.goBack(_:)), keyEquivalent: "[")
+        viewMenu.addItem(withTitle: "Vor", action: #selector(WKWebViewActions.goForward(_:)), keyEquivalent: "]")
+        let viewItem = NSMenuItem()
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
+
+        let windowMenu = NSMenu(title: "Fenster")
+        windowMenu.addItem(withTitle: "Schließen", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Im Dock ablegen", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        let windowItem = NSMenuItem()
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
+        NSApp.windowsMenu = windowMenu
+
+        NSApp.mainMenu = main
+    }
+}
+
+/// Selektoren, die WKWebView über die Responder-Kette beantwortet.
+@objc protocol WKWebViewActions {
+    func reload(_ sender: Any?)
+    func goBack(_ sender: Any?)
+    func goForward(_ sender: Any?)
+}
