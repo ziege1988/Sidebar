@@ -49,7 +49,7 @@ final class SidebarController {
     private var expandedTarget = false
     private(set) var isVisible = true
 
-    init(store: ConfigStore, actions: SidebarActions) {
+    init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
         self.store = store
         panel = SidebarPanel(
             contentRect: NSRect(x: 0, y: 0, width: 56, height: 400),
@@ -69,7 +69,7 @@ final class SidebarController {
         panel.animationBehavior = .none
 
         let container = HoverContainerView(frame: panel.contentRect(forFrameRect: panel.frame))
-        let host = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, actions: actions))
+        let host = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater, actions: actions))
         host.sizingOptions = []
         host.frame = container.bounds
         host.autoresizingMask = [.width, .height]

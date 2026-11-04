@@ -41,12 +41,28 @@ cd Sidebar
 
 Nur bauen, ohne zu installieren: `./build.sh` → `build/Sidebar.app`.
 
-**Alternativ ohne Kompilieren:** Jeder Push baut die App über GitHub Actions
-(Tab *Actions* → letzter Lauf → Artefakt *Sidebar-app*). Weil diese Version aus
-dem Internet stammt und nicht notarisiert ist, beim ersten Start einmalig
-Rechtsklick → *Öffnen* wählen oder `xattr -dr com.apple.quarantine /Applications/Sidebar.app` ausführen.
+**Alternativ ohne Kompilieren:** Unter
+[Releases](https://github.com/ziege1988/Sidebar/releases/latest) die Datei
+`Sidebar.zip` laden, entpacken und `Sidebar.app` nach *Programme* ziehen. Da die
+App nicht notarisiert ist, blockiert macOS den ersten Start: Warnung mit „Fertig“
+schließen → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten
+„Dennoch öffnen“.
 
 **Mit Xcode entwickeln:** `open Package.swift` und dann Run (⌘R).
+
+## Updates
+
+Jede Änderung am Hauptzweig wird von GitHub Actions automatisch gebaut und als
+neue Version (`v1.0.<Nummer>`) veröffentlicht. Die App prüft beim Start und
+alle 6 Stunden, ob es eine neue Version gibt. Ist eine da, erscheint:
+
+- ein Dialog „Sidebar x.y.z ist verfügbar“ → **Jetzt aktualisieren**,
+- ein Update-Button unten in der Sidebar,
+- ein Eintrag im Menüleisten-Symbol.
+
+Ein Klick lädt die neue Version, prüft die Signatur, tauscht die App aus und
+startet sie neu. Gruppen, Links und Einstellungen bleiben erhalten. Manuell:
+Menüleisten-Symbol → *Nach Updates suchen …* oder *Einstellungen → Darstellung → Updates*.
 
 ## Bedienung
 

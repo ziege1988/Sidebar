@@ -18,6 +18,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# Versionsnummer (wird von GitHub Actions gesetzt; lokal 0.0.0)
+VERSION="${VERSION:-0.0.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-0}"
+/usr/libexec/PlistBuddy \
+  -c "Set :CFBundleShortVersionString $VERSION" \
+  -c "Set :CFBundleVersion $BUILD_NUMBER" \
+  "$APP/Contents/Info.plist"
+echo "  Version $VERSION ($BUILD_NUMBER)"
+
 echo "▸ Signiere (ad-hoc) …"
 codesign --force --sign - "$APP"
 

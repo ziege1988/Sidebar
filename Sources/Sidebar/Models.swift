@@ -129,6 +129,7 @@ struct SidebarSettings: Codable, Equatable {
     var hoverDelay: Double = 0.15
     var defaultOpenMode: OpenMode = .defaultBrowser
     var chromiumBundleID: String = "com.google.Chrome"
+    var autoCheckUpdates: Bool = true
 }
 
 extension SidebarSettings {
@@ -145,6 +146,7 @@ extension SidebarSettings {
         hoverDelay = try c.decodeIfPresent(Double.self, forKey: .hoverDelay) ?? hoverDelay
         defaultOpenMode = try c.decodeIfPresent(OpenMode.self, forKey: .defaultOpenMode) ?? defaultOpenMode
         chromiumBundleID = try c.decodeIfPresent(String.self, forKey: .chromiumBundleID) ?? chromiumBundleID
+        autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? autoCheckUpdates
     }
 }
 

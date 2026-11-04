@@ -46,10 +46,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             openSettings: { [weak self] in
                 self?.showSettings()
+            },
+            installUpdate: {
+                if let release = Updater.shared.availableRelease {
+                    Updater.shared.promptToInstall(release)
+                }
             }
         )
-        sidebar = SidebarController(store: store, actions: actions)
+        sidebar = SidebarController(store: store, updater: Updater.shared, actions: actions)
         setupStatusItem()
+
+        Updater.shared.startAutomaticChecks { [weak self] in
+            self?.store.config.settings.autoCheckUpdates ?? false
+        }
 
         // Dock-Symbol wieder ausblenden, sobald das letzte Fenster geschlossen ist.
         _ = NotificationCenter.default.addObserver(
@@ -72,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func showSettings() {
         if settingsWindow == nil {
-            let host = NSHostingController(rootView: SettingsView(store: store))
+            let host = NSHostingController(rootView: SettingsView(store: store, updater: Updater.shared))
             host.sizingOptions = [.minSize]
             let window = NSWindow(contentViewController: host)
             window.title = "Sidebar – Einstellungen"
@@ -148,6 +157,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         screenItem.submenu = screenMenu
         menu.addItem(screenItem)
 
+        menu.addItem(.separator())
+        let updater = Updater.shared
+        if let release = updater.availableRelease {
+            menu.addItem(menuItem("Update auf \(release.version) installieren …") {
+                updater.promptToInstall(release)
+            })
+        } else {
+            let check = menuItem("Nach Updates suchen …") {
+                Task { await updater.check(userInitiated: true) }
+            }
+            check.isEnabled = !updater.isBusy
+            menu.addItem(check)
+        }
+        let versionItem = NSMenuItem(title: "Version \(updater.currentVersion)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
         menu.addItem(.separator())
         menu.addItem(menuItem("Sidebar beenden", key: "q") { NSApp.terminate(nil) })
     }

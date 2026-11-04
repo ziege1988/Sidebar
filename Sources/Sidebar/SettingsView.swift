@@ -4,12 +4,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: ConfigStore
+    @ObservedObject var updater: Updater
 
     var body: some View {
         TabView {
             GroupsEditor(store: store)
                 .tabItem { Label("Gruppen & Links", systemImage: "square.grid.2x2") }
-            GeneralSettingsView(store: store)
+            GeneralSettingsView(store: store, updater: updater)
                 .tabItem { Label("Darstellung", systemImage: "sidebar.left") }
         }
         .padding()
@@ -21,6 +22,7 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @ObservedObject var store: ConfigStore
+    @ObservedObject var updater: Updater
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -80,6 +82,30 @@ struct GeneralSettingsView: View {
                 .foregroundStyle(.secondary)
             }
 
+            Section("Updates") {
+                LabeledContent("Installierte Version") {
+                    Text(updater.currentVersion).monospacedDigit()
+                }
+                Toggle("Automatisch nach Updates suchen", isOn: $store.config.settings.autoCheckUpdates)
+                HStack {
+                    Text(updateStatusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let release = updater.availableRelease {
+                        Button("Auf \(release.version) aktualisieren") {
+                            Task { await updater.install(release) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Jetzt prüfen") {
+                            Task { await updater.check(userInitiated: true) }
+                        }
+                        .disabled(updater.isBusy)
+                    }
+                }
+            }
+
             Section("System") {
                 Toggle("Bei Anmeldung automatisch starten", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
@@ -94,6 +120,18 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var updateStatusText: String {
+        switch updater.status {
+        case .idle: return "Noch nicht geprüft."
+        case .checking: return "Suche nach Updates …"
+        case .upToDate: return "Du verwendest die neueste Version."
+        case .available(let release): return "Version \(release.version) ist verfügbar."
+        case .downloading: return "Lade Update herunter …"
+        case .installing: return "Installiere Update …"
+        case .failed(let message): return "Fehler: \(message)"
+        }
     }
 
     private var screenBinding: Binding<UInt32?> {

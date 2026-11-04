@@ -10,6 +10,7 @@ final class SidebarState: ObservableObject {
 struct SidebarActions {
     var open: @MainActor (LinkItem, OpenMode?) -> Void
     var openSettings: @MainActor () -> Void
+    var installUpdate: @MainActor () -> Void
 }
 
 // MARK: - Hauptansicht
@@ -17,6 +18,7 @@ struct SidebarActions {
 struct SidebarView: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var state: SidebarState
+    @ObservedObject var updater: Updater
     let actions: SidebarActions
 
     private var settings: SidebarSettings { store.config.settings }
@@ -83,6 +85,10 @@ struct SidebarView: View {
                 .padding(.vertical, 12)
             }
             Divider().opacity(0.6)
+            if let release = updater.availableRelease {
+                UpdateRow(release: release, edge: edge, thickness: thickness,
+                          expanded: state.isExpanded, actions: actions)
+            }
             SidebarFooter(state: state, edge: edge, thickness: thickness, actions: actions)
         }
     }
@@ -109,8 +115,41 @@ struct SidebarView: View {
                 }
             }
             Divider().opacity(0.6)
+            if let release = updater.availableRelease {
+                UpdateRow(release: release, edge: .left, thickness: 48,
+                          expanded: false, actions: actions)
+            }
             SidebarFooter(state: state, edge: edge, thickness: thickness, actions: actions)
         }
+    }
+}
+
+/// Hinweis + Button, wenn eine neue Version bereitsteht.
+struct UpdateRow: View {
+    let release: ReleaseInfo
+    let edge: ScreenEdge
+    let thickness: CGFloat
+    let expanded: Bool
+    let actions: SidebarActions
+
+    var body: some View {
+        Button {
+            actions.installUpdate()
+        } label: {
+            EdgeRow(edge: edge, thickness: thickness, expanded: expanded) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.accentColor)
+            } title: {
+                Text("Update auf \(release.version)")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .frame(height: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Update auf Version \(release.version) installieren")
     }
 }
 
