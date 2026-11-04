@@ -77,6 +77,8 @@ struct LinkItem: Codable, Identifiable, Hashable {
     var urlString: String
     /// `nil` = Standard aus den Einstellungen verwenden
     var openMode: OpenMode?
+    /// Dateiname eines eigenen Bildes in `…/Sidebar/Icons` (`nil` = Favicon der Seite)
+    var customIcon: String?
 
     var url: URL? { LinkItem.normalizedURL(from: urlString) }
     var host: String? { url?.host }
@@ -113,6 +115,22 @@ struct LinkGroup: Codable, Identifiable, Hashable {
     var name: String
     var symbol: String
     var items: [LinkItem] = []
+
+    /// Fester Bezeichner für die Favoritenleiste (wird wie eine Gruppe adressiert).
+    static let favoritesID = UUID(uuidString: "00000000-0000-0000-0000-00000000FA00")!
+}
+
+/// Hell (Pastell-Salbei), Dunkel (Pastell-Graphit) oder automatisch wie macOS.
+enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: return "Automatisch (wie macOS)"
+        case .light: return "Hell – Salbei"
+        case .dark: return "Dunkel – Graphit"
+        }
+    }
 }
 
 struct SidebarSettings: Codable, Equatable {
@@ -122,6 +140,7 @@ struct SidebarSettings: Codable, Equatable {
     var screenName: String?
     var edge: ScreenEdge = .left
     var collapsedThickness: Double = 56
+    /// Breite des Ordner-Fensters, das sich beim Hover öffnet
     var expandedThickness: Double = 260
     /// Eingeklappt nur einen schmalen Rand zeigen
     var autoHide: Bool = false
@@ -132,6 +151,7 @@ struct SidebarSettings: Codable, Equatable {
     var autoCheckUpdates: Bool = true
     /// true = über allen Fenstern, false = normale Fensterebene (kommt beim Hover nach vorne)
     var alwaysOnTop: Bool = true
+    var appearance: AppearanceMode = .system
 }
 
 extension SidebarSettings {
@@ -150,18 +170,32 @@ extension SidebarSettings {
         chromiumBundleID = try c.decodeIfPresent(String.self, forKey: .chromiumBundleID) ?? chromiumBundleID
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? autoCheckUpdates
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? alwaysOnTop
+        appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? appearance
     }
 }
 
 struct SidebarConfig: Codable {
+    static let maxFavorites = 6
+
     var settings = SidebarSettings()
+    var favorites: [LinkItem] = []
     var groups: [LinkGroup] = []
+}
+
+extension SidebarConfig {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        settings = try c.decodeIfPresent(SidebarSettings.self, forKey: .settings) ?? settings
+        favorites = try c.decodeIfPresent([LinkItem].self, forKey: .favorites) ?? []
+        groups = try c.decodeIfPresent([LinkGroup].self, forKey: .groups) ?? []
+    }
 }
 
 extension SidebarConfig {
     /// Beispielkonfiguration beim ersten Start.
     static var sample: SidebarConfig {
-        SidebarConfig(settings: SidebarSettings(), groups: [
+        SidebarConfig(settings: SidebarSettings(), favorites: [], groups: [
             LinkGroup(name: "Fotografie", symbol: "camera.aperture", items: [
                 LinkItem(name: "Lightroom", urlString: "https://lightroom.adobe.com"),
                 LinkItem(name: "Instagram", urlString: "https://www.instagram.com"),

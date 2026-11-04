@@ -14,39 +14,28 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Container, der Maus-Eintritt/-Austritt über die gesamte Sidebar erkennt.
-final class HoverContainerView: NSView {
-    var onHoverChange: (@MainActor (Bool) -> Void)?
-    private var trackingArea: NSTrackingArea?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) { onHoverChange?(true) }
-    override func mouseExited(with event: NSEvent) { onHoverChange?(false) }
-}
-
-/// Steuert Position, Größe und Auf-/Zuklappen der Sidebar.
+/// Steuert die Leiste, das Ordner-Fenster und das Verschieben.
+///
+/// Die Maus wird 20× pro Sekunde abgefragt. Das ist zuverlässiger als Hover-Ereignisse,
+/// funktioniert auch während Drag & Drop aus dem Browser und kostet praktisch keine Leistung.
 @MainActor
 final class SidebarController {
     let state = SidebarState()
     private let store: ConfigStore
+    private let geometry = SidebarGeometry()
     private let panel: SidebarPanel
+    private let flyoutPanel: SidebarPanel
     private var cancellables = Set<AnyCancellable>()
-    private var pendingTask: Task<Void, Never>?
-    private var watchdog: Timer?
-    private var mouseInside = false
-    private var expandedTarget = false
+    private var pollTimer: Timer?
+    private(set) var isVisible = true
+
+    // Hover-Zustand
+    private var candidateGroup: UUID?
+    private var candidateSince = Date.distantPast
+    private var flyoutLeftAt: Date?
+    private var barLeftAt: Date?
+    private var barEnteredAt: Date?
+    private var anchorRect: NSRect = .zero
     private var isDragging = false
 
     /// Halbtransparente Vorschau, wo die Sidebar beim Loslassen andockt.
@@ -58,7 +47,7 @@ final class SidebarController {
         preview.hasShadow = false
         preview.ignoresMouseEvents = true
         preview.isReleasedWhenClosed = false
-        preview.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        preview.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 2)
         preview.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         let view = NSView()
         view.wantsLayer = true
@@ -69,11 +58,52 @@ final class SidebarController {
         preview.contentView = view
         return preview
     }()
-    private(set) var isVisible = true
 
     init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
         self.store = store
-        panel = SidebarPanel(
+        panel = SidebarController.makePanel()
+        flyoutPanel = SidebarController.makePanel()
+
+        let bar = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater,
+                                                              geometry: geometry, actions: actions))
+        bar.sizingOptions = []
+        panel.contentView = bar
+
+        let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, actions: actions))
+        flyout.sizingOptions = []
+        flyoutPanel.contentView = flyout
+
+        // Einstellungen geändert (Seite, Bildschirm, Breite, Farben …)
+        store.$config
+            .map(\.settings)
+            .removeDuplicates()
+            .sink { [weak self] settings in self?.applySettings(settings) }
+            .store(in: &cancellables)
+
+        // Inhalt geändert → Ordner-Fenster an neue Höhe anpassen (nach dem Speichern)
+        store.$config
+            .map(\.groups)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshFlyout() }
+            }
+            .store(in: &cancellables)
+
+        // Monitor angeschlossen/entfernt, Auflösung oder Dock geändert
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.hideFlyout()
+                self.applySettings(self.store.config.settings)
+            }
+            .store(in: &cancellables)
+
+        panel.orderFrontRegardless()
+        startPolling()
+    }
+
+    private static func makePanel() -> SidebarPanel {
+        let panel = SidebarPanel(
             contentRect: NSRect(x: 0, y: 0, width: 56, height: 400),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -89,144 +119,207 @@ final class SidebarController {
         panel.isMovable = false
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
-
-        let container = HoverContainerView(frame: panel.contentRect(forFrameRect: panel.frame))
-        let host = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater, actions: actions))
-        host.sizingOptions = []
-        host.frame = container.bounds
-        host.autoresizingMask = [.width, .height]
-        container.addSubview(host)
-        container.onHoverChange = { [weak self] inside in self?.hoverChanged(inside) }
-        panel.contentView = container
-
-        // Einstellungen geändert (Seite, Bildschirm, Breite …) → neu positionieren.
-        store.$config
-            .map(\.settings)
-            .removeDuplicates()
-            .sink { [weak self] settings in self?.applyFrame(settings: settings) }
-            .store(in: &cancellables)
-
-        // Monitor angeschlossen/entfernt, Auflösung oder Dock geändert.
-        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.applyFrame(settings: self.store.config.settings)
-            }
-            .store(in: &cancellables)
-
-        state.$isPinned
-            .dropFirst()
-            .sink { [weak self] pinned in
-                guard let self else { return }
-                if pinned {
-                    self.setExpanded(true)
-                } else if !self.mouseInside {
-                    self.schedule(expanded: false, after: 0.3)
-                }
-            }
-            .store(in: &cancellables)
-
-        panel.orderFrontRegardless()
+        return panel
     }
 
-    // MARK: - Sichtbarkeit
+    // MARK: - Öffentliche Steuerung
 
     func setVisible(_ visible: Bool) {
         isVisible = visible
         if visible {
-            applyFrame(settings: store.config.settings)
+            applySettings(store.config.settings)
             panel.orderFrontRegardless()
         } else {
+            hideFlyout()
             panel.orderOut(nil)
         }
     }
 
     var currentScreen: NSScreen? { targetScreen(for: store.config.settings) }
 
-    // MARK: - Hover
-
-    private func hoverChanged(_ inside: Bool) {
-        mouseInside = inside
-        if isDragging { return }
-        if inside {
-            schedule(expanded: true, after: store.config.settings.hoverDelay)
-        } else if !state.isPinned {
-            schedule(expanded: false, after: 0.35)
+    func toggleFlyout(_ groupID: UUID) {
+        if state.flyoutGroupID == groupID && flyoutPanel.isVisible {
+            hideFlyout()
         } else {
-            pendingTask?.cancel()
+            showFlyout(groupID)
         }
     }
 
-    private func schedule(expanded: Bool, after delay: Double) {
-        pendingTask?.cancel()
-        pendingTask = Task { @MainActor [weak self] in
-            if delay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+    func hideFlyout() {
+        state.flyoutGroupID = nil
+        flyoutPanel.orderOut(nil)
+        flyoutLeftAt = nil
+    }
+
+    // MARK: - Maus-Abfrage
+
+    private func startPolling() {
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        // .common: läuft auch während Drag & Drop und Scrollen
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+    }
+
+    private func tick() {
+        guard isVisible, !isDragging else { return }
+        let settings = store.config.settings
+        let mouse = NSEvent.mouseLocation
+        let now = Date()
+        // Kontextmenü offen oder Drag aus der Sidebar heraus → nichts schließen
+        let tracking = RunLoop.current.currentMode == .eventTracking
+
+        let inBar = panel.frame.contains(mouse)
+        let flyoutVisible = flyoutPanel.isVisible
+        let flyoutZone = flyoutPanel.frame.insetBy(dx: -8, dy: -8)
+        // Korridor zwischen Ordner-Symbol und Ordner-Fenster (diagonale Mausbewegung)
+        let corridor = anchorRect.union(flyoutPanel.frame).insetBy(dx: -4, dy: -4)
+        let inFlyout = flyoutVisible && (flyoutZone.contains(mouse) || corridor.contains(mouse))
+
+        // 1. Automatisch ausblenden: Leiste ein-/ausfahren
+        if settings.autoHide {
+            if inBar || inFlyout || tracking {
+                barLeftAt = nil
+                if !state.isRevealed {
+                    if barEnteredAt == nil { barEnteredAt = now }
+                    if let entered = barEnteredAt, now.timeIntervalSince(entered) >= settings.hoverDelay {
+                        setRevealed(true)
+                    }
+                }
+            } else {
+                barEnteredAt = nil
+                if state.isRevealed {
+                    if barLeftAt == nil { barLeftAt = now }
+                    if let left = barLeftAt, now.timeIntervalSince(left) > 0.4 {
+                        setRevealed(false)
+                    }
+                }
             }
-            guard !Task.isCancelled, let self else { return }
-            self.setExpanded(expanded)
+        }
+
+        // 2. Ordner-Symbol unter der Maus → Ordner-Fenster öffnen
+        let barUsable = !settings.autoHide || state.isRevealed
+        let hoveredGroup = (inBar && barUsable) ? groupAt(mouse) : nil
+        if let group = hoveredGroup, group != state.flyoutGroupID || !flyoutVisible {
+            if candidateGroup != group {
+                candidateGroup = group
+                candidateSince = now
+            }
+            let delay = flyoutVisible ? 0.08 : settings.hoverDelay
+            if now.timeIntervalSince(candidateSince) >= delay {
+                showFlyout(group)
+            }
+        } else if hoveredGroup == nil {
+            candidateGroup = nil
+        }
+
+        // 3. Ordner-Fenster schließen, wenn die Maus es verlassen hat
+        if flyoutVisible {
+            let keep = inFlyout || hoveredGroup != nil || tracking
+            if keep {
+                flyoutLeftAt = nil
+            } else {
+                if flyoutLeftAt == nil { flyoutLeftAt = now }
+                if let left = flyoutLeftAt, now.timeIntervalSince(left) > 0.35 {
+                    hideFlyout()
+                }
+            }
         }
     }
 
-    func setExpanded(_ expanded: Bool) {
-        if !expanded {
-            if state.isPinned || isDragging { return }
-            // Kontextmenü offen → nicht einklappen, später erneut prüfen.
-            if RunLoop.current.currentMode == .eventTracking {
-                schedule(expanded: false, after: 0.5)
-                return
-            }
-        }
-        guard expanded != expandedTarget else { return }
-        expandedTarget = expanded
+    /// Ordner-Symbol an einer Bildschirmposition.
+    private func groupAt(_ point: NSPoint) -> UUID? {
+        let frame = panel.frame
+        let local = CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
+        return geometry.groupFrames.first(where: { $0.value.contains(local) })?.key
+    }
 
-        if expanded {
-            state.isExpanded = true
-            startWatchdog()
-            if !store.config.settings.alwaysOnTop {
-                panel.orderFrontRegardless() // hinter Fenstern: beim Hover nach vorne holen
+    private func screenRect(forGroup id: UUID) -> NSRect? {
+        guard let rect = geometry.groupFrames[id] else { return nil }
+        let frame = panel.frame
+        return NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY,
+                      width: rect.width, height: rect.height)
+    }
+
+    // MARK: - Ordner-Fenster
+
+    private func showFlyout(_ groupID: UUID) {
+        guard store.config.groups.contains(where: { $0.id == groupID }) else { return }
+        state.flyoutGroupID = groupID
+        candidateGroup = nil
+        flyoutLeftAt = nil
+        positionFlyout()
+        if !flyoutPanel.isVisible {
+            flyoutPanel.alphaValue = 0
+            flyoutPanel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                self.flyoutPanel.animator().alphaValue = 1
             }
         } else {
-            stopWatchdog()
+            flyoutPanel.orderFrontRegardless()
         }
+    }
 
-        let target = frame(for: store.config.settings, expanded: expanded)
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.18
+    private func refreshFlyout() {
+        guard let id = state.flyoutGroupID else { return }
+        if store.config.groups.contains(where: { $0.id == id }) {
+            positionFlyout()
+        } else {
+            hideFlyout()
+        }
+    }
+
+    /// Ordner-Fenster neben das Symbol setzen – immer vom Bildschirmrand weg.
+    private func positionFlyout() {
+        guard let id = state.flyoutGroupID,
+              let group = store.config.groups.first(where: { $0.id == id }),
+              let anchor = screenRect(forGroup: id),
+              let screen = targetScreen(for: store.config.settings) else { return }
+        anchorRect = anchor
+        let area = screen.visibleFrame.insetBy(dx: 8, dy: 8)
+        let bar = panel.frame
+        let gap: CGFloat = 6
+        let width = CGFloat(max(200, store.config.settings.expandedThickness))
+        let height = min(FlyoutView.idealHeight(itemCount: group.items.count), area.height)
+
+        var frame = NSRect(x: 0, y: 0, width: width, height: height)
+        switch store.config.settings.edge {
+        case .left:
+            frame.origin.x = bar.maxX + gap
+            frame.origin.y = anchor.maxY - height + 8
+        case .right:
+            frame.origin.x = bar.minX - gap - width
+            frame.origin.y = anchor.maxY - height + 8
+        case .top:
+            frame.origin.x = anchor.minX - 8
+            frame.origin.y = bar.minY - gap - height
+        case .bottom:
+            frame.origin.x = anchor.minX - 8
+            frame.origin.y = bar.maxY + gap
+        }
+        // Im sichtbaren Bildschirmbereich halten
+        frame.origin.x = min(max(frame.origin.x, area.minX), area.maxX - width)
+        frame.origin.y = min(max(frame.origin.y, area.minY), area.maxY - height)
+        flyoutPanel.setFrame(frame, display: true)
+    }
+
+    // MARK: - Automatisch ausblenden
+
+    private func setRevealed(_ revealed: Bool) {
+        guard state.isRevealed != revealed else { return }
+        state.isRevealed = revealed
+        if !revealed { hideFlyout() }
+        let target = frame(for: store.config.settings)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.panel.animator().setFrame(target, display: true)
-        }, completionHandler: { [weak self] in
-            Task { @MainActor in
-                guard let self, !self.expandedTarget else { return }
-                self.state.isExpanded = false
-            }
-        })
-    }
-
-    /// Sicherheitsnetz, falls ein „Maus verlässt“-Ereignis verloren geht.
-    private func startWatchdog() {
-        watchdog?.invalidate()
-        watchdog = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkMousePosition() }
         }
     }
 
-    private func stopWatchdog() {
-        watchdog?.invalidate()
-        watchdog = nil
-    }
-
-    private func checkMousePosition() {
-        guard expandedTarget, !state.isPinned else { return }
-        let inside = panel.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
-        if !inside {
-            mouseInside = false
-            setExpanded(false)
-        }
-    }
-
-    // MARK: - Geometrie
+    // MARK: - Geometrie & Einstellungen
 
     private func targetScreen(for settings: SidebarSettings) -> NSScreen? {
         let screens = NSScreen.screens
@@ -239,11 +332,11 @@ final class SidebarController {
         return screens.first // primärer Bildschirm (mit Menüleiste)
     }
 
-    private func frame(for settings: SidebarSettings, expanded: Bool) -> NSRect {
+    private func frame(for settings: SidebarSettings, forceVisible: Bool = false) -> NSRect {
         guard let screen = targetScreen(for: settings) else { return panel.frame }
         let area = screen.visibleFrame // ohne Menüleiste und Dock
-        let collapsed = settings.autoHide ? 4 : settings.collapsedThickness
-        let thickness = CGFloat(expanded ? max(settings.expandedThickness, settings.collapsedThickness) : collapsed)
+        let hidden = settings.autoHide && !state.isRevealed && !forceVisible
+        let thickness = CGFloat(hidden ? 4 : settings.collapsedThickness)
 
         switch settings.edge {
         case .left:
@@ -257,9 +350,17 @@ final class SidebarController {
         }
     }
 
-    private func applyFrame(settings: SidebarSettings) {
+    private func applySettings(_ settings: SidebarSettings) {
+        NSApp.appearance = settings.appearance.nsAppearance
         panel.level = settings.alwaysOnTop ? .floating : .normal
-        panel.setFrame(frame(for: settings, expanded: expandedTarget), display: true)
+        flyoutPanel.level = settings.alwaysOnTop
+            ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+            : .normal
+        if !settings.autoHide { state.isRevealed = false }
+        panel.setFrame(frame(for: settings), display: true)
+        if flyoutPanel.isVisible {
+            DispatchQueue.main.async { [weak self] in self?.positionFlyout() }
+        }
     }
 
     // MARK: - Ziehen an eine andere Kante / einen anderen Bildschirm
@@ -268,7 +369,7 @@ final class SidebarController {
         switch phase {
         case .began:
             isDragging = true
-            pendingTask?.cancel()
+            hideFlyout()
         case .moved:
             guard let target = snapTarget(for: point) else {
                 previewPanel.orderOut(nil)
@@ -278,8 +379,7 @@ final class SidebarController {
             preview.edge = target.edge
             preview.screenID = target.screen.displayID
             preview.screenName = target.screen.localizedName
-            preview.autoHide = false
-            previewPanel.setFrame(frame(for: preview, expanded: false), display: true)
+            previewPanel.setFrame(frame(for: preview, forceVisible: true), display: true)
             previewPanel.orderFrontRegardless()
         case .ended:
             isDragging = false
@@ -289,19 +389,9 @@ final class SidebarController {
                 settings.edge = target.edge
                 settings.screenID = target.screen.displayID
                 settings.screenName = target.screen.localizedName
-                if !state.isPinned {
-                    expandedTarget = false
-                    state.isExpanded = false
-                    stopWatchdog()
-                }
                 store.config.settings = settings
             }
-            // Auch wenn die Position gleich bleibt: Größe an den Zustand anpassen.
-            applyFrame(settings: store.config.settings)
-            mouseInside = panel.frame.contains(NSEvent.mouseLocation)
-            if !mouseInside && !state.isPinned {
-                schedule(expanded: false, after: 0.3)
-            }
+            applySettings(store.config.settings)
         }
     }
 

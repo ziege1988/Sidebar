@@ -9,34 +9,36 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
 
 ## Funktionen
 
-- **Jeder Bildschirm, jede Seite:** links, rechts, oben oder unten, auf jedem
-  angeschlossenen Monitor. Wird ein Monitor abgezogen, wechselt die Sidebar
-  automatisch auf den Hauptbildschirm und kehrt zurück, sobald er wieder da ist.
-- **Verschieben per Maus:** am Griff (kleiner Balken oben bzw. links) an eine
-  beliebige Kante oder auf einen anderen Monitor ziehen. Eine Vorschau zeigt,
-  wo sie andockt. Die Position wird gespeichert.
-- **Klappt immer vom Rand weg auf:** links nach rechts, rechts nach links,
-  oben nach unten, unten nach oben.
-- **Vordergrund wählbar:** „Immer im Vordergrund“ (Standard) oder hinter
-  Fenstern. Dann kommt sie beim Darüberfahren nach vorne.
-- **Hover zum Aufklappen:** Eingeklappt sind nur Favicons sichtbar. Beim
-  Darüberfahren erscheinen Namen und Gruppen. Mit 📌 bleibt die Sidebar offen.
-- **Gruppen & Links:** Gruppen mit SF-Symbol, Links mit automatisch geladenem
-  Favicon. Reihenfolge per Drag & Drop in den Einstellungen änderbar.
-- **Schnell hinzufügen:** URL aus der Adressleiste des Browsers direkt auf eine
-  Gruppe in der Sidebar ziehen.
+- **Schlanke Leiste:** oben bis zu **6 Favoriten** für den Schnellzugriff,
+  darunter die **Ordner** (z. B. Fotografie, ADS).
+- **Ordner-Fenster beim Hover:** Fährst du über einen Ordner, öffnet sich
+  daneben ein Fenster mit allen Links, immer vom Rand weg (links → nach
+  rechts, rechts → nach links, oben → nach unten, unten → nach oben).
+- **Icons passen sich an:** Je mehr in der Leiste ist, desto kleiner werden
+  die Icons. Erst wenn sie zu klein würden, lässt sich die Leiste scrollen.
+- **Drag & Drop:**
+  - Adresse aus dem Browser auf einen Ordner, ins Ordner-Fenster oder auf
+    die Favoriten ziehen
+  - Link aus einem Ordner auf die Favoritenleiste ziehen
+  - Link in einen anderen Ordner ziehen
+  - Bilddatei auf ein Icon ziehen = eigenes Icon
+- **Ein „+“-Feld pro Liste:** am Ende jedes Ordner-Fensters und bei den
+  Favoriten (solange Platz ist). Hineinziehen oder klicken.
+- **Eigene Bilder als Icons:** Rechtsklick → „Eigenes Bild wählen …“ oder im
+  Link-Editor. Das Bild wird quadratisch zugeschnitten.
+- **Farben:** hell in Pastell-Salbeigrün, dunkel in Pastell-Graphit oder
+  automatisch passend zum macOS-Modus.
+- **Jeder Bildschirm, jede Seite:** am Griff an eine Kante oder auf einen
+  anderen Monitor ziehen. Die Position wird gespeichert.
+- **Vordergrund wählbar:** „Immer im Vordergrund“ oder hinter Fenstern.
 - **Drei Öffnungsarten** (global einstellbar, pro Link überschreibbar):
   | Art | Verhalten |
   | --- | --- |
   | Standard-Browser | neuer Tab in Safari/Chrome/… |
   | Integriertes App-Fenster | eigenes Fenster in der Sidebar-App, mit Zurück/Vor/Neu laden, Downloads und Datei-Uploads. Logins werden gespeichert, getrennt vom Browser. |
   | Chrome-App-Fenster | Chrome/Edge/Brave/Vivaldi im `--app`-Modus: eigenes Fenster ohne Tabs und Adressleiste, **mit den Logins deines Browserprofils** |
-- **Automatisch ausblenden:** eingeklappt bleibt nur ein 4 pt schmaler Rand.
-- **Menüleisten-Symbol:** Einstellungen, Seite und Bildschirm wechseln,
-  Sidebar ein-/ausblenden.
-- **Bei Anmeldung starten** (optional).
-- Kein Dock-Symbol im Hintergrund. Es erscheint nur, solange Einstellungen oder
-  App-Fenster offen sind, damit sie per ⌘-Tab erreichbar bleiben.
+- **Automatisch ausblenden:** Eingeklappt bleibt nur ein 4 pt schmaler Rand.
+- **Updates per Klick**, **Menüleisten-Symbol**, **Start bei Anmeldung**.
 
 ## Installation
 

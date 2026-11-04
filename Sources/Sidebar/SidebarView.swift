@@ -3,47 +3,77 @@ import SwiftUI
 
 @MainActor
 final class SidebarState: ObservableObject {
-    @Published var isExpanded = false
-    @Published var isPinned = false
+    /// Ordner, dessen Fenster gerade geöffnet ist
+    @Published var flyoutGroupID: UUID?
+    /// Bei „Automatisch ausblenden“: Leiste gerade sichtbar
+    @Published var isRevealed = false
+}
+
+/// Positionen der Ordner-Symbole in der Leiste (Koordinaten der Leiste, Ursprung oben links).
+final class SidebarGeometry {
+    var groupFrames: [UUID: CGRect] = [:]
+}
+
+struct GroupFramesKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
 }
 
 struct SidebarActions {
     var open: @MainActor (LinkItem, OpenMode?) -> Void
     var openSettings: @MainActor () -> Void
+    var editItem: @MainActor (UUID) -> Void
+    /// Neuen Link anlegen (Gruppe oder `LinkGroup.favoritesID`)
+    var addLink: @MainActor (UUID) -> Void
+    var chooseIcon: @MainActor (UUID) -> Void
+    var toggleFlyout: @MainActor (UUID) -> Void
     var installUpdate: @MainActor () -> Void
     var drag: @MainActor (DragPhase, NSPoint) -> Void
 }
 
-// MARK: - Hauptansicht
+// MARK: - Leiste
 
 struct SidebarView: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var state: SidebarState
     @ObservedObject var updater: Updater
+    let geometry: SidebarGeometry
     let actions: SidebarActions
+
+    @Environment(\.colorScheme) private var scheme
 
     private var settings: SidebarSettings { store.config.settings }
     private var edge: ScreenEdge { settings.edge }
+    private var vertical: Bool { edge.isVertical }
     private var thickness: CGFloat { CGFloat(settings.collapsedThickness) }
-    private var showContent: Bool { state.isExpanded || !settings.autoHide }
+    private var showContent: Bool { state.isRevealed || !settings.autoHide }
+    private var showFavoriteSlot: Bool { store.config.favorites.count < SidebarConfig.maxFavorites }
 
     var body: some View {
+        let palette = Palette.forScheme(scheme)
         ZStack {
             if showContent {
                 VisualEffectBackground()
-                content
+                palette.background.opacity(0.88)
+                barContent(palette)
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
-                Color.primary.opacity(0.18)
+                palette.accent.opacity(0.55)
             }
         }
         .clipShape(shape)
         .overlay {
             if showContent {
-                shape.stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                shape.stroke(palette.border, lineWidth: 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .coordinateSpace(name: "bar")
+        .onPreferenceChange(GroupFramesKey.self) { frames in
+            geometry.groupFrames = frames
+        }
     }
 
     /// Nur die zum Bildschirm zeigenden Ecken werden abgerundet.
@@ -61,215 +91,411 @@ struct SidebarView: View {
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if edge.isVertical {
-            verticalContent
-        } else {
-            horizontalContent
+    private func barContent(_ palette: Palette) -> some View {
+        let outer = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+        return outer {
+            DragHandle(horizontal: vertical, onDrag: actions.drag)
+                .frame(width: vertical ? thickness : 16, height: vertical ? 16 : thickness)
+                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
+
+            GeometryReader { proxy in
+                let length = vertical ? proxy.size.height : proxy.size.width
+                let metrics = BarMetrics(available: length, cells: cellCount, thickness: thickness)
+                ScrollView(vertical ? .vertical : .horizontal, showsIndicators: false) {
+                    cells(palette, metrics: metrics)
+                        .padding(vertical ? .vertical : .horizontal, BarMetrics.padding)
+                        .frame(minWidth: vertical ? proxy.size.width : nil,
+                               minHeight: vertical ? nil : proxy.size.height)
+                }
+            }
+
+            if let release = updater.availableRelease {
+                BarButton(symbol: "arrow.down.circle.fill", size: 20, tint: palette.accent,
+                          cell: CGSize(width: vertical ? thickness : 40, height: vertical ? 36 : thickness),
+                          help: "Update auf Version \(release.version) installieren") {
+                    actions.installUpdate()
+                }
+            }
+            BarButton(symbol: "gearshape", size: 15, tint: palette.secondary,
+                      cell: CGSize(width: vertical ? thickness : 40, height: vertical ? 40 : thickness),
+                      help: "Einstellungen") {
+                actions.openSettings()
+            }
         }
     }
 
-    // Links / rechts
-    private var verticalContent: some View {
-        VStack(spacing: 0) {
-            DragHandle(horizontal: true, onDrag: actions.drag)
-                .frame(height: 16)
-                .frame(maxWidth: .infinity)
-                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(store.config.groups) { group in
-                        VerticalGroupView(group: group, expanded: state.isExpanded, edge: edge,
-                                          thickness: thickness, store: store, actions: actions)
-                    }
-                    if store.config.groups.isEmpty {
-                        EmptyHint(thickness: thickness, actions: actions)
-                    }
-                }
-                .padding(.vertical, 12)
-            }
-            Divider().opacity(0.6)
-            if let release = updater.availableRelease {
-                UpdateRow(release: release, edge: edge, thickness: thickness,
-                          expanded: state.isExpanded, actions: actions)
-            }
-            SidebarFooter(state: state, edge: edge, thickness: thickness, actions: actions)
-        }
+    /// Anzahl der Zellen in der Leiste (für die automatische Icon-Größe).
+    private var cellCount: Int {
+        store.config.favorites.count + (showFavoriteSlot ? 1 : 0) + max(store.config.groups.count, 1)
     }
 
-    // Oben / unten
-    private var horizontalContent: some View {
-        HStack(spacing: 0) {
-            DragHandle(horizontal: false, onDrag: actions.drag)
-                .frame(width: 16)
-                .frame(maxHeight: .infinity)
-                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
-            ScrollView(.horizontal, showsIndicators: false) {
-                if state.isExpanded {
-                    HStack(alignment: .top, spacing: 8) {
-                        ForEach(store.config.groups) { group in
-                            HorizontalGroupColumn(group: group, store: store, actions: actions)
-                        }
-                    }
-                    .padding(10)
-                } else {
-                    HStack(spacing: 2) {
-                        ForEach(store.config.groups) { group in
-                            CollapsedGroupStrip(group: group, thickness: thickness, store: store, actions: actions)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: thickness)
+    private func cells(_ palette: Palette, metrics: BarMetrics) -> some View {
+        let stack = vertical ? AnyLayout(VStackLayout(spacing: metrics.spacing))
+                             : AnyLayout(HStackLayout(spacing: metrics.spacing))
+        let cellSize = CGSize(width: vertical ? thickness : metrics.cell, height: vertical ? metrics.cell : thickness)
+        return stack {
+            // Favoriten (max. 6)
+            ForEach(store.config.favorites) { item in
+                FavoriteCell(item: item, iconSize: metrics.icon, cellSize: cellSize,
+                             store: store, actions: actions)
+            }
+            if showFavoriteSlot {
+                AddSlotCell(containerID: LinkGroup.favoritesID,
+                            symbol: store.config.favorites.isEmpty ? "star" : "plus",
+                            help: "Favorit hinzufügen: Link hierher ziehen oder klicken (\(store.config.favorites.count)/\(SidebarConfig.maxFavorites))",
+                            iconSize: metrics.icon, cellSize: cellSize, store: store, actions: actions)
+            }
+
+            BarDivider(vertical: vertical, length: thickness * 0.5, color: palette.border)
+
+            // Unterordner
+            ForEach(store.config.groups) { group in
+                GroupCell(group: group, isActive: state.flyoutGroupID == group.id,
+                          iconSize: metrics.icon, cellSize: cellSize, showLabel: metrics.showLabels,
+                          store: store, actions: actions)
+            }
+            if store.config.groups.isEmpty {
+                BarButton(symbol: "folder.badge.plus", size: metrics.icon * 0.6, tint: palette.secondary,
+                          cell: cellSize, help: "Ordner anlegen") {
+                    actions.openSettings()
                 }
             }
-            Divider().opacity(0.6)
-            if let release = updater.availableRelease {
-                UpdateRow(release: release, edge: .left, thickness: 48,
-                          expanded: false, actions: actions)
-            }
-            SidebarFooter(state: state, edge: edge, thickness: thickness, actions: actions)
         }
     }
 }
 
-/// Hinweis + Button, wenn eine neue Version bereitsteht.
-struct UpdateRow: View {
-    let release: ReleaseInfo
-    let edge: ScreenEdge
-    let thickness: CGFloat
-    let expanded: Bool
-    let actions: SidebarActions
+/// Berechnet, wie groß Icons sein dürfen, damit alles in die Leiste passt.
+struct BarMetrics {
+    static let padding: CGFloat = 8
+    let cell: CGFloat
+    let icon: CGFloat
+    let spacing: CGFloat
+    let showLabels: Bool
+
+    init(available: CGFloat, cells: Int, thickness: CGFloat) {
+        spacing = 4
+        let count = CGFloat(max(cells, 1))
+        let usable = available - 2 * Self.padding - 12 /* Trennlinie */ - spacing * count
+        let maxCell = thickness * 0.95
+        let minCell: CGFloat = 30
+        cell = min(maxCell, max(minCell, usable / count))
+        icon = min(30, max(18, cell * 0.58))
+        showLabels = cell >= 50
+    }
+}
+
+struct BarDivider: View {
+    let vertical: Bool
+    let length: CGFloat
+    let color: Color
 
     var body: some View {
-        Button {
-            actions.installUpdate()
-        } label: {
-            EdgeRow(edge: edge, thickness: thickness, expanded: expanded) {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Color.accentColor)
-            } title: {
-                Text("Update auf \(release.version)")
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-            }
-            .frame(height: 36)
-            .contentShape(Rectangle())
+        Rectangle()
+            .fill(color)
+            .frame(width: vertical ? length : 1, height: vertical ? 1 : length)
+            .padding(vertical ? .vertical : .horizontal, 5)
+    }
+}
+
+struct BarButton: View {
+    let symbol: String
+    let size: CGFloat
+    let tint: Color
+    let cell: CGSize
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size))
+                .foregroundStyle(tint)
+                .frame(width: cell.width, height: cell.height)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Update auf Version \(release.version) installieren")
+        .help(help)
     }
 }
 
-// MARK: - Bausteine
-
-/// Zeile mit Icon-Spalte an der Bildschirmkante und Text daneben.
-/// Die Icon-Spalte bleibt beim Aufklappen an derselben Stelle stehen.
-struct EdgeRow<Icon: View, Title: View>: View {
-    let edge: ScreenEdge
-    let thickness: CGFloat
-    let expanded: Bool
-    @ViewBuilder var icon: Icon
-    @ViewBuilder var title: Title
-
-    var body: some View {
-        HStack(spacing: 0) {
-            if edge == .right {
-                if expanded {
-                    title
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.leading, 12)
-                }
-                icon.frame(width: thickness)
-            } else {
-                icon.frame(width: thickness)
-                if expanded {
-                    title
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 12)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: edge == .right ? .trailing : .leading)
-    }
-}
-
-struct VerticalGroupView: View {
-    let group: LinkGroup
-    let expanded: Bool
-    let edge: ScreenEdge
-    let thickness: CGFloat
-    let store: ConfigStore
-    let actions: SidebarActions
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            EdgeRow(edge: edge, thickness: thickness, expanded: expanded) {
-                Image(systemName: group.symbol)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            } title: {
-                Text(group.name.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(height: 18)
-            .help(group.name)
-
-            ForEach(group.items) { item in
-                SidebarItemButton(item: item, expanded: expanded, edge: edge,
-                                  thickness: thickness, store: store, actions: actions)
-            }
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            store.addDroppedURLs(urls, to: group.id)
-        }
-    }
-}
-
-struct SidebarItemButton: View {
+struct FavoriteCell: View {
     let item: LinkItem
-    let expanded: Bool
-    let edge: ScreenEdge
-    let thickness: CGFloat
+    let iconSize: CGFloat
+    let cellSize: CGSize
     let store: ConfigStore
     let actions: SidebarActions
-
-    @State private var hovering = false
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let palette = Palette.forScheme(scheme)
         Button {
             actions.open(item, nil)
         } label: {
-            EdgeRow(edge: edge, thickness: thickness, expanded: expanded) {
-                FaviconView(item: item, size: 24)
-            } title: {
-                Text(item.displayName)
-                    .font(.system(size: 13))
+            FaviconView(item: item, size: iconSize)
+                .frame(width: cellSize.width, height: cellSize.height)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(targeted ? palette.accentSoft : Color.clear)
+                        .padding(4)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(item.displayName) (Favorit)")
+        .contextMenu {
+            ItemContextMenu(item: item, isFavorite: true, store: store, actions: actions)
+        }
+        .onDrag { DropSupport.provider(for: item) }
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.handleDrop(payloads, into: LinkGroup.favoritesID, targetItem: item.id)
+        }
+    }
+}
+
+struct GroupCell: View {
+    let group: LinkGroup
+    let isActive: Bool
+    let iconSize: CGFloat
+    let cellSize: CGSize
+    let showLabel: Bool
+    let store: ConfigStore
+    let actions: SidebarActions
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        let highlighted = isActive || targeted
+        VStack(spacing: 3) {
+            ZStack {
+                RoundedRectangle(cornerRadius: iconSize * 0.3, style: .continuous)
+                    .fill(highlighted ? palette.accent : palette.accentSoft)
+                Image(systemName: group.symbol)
+                    .font(.system(size: iconSize * 0.48, weight: .semibold))
+                    .foregroundStyle(highlighted ? palette.onAccent : palette.accent)
+            }
+            .frame(width: iconSize, height: iconSize)
+            if showLabel {
+                Text(group.name)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(palette.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: cellSize.width - 6)
             }
-            .frame(height: 36)
+        }
+        .frame(width: cellSize.width, height: cellSize.height)
+        .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: GroupFramesKey.self,
+                                       value: [group.id: proxy.frame(in: .named("bar"))])
+            }
+        )
+        .onTapGesture { actions.toggleFlyout(group.id) }
+        .help("\(group.name) – \(group.items.count) Links")
+        .contextMenu {
+            Button("Link hinzufügen …") { actions.addLink(group.id) }
+            Button("Ordner bearbeiten …") { actions.openSettings() }
+        }
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.handleDrop(payloads, into: group.id)
+        }
+    }
+}
+
+/// Gestricheltes Feld „Link hierher ziehen oder klicken“ – in der Leiste (Favoriten).
+struct AddSlotCell: View {
+    let containerID: UUID
+    let symbol: String
+    let help: String
+    let iconSize: CGFloat
+    let cellSize: CGSize
+    let store: ConfigStore
+    let actions: SidebarActions
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        Button {
+            actions.addLink(containerID)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: iconSize * 0.3, style: .continuous)
+                    .fill(targeted ? palette.accentSoft : Color.clear)
+                RoundedRectangle(cornerRadius: iconSize * 0.3, style: .continuous)
+                    .strokeBorder(palette.dashed, style: StrokeStyle(lineWidth: 1.2, dash: [3, 3]))
+                Image(systemName: symbol)
+                    .font(.system(size: iconSize * 0.42, weight: .semibold))
+                    .foregroundStyle(palette.dashed)
+            }
+            .frame(width: iconSize, height: iconSize)
+            .frame(width: cellSize.width, height: cellSize.height)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.handleDrop(payloads, into: containerID)
+        }
+    }
+}
+
+// MARK: - Ordner-Fenster (öffnet sich beim Hover)
+
+struct FlyoutView: View {
+    @ObservedObject var store: ConfigStore
+    @ObservedObject var state: SidebarState
+    let actions: SidebarActions
+    @Environment(\.colorScheme) private var scheme
+
+    static let headerHeight: CGFloat = 44
+    static let rowHeight: CGFloat = 34
+    static let rowSpacing: CGFloat = 2
+    static let addRowHeight: CGFloat = 38
+    static let listPadding: CGFloat = 8
+
+    static func idealHeight(itemCount: Int) -> CGFloat {
+        headerHeight + 1 + listPadding * 2
+            + CGFloat(itemCount) * (rowHeight + rowSpacing) + addRowHeight
+    }
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        ZStack {
+            VisualEffectBackground()
+            palette.background.opacity(0.94)
+            if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous).fill(palette.accent)
+                            Image(systemName: group.symbol)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(palette.onAccent)
+                        }
+                        .frame(width: 24, height: 24)
+                        Text(group.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(palette.text)
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(group.items.count)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(palette.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: Self.headerHeight)
+
+                    Rectangle().fill(palette.border).frame(height: 1)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: Self.rowSpacing) {
+                            ForEach(group.items) { item in
+                                FlyoutRow(item: item, groupID: group.id, store: store, actions: actions)
+                            }
+                            AddLinkRow(containerID: group.id, store: store, actions: actions)
+                        }
+                        .padding(Self.listPadding)
+                    }
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(palette.border, lineWidth: 1))
+    }
+}
+
+struct FlyoutRow: View {
+    let item: LinkItem
+    let groupID: UUID
+    let store: ConfigStore
+    let actions: SidebarActions
+    @State private var hovering = false
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        Button {
+            actions.open(item, nil)
+        } label: {
+            HStack(spacing: 10) {
+                FaviconView(item: item, size: 24)
+                Text(item.displayName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(palette.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: FlyoutView.rowHeight)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(hovering ? Color.primary.opacity(0.1) : Color.clear)
-                    .padding(.horizontal, 6)
+                    .fill(hovering || targeted ? palette.hover : Color.clear)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(item.displayName)
+        .help(item.url?.absoluteString ?? item.urlString)
         .contextMenu {
-            ItemContextMenu(item: item, store: store, actions: actions)
+            ItemContextMenu(item: item, isFavorite: false, store: store, actions: actions)
+        }
+        .onDrag { DropSupport.provider(for: item) }
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.handleDrop(payloads, into: groupID, targetItem: item.id)
+        }
+    }
+}
+
+/// Das eine Feld am Ende der Liste: Link hineinziehen oder klicken.
+struct AddLinkRow: View {
+    let containerID: UUID
+    let store: ConfigStore
+    let actions: SidebarActions
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        Button {
+            actions.addLink(containerID)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(targeted ? "Loslassen zum Hinzufügen" : "Link hierher ziehen oder klicken")
+                    .font(.system(size: 12))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(palette.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: FlyoutView.addRowHeight - 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(targeted ? palette.accentSoft : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(palette.dashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.handleDrop(payloads, into: containerID)
         }
     }
 }
 
 struct ItemContextMenu: View {
     let item: LinkItem
+    let isFavorite: Bool
     let store: ConfigStore
     let actions: SidebarActions
 
@@ -280,166 +506,26 @@ struct ItemContextMenu: View {
                 Button(mode.title) { actions.open(item, mode) }
             }
         }
+        Divider()
+        if isFavorite {
+            Button("Aus Favoriten entfernen") { store.removeFromFavorites(id: item.id) }
+        } else {
+            Button("Zu Favoriten hinzufügen") { store.addToFavorites(itemID: item.id) }
+                .disabled(store.favoritesFull)
+        }
+        Button("Eigenes Bild wählen …") { actions.chooseIcon(item.id) }
+        if item.customIcon != nil {
+            Button("Eigenes Bild entfernen") { store.removeCustomIcon(itemID: item.id) }
+        }
         Button("Adresse kopieren") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(item.url?.absoluteString ?? item.urlString, forType: .string)
         }
         Divider()
-        Button("Bearbeiten …") { actions.openSettings() }
-        Button("Entfernen", role: .destructive) { store.deleteItem(id: item.id) }
-    }
-}
-
-/// Eingeklappte Darstellung oben/unten: Gruppen-Symbol + Icons in einer Reihe.
-struct CollapsedGroupStrip: View {
-    let group: LinkGroup
-    let thickness: CGFloat
-    let store: ConfigStore
-    let actions: SidebarActions
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Image(systemName: group.symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22)
-                .help(group.name)
-            ForEach(group.items) { item in
-                Button {
-                    actions.open(item, nil)
-                } label: {
-                    FaviconView(item: item, size: 24)
-                        .frame(width: 40, height: thickness)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(item.displayName)
-                .contextMenu { ItemContextMenu(item: item, store: store, actions: actions) }
-            }
-            Divider()
-                .frame(height: thickness * 0.5)
-                .padding(.horizontal, 6)
+        Button("Bearbeiten …") { actions.editItem(item.id) }
+        if !isFavorite {
+            Button("Entfernen", role: .destructive) { store.deleteItem(id: item.id) }
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            store.addDroppedURLs(urls, to: group.id)
-        }
-    }
-}
-
-/// Ausgeklappte Darstellung oben/unten: eine Spalte pro Gruppe.
-struct HorizontalGroupColumn: View {
-    let group: LinkGroup
-    let store: ConfigStore
-    let actions: SidebarActions
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            EdgeRow(edge: .left, thickness: 36, expanded: true) {
-                Image(systemName: group.symbol)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            } title: {
-                Text(group.name.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(height: 20)
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    ForEach(group.items) { item in
-                        SidebarItemButton(item: item, expanded: true, edge: .left,
-                                          thickness: 40, store: store, actions: actions)
-                    }
-                }
-            }
-        }
-        .frame(width: 210)
-        .dropDestination(for: URL.self) { urls, _ in
-            store.addDroppedURLs(urls, to: group.id)
-        }
-    }
-}
-
-struct SidebarFooter: View {
-    @ObservedObject var state: SidebarState
-    let edge: ScreenEdge
-    let thickness: CGFloat
-    let actions: SidebarActions
-
-    var body: some View {
-        if edge.isVertical {
-            HStack(spacing: 0) {
-                if edge == .right {
-                    if state.isExpanded {
-                        pinButton.padding(.leading, 12)
-                        Spacer()
-                    }
-                    settingsButton.frame(width: thickness)
-                } else {
-                    settingsButton.frame(width: thickness)
-                    if state.isExpanded {
-                        Spacer()
-                        pinButton.padding(.trailing, 12)
-                    }
-                }
-            }
-            .frame(height: 44)
-        } else {
-            VStack(spacing: 4) {
-                settingsButton
-                if state.isExpanded { pinButton }
-            }
-            .frame(width: 48)
-        }
-    }
-
-    private var settingsButton: some View {
-        Button {
-            actions.openSettings()
-        } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .frame(width: 30, height: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Einstellungen")
-    }
-
-    private var pinButton: some View {
-        Button {
-            state.isPinned.toggle()
-        } label: {
-            Image(systemName: state.isPinned ? "pin.fill" : "pin")
-                .font(.system(size: 13))
-                .foregroundStyle(state.isPinned ? Color.accentColor : Color.secondary)
-                .frame(width: 30, height: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(state.isPinned ? "Nicht mehr offen halten" : "Offen halten")
-    }
-}
-
-struct EmptyHint: View {
-    let thickness: CGFloat
-    let actions: SidebarActions
-
-    var body: some View {
-        Button {
-            actions.openSettings()
-        } label: {
-            Image(systemName: "plus.circle")
-                .font(.system(size: 18))
-                .foregroundStyle(.secondary)
-                .frame(width: thickness, height: 36)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Gruppe hinzufügen")
     }
 }
 
@@ -447,7 +533,7 @@ struct EmptyHint: View {
 struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .sidebar
+        view.material = .hudWindow
         view.blendingMode = .behindWindow
         view.state = .active
         return view

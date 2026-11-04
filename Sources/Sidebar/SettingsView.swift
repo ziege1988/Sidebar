@@ -1,20 +1,44 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// Leitet Klicks aus der Sidebar („Bearbeiten …“, „+“) an den Editor weiter.
+@MainActor
+final class SettingsRouter: ObservableObject {
+    static let shared = SettingsRouter()
+
+    enum Request: Equatable {
+        case edit(UUID)
+        /// Neuer Link in Gruppe bzw. `LinkGroup.favoritesID`
+        case add(UUID)
+    }
+
+    @Published var request: Request?
+}
 
 struct SettingsView: View {
+    enum Tab: Hashable { case links, appearance }
+
     @ObservedObject var store: ConfigStore
     @ObservedObject var updater: Updater
+    @ObservedObject var router: SettingsRouter
+    @State private var tab: Tab = .links
 
     var body: some View {
-        TabView {
-            GroupsEditor(store: store)
-                .tabItem { Label("Gruppen & Links", systemImage: "square.grid.2x2") }
+        TabView(selection: $tab) {
+            GroupsEditor(store: store, router: router)
+                .tabItem { Label("Ordner & Links", systemImage: "square.grid.2x2") }
+                .tag(Tab.links)
             GeneralSettingsView(store: store, updater: updater)
                 .tabItem { Label("Darstellung", systemImage: "sidebar.left") }
+                .tag(Tab.appearance)
         }
         .padding()
         .frame(minWidth: 740, minHeight: 500)
+        .onReceive(router.$request) { request in
+            if request != nil { tab = .links }
+        }
     }
 }
 
@@ -49,14 +73,25 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Farben") {
+                Picker("Erscheinungsbild", selection: $store.config.settings.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Text("Hell: Pastell-Salbeigrün · Dunkel: Pastell-Graphit. „Automatisch“ wechselt mit dem macOS-Modus.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Größe & Verhalten") {
-                LabeledContent("Breite eingeklappt: \(Int(store.config.settings.collapsedThickness)) pt") {
+                LabeledContent("Breite der Leiste: \(Int(store.config.settings.collapsedThickness)) pt") {
                     Slider(value: $store.config.settings.collapsedThickness, in: 44...88, step: 2)
                 }
-                LabeledContent("Breite ausgeklappt: \(Int(store.config.settings.expandedThickness)) pt") {
+                LabeledContent("Breite der Ordner-Fenster: \(Int(store.config.settings.expandedThickness)) pt") {
                     Slider(value: $store.config.settings.expandedThickness, in: 160...480, step: 10)
                 }
-                LabeledContent("Verzögerung beim Aufklappen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
+                LabeledContent("Verzögerung beim Öffnen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
                     Slider(value: $store.config.settings.hoverDelay, in: 0...0.8, step: 0.05)
                 }
                 Toggle("Automatisch ausblenden (eingeklappt nur schmaler Rand sichtbar)",
@@ -189,6 +224,7 @@ struct ItemDraft: Identifiable {
 
 struct GroupsEditor: View {
     @ObservedObject var store: ConfigStore
+    @ObservedObject var router: SettingsRouter
     @State private var selection: UUID?
     @State private var draft: ItemDraft?
     @State private var confirmDelete = false
@@ -204,8 +240,16 @@ struct GroupsEditor: View {
             if selection == nil { selection = store.config.groups.first?.id }
         }
         .sheet(item: $draft) { draft in
-            ItemEditorSheet(draft: draft, groups: store.config.groups) { item, groupID in
+            ItemEditorSheet(draft: draft, groups: store.config.groups,
+                            favoritesFull: store.favoritesFull) { item, groupID in
                 store.upsert(item, into: groupID)
+            }
+        }
+        .onReceive(router.$request) { request in
+            guard let request else { return }
+            DispatchQueue.main.async {
+                router.request = nil
+                handle(request)
             }
         }
         .confirmationDialog("Gruppe mit allen Links löschen?", isPresented: $confirmDelete) {
@@ -217,6 +261,8 @@ struct GroupsEditor: View {
     private var groupList: some View {
         VStack(spacing: 0) {
             List(selection: $selection) {
+                Label("Favoriten (\(store.config.favorites.count)/\(SidebarConfig.maxFavorites))", systemImage: "star.fill")
+                    .tag(LinkGroup.favoritesID)
                 ForEach(store.config.groups) { group in
                     Label(group.name.isEmpty ? "Ohne Namen" : group.name, systemImage: group.symbol)
                         .tag(group.id)
@@ -240,7 +286,7 @@ struct GroupsEditor: View {
                 } label: {
                     Image(systemName: "minus")
                 }
-                .disabled(selection == nil)
+                .disabled(selection == nil || selection == LinkGroup.favoritesID)
                 .help("Gruppe löschen")
                 Spacer()
             }
@@ -251,7 +297,15 @@ struct GroupsEditor: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let id = selection, store.config.groups.contains(where: { $0.id == id }) {
+        if selection == LinkGroup.favoritesID {
+            FavoritesDetail(store: store) { item in
+                if let item {
+                    draft = ItemDraft(item: item, groupID: LinkGroup.favoritesID, isNew: false)
+                } else {
+                    draft = ItemDraft(item: LinkItem(name: "", urlString: ""), groupID: LinkGroup.favoritesID, isNew: true)
+                }
+            }
+        } else if let id = selection, store.config.groups.contains(where: { $0.id == id }) {
             GroupDetail(store: store, groupID: id) { item in
                 if let item {
                     draft = ItemDraft(item: item, groupID: id, isNew: false)
@@ -264,6 +318,18 @@ struct GroupsEditor: View {
             ContentUnavailableView("Keine Gruppe ausgewählt",
                                    systemImage: "square.grid.2x2",
                                    description: Text("Lege links mit „+“ eine Gruppe an, z. B. „Fotografie“ oder „ADS“."))
+        }
+    }
+
+    private func handle(_ request: SettingsRouter.Request) {
+        switch request {
+        case .edit(let id):
+            guard let item = store.item(id: id), let container = store.container(of: id) else { return }
+            selection = container
+            draft = ItemDraft(item: item, groupID: container, isNew: false)
+        case .add(let container):
+            selection = container
+            draft = ItemDraft(item: LinkItem(name: "", urlString: ""), groupID: container, isNew: true)
         }
     }
 
@@ -328,9 +394,53 @@ struct GroupDetail: View {
                     Label("Link hinzufügen", systemImage: "plus")
                 }
                 Spacer()
-                Text("Tipp: Adresse aus dem Browser direkt auf eine Gruppe in der Sidebar ziehen.")
+                Text("Tipp: Adresse aus dem Browser direkt auf einen Ordner in der Sidebar ziehen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+    }
+}
+
+struct FavoritesDetail: View {
+    @ObservedObject var store: ConfigStore
+    /// `nil` = neuen Favoriten anlegen
+    let onEdit: (LinkItem?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "star.fill").font(.title2).foregroundStyle(Color.accentColor)
+                Text("Favoriten").font(.title3.weight(.semibold))
+                Spacer()
+                Text("\(store.config.favorites.count) von \(SidebarConfig.maxFavorites)")
+                    .foregroundStyle(.secondary)
+            }
+            Text("Die Favoriten stehen oben in der Sidebar für den Schnellzugriff – maximal \(SidebarConfig.maxFavorites). Links aus einem Ordner kannst du in der Sidebar direkt auf die Favoritenleiste ziehen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            List {
+                ForEach(store.config.favorites) { item in
+                    ItemRow(item: item,
+                            onEdit: { onEdit(item) },
+                            onDelete: { store.removeFromFavorites(id: item.id) })
+                }
+                .onMove { from, to in
+                    store.config.favorites.move(fromOffsets: from, toOffset: to)
+                }
+            }
+            .listStyle(.inset(alternatesRowBackgrounds: true))
+
+            HStack {
+                Button {
+                    onEdit(nil)
+                } label: {
+                    Label("Favorit hinzufügen", systemImage: "plus")
+                }
+                .disabled(store.favoritesFull)
+                Spacer()
             }
         }
         .padding()
@@ -376,16 +486,28 @@ struct ItemEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var item: LinkItem
     @State private var groupID: UUID
+    @State private var iconTargeted = false
     private let groups: [LinkGroup]
     private let isNew: Bool
+    private let originalIcon: String?
+    private let originalContainer: UUID
+    private let favoritesFull: Bool
     private let onSave: (LinkItem, UUID) -> Void
 
-    init(draft: ItemDraft, groups: [LinkGroup], onSave: @escaping (LinkItem, UUID) -> Void) {
+    init(draft: ItemDraft, groups: [LinkGroup], favoritesFull: Bool,
+         onSave: @escaping (LinkItem, UUID) -> Void) {
         _item = State(initialValue: draft.item)
         _groupID = State(initialValue: draft.groupID)
         self.groups = groups
         self.isNew = draft.isNew
+        self.originalIcon = draft.item.customIcon
+        self.originalContainer = draft.groupID
+        self.favoritesFull = favoritesFull
         self.onSave = onSave
+    }
+
+    private var favoritesBlocked: Bool {
+        groupID == LinkGroup.favoritesID && originalContainer != LinkGroup.favoritesID && favoritesFull
     }
 
     private var isValid: Bool { item.url != nil }
@@ -393,12 +515,39 @@ struct ItemEditorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(isNew ? "Neuer Link" : "Link bearbeiten").font(.headline)
+            HStack(spacing: 14) {
+                FaviconView(item: item, size: 48)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(iconTargeted ? Color.accentColor : Color.clear, lineWidth: 2)
+                    )
+                    .onDrop(of: [.fileURL], isTargeted: $iconTargeted) { providers in
+                        DropSupport.load(providers) { payloads in
+                            for case .image(let url) in payloads {
+                                if let image = NSImage(contentsOf: url) { setIcon(image) }
+                            }
+                        }
+                        return true
+                    }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("Eigenes Bild wählen …") { chooseImage() }
+                        if item.customIcon != nil {
+                            Button("Standard-Icon") { item.customIcon = nil }
+                        }
+                    }
+                    Text("Oder ein Bild auf das Icon ziehen. Ohne eigenes Bild wird das Icon der Webseite verwendet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Form {
                 TextField("Adresse (URL)", text: $item.urlString, prompt: Text("z. B. ads.google.com"))
                 TextField("Name", text: $item.name, prompt: Text("leer = Domain verwenden"))
-                Picker("Gruppe", selection: $groupID) {
+                Picker("Ablegen in", selection: $groupID) {
+                    Label("Favoriten", systemImage: "star.fill").tag(LinkGroup.favoritesID)
                     ForEach(groups) { group in
-                        Text(group.name).tag(group.id)
+                        Label(group.name, systemImage: group.symbol).tag(group.id)
                     }
                 }
                 Picker("Öffnen als", selection: $item.openMode) {
@@ -410,6 +559,11 @@ struct ItemEditorSheet: View {
             }
             .formStyle(.grouped)
 
+            if favoritesBlocked {
+                Text("Die Favoritenleiste ist voll (max. \(SidebarConfig.maxFavorites)). Entferne zuerst einen Favoriten.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
             if !item.urlString.isEmpty && !isValid {
                 Text("Bitte eine gültige Adresse eingeben.")
                     .font(.caption)
@@ -418,15 +572,43 @@ struct ItemEditorSheet: View {
 
             HStack {
                 Spacer()
-                Button("Abbrechen", role: .cancel) { dismiss() }
+                Button("Abbrechen", role: .cancel) { cancel() }
                     .keyboardShortcut(.cancelAction)
                 Button("Sichern") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!isValid)
+                    .disabled(!isValid || favoritesBlocked)
             }
         }
         .padding()
         .frame(width: 480)
+    }
+
+    private func chooseImage() {
+        let panel = NSOpenPanel()
+        panel.title = "Bild für das Icon wählen"
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) else { return }
+        setIcon(image)
+    }
+
+    private func setIcon(_ image: NSImage) {
+        guard let file = IconStore.shared.save(image) else {
+            NSSound.beep()
+            return
+        }
+        // Zwischenstände, die nie gespeichert wurden, wieder löschen
+        if let current = item.customIcon, current != originalIcon {
+            IconStore.shared.delete(current)
+        }
+        item.customIcon = file
+    }
+
+    private func cancel() {
+        if let current = item.customIcon, current != originalIcon {
+            IconStore.shared.delete(current)
+        }
+        dismiss()
     }
 
     private func save() {

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 enum SidebarMain {
@@ -42,10 +43,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let actions = SidebarActions(
             open: { [weak self] item, mode in
                 guard let self else { return }
+                self.sidebar.hideFlyout()
                 LinkOpener.open(item, mode: mode, settings: self.store.config.settings)
             },
             openSettings: { [weak self] in
                 self?.showSettings()
+            },
+            editItem: { [weak self] id in
+                self?.showSettings(request: .edit(id))
+            },
+            addLink: { [weak self] containerID in
+                self?.showSettings(request: .add(containerID))
+            },
+            chooseIcon: { [weak self] id in
+                self?.chooseIcon(for: id)
+            },
+            toggleFlyout: { [weak self] id in
+                self?.sidebar.toggleFlyout(id)
             },
             installUpdate: {
                 if let release = Updater.shared.availableRelease {
@@ -82,9 +96,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showSettings()
     }
 
-    func showSettings() {
+    func showSettings(request: SettingsRouter.Request? = nil) {
+        sidebar?.hideFlyout()
+        if let request {
+            SettingsRouter.shared.request = request
+        }
         if settingsWindow == nil {
-            let host = NSHostingController(rootView: SettingsView(store: store, updater: Updater.shared))
+            let host = NSHostingController(rootView: SettingsView(store: store, updater: Updater.shared,
+                                                                  router: SettingsRouter.shared))
             host.sizingOptions = [.minSize]
             let window = NSWindow(contentViewController: host)
             window.title = "Sidebar – Einstellungen"
@@ -98,6 +117,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let settingsWindow {
             DockPresence.present(settingsWindow)
         }
+    }
+
+    // MARK: - Eigenes Bild als Icon
+
+    private func chooseIcon(for itemID: UUID) {
+        sidebar.hideFlyout()
+        let panel = NSOpenPanel()
+        panel.title = "Bild für das Icon wählen"
+        panel.message = "Das Bild wird quadratisch zugeschnitten."
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url, let image = NSImage(contentsOf: url) else { return }
+        store.setCustomIcon(itemID: itemID, image: image)
     }
 
     // MARK: - Menüleisten-Symbol
@@ -126,17 +159,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.sidebar.setVisible(!visible)
         })
 
-        let pin = menuItem("Offen halten") { [weak self] in
-            self?.sidebar.state.isPinned.toggle()
-        }
-        pin.state = sidebar.state.isPinned ? .on : .off
-        menu.addItem(pin)
-
         let onTop = menuItem("Immer im Vordergrund") { [weak self] in
             self?.store.config.settings.alwaysOnTop.toggle()
         }
         onTop.state = settings.alwaysOnTop ? .on : .off
         menu.addItem(onTop)
+
+        let appearanceMenu = NSMenu()
+        for mode in AppearanceMode.allCases {
+            let item = menuItem(mode.title) { [weak self] in
+                self?.store.config.settings.appearance = mode
+            }
+            item.state = settings.appearance == mode ? .on : .off
+            appearanceMenu.addItem(item)
+        }
+        let appearanceItem = NSMenuItem(title: "Farben", action: nil, keyEquivalent: "")
+        appearanceItem.submenu = appearanceMenu
+        menu.addItem(appearanceItem)
         menu.addItem(.separator())
 
         // Seite
