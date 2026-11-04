@@ -11,6 +11,7 @@ struct SidebarActions {
     var open: @MainActor (LinkItem, OpenMode?) -> Void
     var openSettings: @MainActor () -> Void
     var installUpdate: @MainActor () -> Void
+    var drag: @MainActor (DragPhase, NSPoint) -> Void
 }
 
 // MARK: - Hauptansicht
@@ -72,6 +73,10 @@ struct SidebarView: View {
     // Links / rechts
     private var verticalContent: some View {
         VStack(spacing: 0) {
+            DragHandle(horizontal: true, onDrag: actions.drag)
+                .frame(height: 16)
+                .frame(maxWidth: .infinity)
+                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(store.config.groups) { group in
@@ -96,6 +101,10 @@ struct SidebarView: View {
     // Oben / unten
     private var horizontalContent: some View {
         HStack(spacing: 0) {
+            DragHandle(horizontal: false, onDrag: actions.drag)
+                .frame(width: 16)
+                .frame(maxHeight: .infinity)
+                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
             ScrollView(.horizontal, showsIndicators: false) {
                 if state.isExpanded {
                     HStack(alignment: .top, spacing: 8) {

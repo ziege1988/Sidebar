@@ -44,6 +44,9 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                Text("Tipp: Du kannst die Sidebar auch am Griff (kleiner Balken oben bzw. links) an eine beliebige Kante oder auf einen anderen Bildschirm ziehen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Größe & Verhalten") {
@@ -58,6 +61,12 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("Automatisch ausblenden (eingeklappt nur schmaler Rand sichtbar)",
                        isOn: $store.config.settings.autoHide)
+                Toggle("Immer im Vordergrund", isOn: $store.config.settings.alwaysOnTop)
+                Text(store.config.settings.alwaysOnTop
+                     ? "Die Sidebar liegt immer über allen Fenstern."
+                     : "Fenster anderer Programme können die Sidebar verdecken. Fährst du mit der Maus auf einen sichtbaren Teil der Sidebar, kommt sie nach vorne.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Links öffnen") {

@@ -51,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let release = Updater.shared.availableRelease {
                     Updater.shared.promptToInstall(release)
                 }
+            },
+            drag: { [weak self] phase, point in
+                self?.sidebar.handleDrag(phase, at: point)
             }
         )
         sidebar = SidebarController(store: store, updater: Updater.shared, actions: actions)
@@ -128,6 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         pin.state = sidebar.state.isPinned ? .on : .off
         menu.addItem(pin)
+
+        let onTop = menuItem("Immer im Vordergrund") { [weak self] in
+            self?.store.config.settings.alwaysOnTop.toggle()
+        }
+        onTop.state = settings.alwaysOnTop ? .on : .off
+        menu.addItem(onTop)
         menu.addItem(.separator())
 
         // Seite

@@ -47,6 +47,28 @@ final class SidebarController {
     private var watchdog: Timer?
     private var mouseInside = false
     private var expandedTarget = false
+    private var isDragging = false
+
+    /// Halbtransparente Vorschau, wo die Sidebar beim Loslassen andockt.
+    private lazy var previewPanel: NSPanel = {
+        let preview = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                              backing: .buffered, defer: false)
+        preview.isOpaque = false
+        preview.backgroundColor = .clear
+        preview.hasShadow = false
+        preview.ignoresMouseEvents = true
+        preview.isReleasedWhenClosed = false
+        preview.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        preview.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.25).cgColor
+        view.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        view.layer?.borderWidth = 2
+        view.layer?.cornerRadius = 12
+        preview.contentView = view
+        return preview
+    }()
     private(set) var isVisible = true
 
     init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
@@ -126,6 +148,7 @@ final class SidebarController {
 
     private func hoverChanged(_ inside: Bool) {
         mouseInside = inside
+        if isDragging { return }
         if inside {
             schedule(expanded: true, after: store.config.settings.hoverDelay)
         } else if !state.isPinned {
@@ -148,7 +171,7 @@ final class SidebarController {
 
     func setExpanded(_ expanded: Bool) {
         if !expanded {
-            if state.isPinned { return }
+            if state.isPinned || isDragging { return }
             // Kontextmenü offen → nicht einklappen, später erneut prüfen.
             if RunLoop.current.currentMode == .eventTracking {
                 schedule(expanded: false, after: 0.5)
@@ -161,6 +184,9 @@ final class SidebarController {
         if expanded {
             state.isExpanded = true
             startWatchdog()
+            if !store.config.settings.alwaysOnTop {
+                panel.orderFrontRegardless() // hinter Fenstern: beim Hover nach vorne holen
+            }
         } else {
             stopWatchdog()
         }
@@ -232,6 +258,65 @@ final class SidebarController {
     }
 
     private func applyFrame(settings: SidebarSettings) {
+        panel.level = settings.alwaysOnTop ? .floating : .normal
         panel.setFrame(frame(for: settings, expanded: expandedTarget), display: true)
+    }
+
+    // MARK: - Ziehen an eine andere Kante / einen anderen Bildschirm
+
+    func handleDrag(_ phase: DragPhase, at point: NSPoint) {
+        switch phase {
+        case .began:
+            isDragging = true
+            pendingTask?.cancel()
+        case .moved:
+            guard let target = snapTarget(for: point) else {
+                previewPanel.orderOut(nil)
+                return
+            }
+            var preview = store.config.settings
+            preview.edge = target.edge
+            preview.screenID = target.screen.displayID
+            preview.screenName = target.screen.localizedName
+            preview.autoHide = false
+            previewPanel.setFrame(frame(for: preview, expanded: false), display: true)
+            previewPanel.orderFrontRegardless()
+        case .ended:
+            isDragging = false
+            previewPanel.orderOut(nil)
+            if let target = snapTarget(for: point) {
+                var settings = store.config.settings
+                settings.edge = target.edge
+                settings.screenID = target.screen.displayID
+                settings.screenName = target.screen.localizedName
+                if !state.isPinned {
+                    expandedTarget = false
+                    state.isExpanded = false
+                    stopWatchdog()
+                }
+                store.config.settings = settings
+            }
+            // Auch wenn die Position gleich bleibt: Größe an den Zustand anpassen.
+            applyFrame(settings: store.config.settings)
+            mouseInside = panel.frame.contains(NSEvent.mouseLocation)
+            if !mouseInside && !state.isPinned {
+                schedule(expanded: false, after: 0.3)
+            }
+        }
+    }
+
+    /// Bildschirm unter dem Mauszeiger und die nächstgelegene Kante.
+    private func snapTarget(for point: NSPoint) -> (screen: NSScreen, edge: ScreenEdge)? {
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) })
+                ?? NSScreen.screens.first else { return nil }
+        let area = screen.visibleFrame
+        let distances: [(ScreenEdge, CGFloat)] = [
+            (.left, abs(point.x - area.minX)),
+            (.right, abs(area.maxX - point.x)),
+            (.top, abs(area.maxY - point.y)),
+            (.bottom, abs(point.y - area.minY)),
+        ]
+        guard let nearest = distances.min(by: { $0.1 < $1.1 }) else { return nil }
+        return (screen, nearest.0)
     }
 }

@@ -12,6 +12,13 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
 - **Jeder Bildschirm, jede Seite:** links, rechts, oben oder unten, auf jedem
   angeschlossenen Monitor. Wird ein Monitor abgezogen, wechselt die Sidebar
   automatisch auf den Hauptbildschirm und kehrt zurück, sobald er wieder da ist.
+- **Verschieben per Maus:** am Griff (kleiner Balken oben bzw. links) an eine
+  beliebige Kante oder auf einen anderen Monitor ziehen. Eine Vorschau zeigt,
+  wo sie andockt. Die Position wird gespeichert.
+- **Klappt immer vom Rand weg auf:** links nach rechts, rechts nach links,
+  oben nach unten, unten nach oben.
+- **Vordergrund wählbar:** „Immer im Vordergrund“ (Standard) oder hinter
+  Fenstern. Dann kommt sie beim Darüberfahren nach vorne.
 - **Hover zum Aufklappen:** Eingeklappt sind nur Favicons sichtbar. Beim
   Darüberfahren erscheinen Namen und Gruppen. Mit 📌 bleibt die Sidebar offen.
 - **Gruppen & Links:** Gruppen mit SF-Symbol, Links mit automatisch geladenem

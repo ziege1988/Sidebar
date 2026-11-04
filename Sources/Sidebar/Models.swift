@@ -130,6 +130,8 @@ struct SidebarSettings: Codable, Equatable {
     var defaultOpenMode: OpenMode = .defaultBrowser
     var chromiumBundleID: String = "com.google.Chrome"
     var autoCheckUpdates: Bool = true
+    /// true = über allen Fenstern, false = normale Fensterebene (kommt beim Hover nach vorne)
+    var alwaysOnTop: Bool = true
 }
 
 extension SidebarSettings {
@@ -147,6 +149,7 @@ extension SidebarSettings {
         defaultOpenMode = try c.decodeIfPresent(OpenMode.self, forKey: .defaultOpenMode) ?? defaultOpenMode
         chromiumBundleID = try c.decodeIfPresent(String.self, forKey: .chromiumBundleID) ?? chromiumBundleID
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? autoCheckUpdates
+        alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? alwaysOnTop
     }
 }
 
