@@ -5,6 +5,8 @@ Sie dockt an einer beliebigen Bildschirmkante an, zeigt eingeklappt nur Icons un
 klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
 (z. B. **Fotografie**, **ADS**) und lassen sich wie kleine „Browser-Apps“ öffnen.
 
+![Vorschau der Sidebar (Entwurf)](docs/sidebar-vorschau.png)
+
 ## Funktionen
 
 - **Jeder Bildschirm, jede Seite:** links, rechts, oben oder unten, auf jedem
