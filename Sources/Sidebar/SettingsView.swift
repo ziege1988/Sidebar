@@ -105,13 +105,18 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("KI- und Google-Knopf oben in der Leiste", isOn: $store.config.settings.showSearch)
                 if store.config.settings.showSearch {
+                    Picker("KI-Anbieter", selection: $store.config.settings.aiProvider) {
+                        ForEach(AIProvider.allCases) { provider in
+                            Text(provider.title).tag(provider)
+                        }
+                    }
                     Picker("KI öffnen in", selection: $store.config.settings.aiTarget) {
                         ForEach(AITarget.allCases) { target in
                             Text(target.title).tag(target)
                         }
                     }
                 }
-                Text("Klick auf die Uhr öffnet den Kalender. Über KI bzw. Google fahren und direkt lostippen – ↩ öffnet das Ergebnis, esc schließt. Die Frage an Claude liegt zusätzlich in der Zwischenablage: Falls Claude sie nicht automatisch übernimmt, mit ⌘V einfügen.")
+                Text("Klick auf die Uhr öffnet den Kalender. Über KI bzw. Google fahren und direkt lostippen – ↩ öffnet das Ergebnis, esc schließt. Im Seitenfenster steht die Frage bereits im Eingabefeld (bei ChatGPT noch einmal ↩ drücken). Die Frage liegt außerdem in der Zwischenablage – in der Desktop-App mit ⌘V einfügen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Ablagefach in der Leiste", isOn: $store.config.settings.showShelf)

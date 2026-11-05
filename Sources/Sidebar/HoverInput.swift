@@ -23,7 +23,7 @@ enum ActionButton: String, CaseIterable, Identifiable {
 
     var placeholder: String {
         switch self {
-        case .ai: return "Claude fragen …"
+        case .ai: return "KI fragen …"
         case .google: return "Google Suche"
         }
     }

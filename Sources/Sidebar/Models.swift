@@ -147,16 +147,53 @@ struct LinkGroup: Codable, Identifiable, Hashable {
 
 /// Wo Fragen an die KI geöffnet werden.
 enum AITarget: String, Codable, CaseIterable, Identifiable {
-    /// claude.ai in einem Seitenfenster neben der Sidebar
+    /// Webseite des Anbieters in einem Seitenfenster neben der Sidebar
     case sidePanel
-    /// Claude-Desktop-App
+    /// Desktop-App des Anbieters
     case desktopApp
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .sidePanel: return "Seitenfenster neben der Sidebar (claude.ai)"
-        case .desktopApp: return "Claude-Desktop-App"
+        case .sidePanel: return "Seitenfenster neben der Sidebar"
+        case .desktopApp: return "Desktop-App"
         }
+    }
+}
+
+/// Welche KI hinter dem KI-Knopf steckt.
+enum AIProvider: String, Codable, CaseIterable, Identifiable {
+    case chatgpt, claude
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chatgpt: return "ChatGPT"
+        case .claude: return "Claude"
+        }
+    }
+
+    /// Bundle-ID der Mac-App
+    var bundleID: String {
+        switch self {
+        case .chatgpt: return "com.openai.chat"
+        case .claude: return "com.anthropic.claudefordesktop"
+        }
+    }
+
+    var homeURL: String {
+        switch self {
+        case .chatgpt: return "https://chatgpt.com/"
+        case .claude: return "https://claude.ai/new"
+        }
+    }
+
+    /// Webadresse, die die Frage ins Eingabefeld übernimmt (inoffiziell, nicht dokumentiert)
+    func webURL(query: String?) -> URL? {
+        guard let query, !query.isEmpty else { return URL(string: homeURL) }
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=?#")
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
+        return URL(string: homeURL + "?q=" + encoded)
     }
 }
 
@@ -206,6 +243,7 @@ struct SidebarSettings: Codable, Equatable {
     /// KI- und Google-Knopf oben in der Leiste
     var showSearch: Bool = true
     var aiTarget: AITarget = .sidePanel
+    var aiProvider: AIProvider = .chatgpt
     var showShelf: Bool = true
 }
 
@@ -235,6 +273,7 @@ extension SidebarSettings {
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
         aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget
+        aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider) ?? aiProvider
         showShelf = try c.decodeIfPresent(Bool.self, forKey: .showShelf) ?? showShelf
     }
 }

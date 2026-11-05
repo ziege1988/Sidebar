@@ -273,7 +273,7 @@ struct ActionCell: View {
             }
         )
         .onTapGesture { actions.triggerAction(action) }
-        .help(action == .ai ? "KI: darüberfahren und lostippen · Klick öffnet Claude"
+        .help(action == .ai ? "KI: darüberfahren und lostippen · Klick öffnet die KI"
                             : "Google: darüberfahren und lostippen · Klick öffnet Google")
     }
 }

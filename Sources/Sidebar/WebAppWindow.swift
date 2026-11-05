@@ -11,22 +11,25 @@ final class WebAppManager {
         controller(for: item, url: url).show()
     }
 
-    static let claudeID = UUID(uuidString: "00000000-0000-0000-0000-00000000C1AD")!
+    /// Feste Fenster-IDs je KI (Position und Größe werden pro Anbieter gemerkt)
+    static func aiWindowID(_ provider: AIProvider) -> UUID {
+        switch provider {
+        case .claude: return UUID(uuidString: "00000000-0000-0000-0000-00000000C1AD")!
+        case .chatgpt: return UUID(uuidString: "00000000-0000-0000-0000-00000000C6B7")!
+        }
+    }
 
-    /// Claude als Seitenfenster neben der Sidebar (Weg 1: claude.ai mit deinem Konto).
-    /// - Parameter query: Frage, die mitgegeben wird (zusätzlich in der Zwischenablage)
-    func openClaude(query: String?, beside bar: NSRect, edge: ScreenEdge) {
-        var address = "https://claude.ai/new"
+    /// KI als Seitenfenster neben der Sidebar (Weg 1: Webseite mit deinem Konto).
+    /// - Parameter query: Frage, die ins Eingabefeld übernommen wird (zusätzlich in der Zwischenablage)
+    func openAI(_ provider: AIProvider, query: String?, beside bar: NSRect, edge: ScreenEdge) {
         if let query, !query.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(query, forType: .string)
-            var allowed = CharacterSet.urlQueryAllowed
-            allowed.remove(charactersIn: "&+=?#")
-            address += "?q=" + (query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query)
         }
-        guard let url = URL(string: address) else { return }
-        let item = LinkItem(id: Self.claudeID, name: "Claude", urlString: "https://claude.ai")
-        let isNew = controllers[Self.claudeID] == nil
+        guard let url = provider.webURL(query: query) else { return }
+        let id = Self.aiWindowID(provider)
+        let item = LinkItem(id: id, name: provider.title, urlString: provider.homeURL)
+        let isNew = controllers[id] == nil
         let controller = controller(for: item, url: url)
         if !isNew { controller.load(url) }
         if !controller.hasSavedFrame, isNew,

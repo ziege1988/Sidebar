@@ -166,18 +166,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 NSWorkspace.shared.open(url)
             }
         case .ai:
-            switch settings.aiTarget {
-            case .sidePanel:
-                WebAppManager.shared.openClaude(query: text, beside: sidebar.barFrame, edge: settings.edge)
-            case .desktopApp:
-                if let text {
+            let provider = settings.aiProvider
+            let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: provider.bundleID)
+            guard settings.aiTarget == .desktopApp, let appURL else {
+                // Seitenfenster (oder Desktop-App nicht installiert)
+                WebAppManager.shared.openAI(provider, query: text, beside: sidebar.barFrame, edge: settings.edge)
+                return
+            }
+            if let text {
+                // Frage in die Zwischenablage – in der App mit ⌘V einfügen, falls sie nicht übernommen wird
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                if provider == .claude {
                     QuickSearchController.run(text, target: .claude)
-                } else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
-                    NSWorkspace.shared.open(app)
-                } else {
-                    WebAppManager.shared.openClaude(query: nil, beside: sidebar.barFrame, edge: settings.edge)
+                    return
                 }
             }
+            NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
         }
     }
 
