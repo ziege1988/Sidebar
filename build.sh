@@ -27,6 +27,21 @@ BUILD_NUMBER="${BUILD_NUMBER:-0}"
   "$APP/Contents/Info.plist"
 echo "  Version $VERSION ($BUILD_NUMBER)"
 
+# App-Icon: aus Resources/Icon/AppIcon.png (1024 × 1024) alle Größen erzeugen
+if [[ -f Resources/Icon/AppIcon.png ]]; then
+  echo "▸ Erzeuge App-Icon …"
+  ICONSET="build/AppIcon.iconset"
+  rm -rf "$ICONSET"
+  mkdir -p "$ICONSET"
+  for SIZE in 16 32 128 256 512; do
+    sips -z "$SIZE" "$SIZE" Resources/Icon/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+    DOUBLE=$((SIZE * 2))
+    sips -z "$DOUBLE" "$DOUBLE" Resources/Icon/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  rm -rf "$ICONSET"
+fi
+
 echo "▸ Signiere (ad-hoc) …"
 codesign --force --sign - "$APP"
 

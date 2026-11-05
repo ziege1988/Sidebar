@@ -8,6 +8,8 @@
 	<string>Sidebar</string>
 	<key>CFBundleIdentifier</key>
 	<string>app.sidebar.Sidebar</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>Sidebar</string>
 	<key>CFBundlePackageType</key>
