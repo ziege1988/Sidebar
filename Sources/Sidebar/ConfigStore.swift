@@ -169,7 +169,7 @@ final class ConfigStore: ObservableObject {
 
     // MARK: - Favoriten
 
-    /// Legt eine Kopie des Links in die Favoritenleiste (max. 6).
+    /// Legt eine Kopie des Links in die Favoritenleiste (max. `SidebarConfig.maxFavorites`).
     @discardableResult
     func addToFavorites(itemID: UUID) -> Bool {
         guard !isFavorite(itemID), let source = item(id: itemID) else { return false }

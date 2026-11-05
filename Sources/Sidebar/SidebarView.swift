@@ -7,11 +7,82 @@ final class SidebarState: ObservableObject {
     @Published var flyoutGroupID: UUID?
     /// Bei „Automatisch ausblenden“: Leiste gerade sichtbar
     @Published var isRevealed = false
+    /// Mausposition entlang der Leiste (für den Lupen-Effekt), `nil` = Maus nicht in der Leiste
+    @Published var pointer: CGFloat?
 }
 
-/// Positionen der Ordner-Symbole in der Leiste (Koordinaten der Leiste, Ursprung oben links).
+/// Positionen der Symbole in der Leiste (Koordinaten der Leiste, Ursprung oben links).
 final class SidebarGeometry {
     var groupFrames: [UUID: CGRect] = [:]
+    var favoriteFrames: [UUID: CGRect] = [:]
+}
+
+struct FavoriteFramesKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+private struct CellCenterKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// Lupen-Effekt wie im Dock: Je näher die Maus, desto größer das Icon.
+struct Magnify: ViewModifier {
+    let pointer: CGFloat?
+    let vertical: Bool
+    let maxScale: CGFloat
+    /// Reichweite in Punkten, in der Nachbarn mitwachsen
+    var range: CGFloat = 110
+    @State private var center: CGFloat = -10_000
+
+    private var scale: CGFloat {
+        guard let pointer, maxScale > 1 else { return 1 }
+        let distance = abs(center - pointer)
+        guard distance < range else { return 1 }
+        let falloff = (cos(.pi * distance / range) + 1) / 2 // 1 direkt unter der Maus → 0 am Rand
+        return 1 + (maxScale - 1) * falloff
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale)
+            .animation(.easeOut(duration: 0.12), value: scale)
+            .zIndex(Double(scale))
+            .background(
+                GeometryReader { proxy in
+                    let frame = proxy.frame(in: .named("bar"))
+                    Color.clear.preference(key: CellCenterKey.self, value: vertical ? frame.midY : frame.midX)
+                }
+            )
+            .onPreferenceChange(CellCenterKey.self) { value in
+                center = value
+            }
+    }
+}
+
+/// Name als kleines Etikett beim Darüberfahren über einen Favoriten.
+struct HoverLabel: View {
+    let text: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.forScheme(scheme)
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(palette.text)
+            .lineLimit(1)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(palette.surface))
+            .overlay(Capsule().stroke(palette.border, lineWidth: 1))
+            .padding(4)
+            .fixedSize()
+    }
 }
 
 struct GroupFramesKey: PreferenceKey {
@@ -74,6 +145,9 @@ struct SidebarView: View {
         .onPreferenceChange(GroupFramesKey.self) { frames in
             geometry.groupFrames = frames
         }
+        .onPreferenceChange(FavoriteFramesKey.self) { frames in
+            geometry.favoriteFrames = frames
+        }
     }
 
     /// Nur die zum Bildschirm zeigenden Ecken werden abgerundet.
@@ -133,11 +207,15 @@ struct SidebarView: View {
         let stack = vertical ? AnyLayout(VStackLayout(spacing: metrics.spacing))
                              : AnyLayout(HStackLayout(spacing: metrics.spacing))
         let cellSize = CGSize(width: vertical ? thickness : metrics.cell, height: vertical ? metrics.cell : thickness)
+        let pointer = settings.magnification ? state.pointer : nil
+        // Lupe: höchstens so groß, dass das Icon noch in die Leiste passt
+        let maxScale = min(1.55, max(1, (thickness - 6) / metrics.icon))
         return stack {
-            // Favoriten (max. 6)
+            // Favoriten (max. 10)
             ForEach(store.config.favorites) { item in
                 FavoriteCell(item: item, iconSize: metrics.icon, cellSize: cellSize,
                              store: store, actions: actions)
+                    .modifier(Magnify(pointer: pointer, vertical: vertical, maxScale: maxScale))
             }
             if showFavoriteSlot {
                 AddSlotCell(containerID: LinkGroup.favoritesID,
@@ -153,6 +231,7 @@ struct SidebarView: View {
                 GroupCell(group: group, isActive: state.flyoutGroupID == group.id,
                           iconSize: metrics.icon, cellSize: cellSize, showLabel: metrics.showLabels,
                           store: store, actions: actions)
+                    .modifier(Magnify(pointer: pointer, vertical: vertical, maxScale: maxScale))
             }
             if store.config.groups.isEmpty {
                 BarButton(symbol: "folder.badge.plus", size: metrics.icon * 0.6, tint: palette.secondary,
@@ -242,7 +321,12 @@ struct FavoriteCell: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(item.displayName) (Favorit)")
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: FavoriteFramesKey.self,
+                                       value: [item.id: proxy.frame(in: .named("bar"))])
+            }
+        )
         .contextMenu {
             ItemContextMenu(item: item, isFavorite: true, store: store, actions: actions)
         }

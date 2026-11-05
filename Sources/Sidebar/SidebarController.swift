@@ -25,6 +25,9 @@ final class SidebarController {
     private let geometry = SidebarGeometry()
     private let panel: SidebarPanel
     private let flyoutPanel: SidebarPanel
+    private let labelPanel: SidebarPanel
+    private let labelHost: NSHostingView<HoverLabel>
+    private var labelItemID: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var pollTimer: Timer?
     private(set) var isVisible = true
@@ -67,6 +70,11 @@ final class SidebarController {
         self.store = store
         panel = SidebarController.makePanel()
         flyoutPanel = SidebarController.makePanel()
+        labelPanel = SidebarController.makePanel()
+        labelHost = NSHostingView(rootView: HoverLabel(text: ""))
+        labelPanel.ignoresMouseEvents = true
+        labelHost.sizingOptions = []
+        labelPanel.contentView = labelHost
 
         let bar = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater,
                                                               geometry: geometry, actions: actions))
@@ -158,7 +166,8 @@ final class SidebarController {
     // MARK: - Maus-Abfrage
 
     private func startPolling() {
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+        // 60× pro Sekunde, damit der Lupen-Effekt flüssig der Maus folgt
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
         // .common: läuft auch während Drag & Drop und Scrollen
@@ -167,7 +176,11 @@ final class SidebarController {
     }
 
     private func tick() {
-        guard isVisible, !isDragging else { return }
+        guard isVisible, !isDragging else {
+            updatePointer(nil)
+            updateLabel(nil)
+            return
+        }
         let settings = store.config.settings
         let mouse = NSEvent.mouseLocation
         let now = Date()
@@ -220,6 +233,22 @@ final class SidebarController {
             candidateGroup = nil
         }
 
+        // Lupen-Effekt: Mausposition entlang der Leiste weitergeben
+        if inBar && barUsable {
+            let local = CGPoint(x: mouse.x - panel.frame.minX, y: panel.frame.maxY - mouse.y)
+            updatePointer(settings.edge.isVertical ? local.y : local.x)
+        } else {
+            updatePointer(nil)
+        }
+
+        // Favorit unter der Maus: nur den Namen zeigen, kein Ordner-Fenster
+        let hoveredFavorite = (inBar && barUsable) ? favoriteAt(mouse) : nil
+        updateLabel(hoveredFavorite)
+        if hoveredFavorite != nil {
+            if flyoutVisible { hideFlyout() }
+            return
+        }
+
         // 3. Ordner-Fenster schließen, wenn die Maus es verlassen hat
         if flyoutVisible {
             let keep = inFlyout || hoveredGroup != nil || tracking
@@ -232,6 +261,58 @@ final class SidebarController {
                 }
             }
         }
+    }
+
+    private func updatePointer(_ value: CGFloat?) {
+        switch (state.pointer, value) {
+        case (nil, nil):
+            return
+        case let (old?, new?) where abs(old - new) < 0.5:
+            return
+        default:
+            state.pointer = value
+        }
+    }
+
+    /// Favorit an einer Bildschirmposition.
+    private func favoriteAt(_ point: NSPoint) -> UUID? {
+        let frame = panel.frame
+        let local = CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
+        return geometry.favoriteFrames.first(where: { $0.value.contains(local) })?.key
+    }
+
+    /// Namens-Etikett neben dem Favoriten ein-/ausblenden.
+    private func updateLabel(_ id: UUID?) {
+        guard id != labelItemID else { return }
+        labelItemID = id
+        guard let id,
+              let item = store.config.favorites.first(where: { $0.id == id }),
+              let rect = geometry.favoriteFrames[id],
+              let screen = targetScreen(for: store.config.settings) else {
+            labelPanel.orderOut(nil)
+            return
+        }
+        labelHost.rootView = HoverLabel(text: item.displayName)
+        let size = labelHost.fittingSize
+        let bar = panel.frame
+        let anchor = NSRect(x: bar.minX + rect.minX, y: bar.maxY - rect.maxY, width: rect.width, height: rect.height)
+        let gap: CGFloat = 4
+        var origin = NSPoint.zero
+        switch store.config.settings.edge {
+        case .left:
+            origin = NSPoint(x: bar.maxX + gap, y: anchor.midY - size.height / 2)
+        case .right:
+            origin = NSPoint(x: bar.minX - gap - size.width, y: anchor.midY - size.height / 2)
+        case .top:
+            origin = NSPoint(x: anchor.midX - size.width / 2, y: bar.minY - gap - size.height)
+        case .bottom:
+            origin = NSPoint(x: anchor.midX - size.width / 2, y: bar.maxY + gap)
+        }
+        let area = screen.visibleFrame
+        origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
+        origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
+        labelPanel.setFrame(NSRect(origin: origin, size: size), display: true)
+        labelPanel.orderFrontRegardless()
     }
 
     /// Ordner-Symbol an einer Bildschirmposition.
@@ -398,6 +479,7 @@ final class SidebarController {
         flyoutPanel.level = settings.alwaysOnTop
             ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
             : .normal
+        labelPanel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         if !settings.autoHide { state.isRevealed = false }
         panel.setFrame(frame(for: settings), display: true)
         if flyoutPanel.isVisible {

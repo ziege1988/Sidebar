@@ -173,6 +173,8 @@ struct SidebarSettings: Codable, Equatable {
     /// true = über allen Fenstern, false = normale Fensterebene (kommt beim Hover nach vorne)
     var alwaysOnTop: Bool = true
     var appearance: AppearanceMode = .system
+    /// Lupen-Effekt: Icons unter der Maus vergrößern (wie im Dock)
+    var magnification: Bool = true
 }
 
 extension SidebarSettings {
@@ -192,11 +194,12 @@ extension SidebarSettings {
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? autoCheckUpdates
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? alwaysOnTop
         appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? appearance
+        magnification = try c.decodeIfPresent(Bool.self, forKey: .magnification) ?? magnification
     }
 }
 
 struct SidebarConfig: Codable {
-    static let maxFavorites = 6
+    static let maxFavorites = 10
 
     var settings = SidebarSettings()
     var favorites: [LinkItem] = []
