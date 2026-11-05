@@ -5,10 +5,40 @@ import WebKit
 @MainActor
 final class WebAppManager {
     static let shared = WebAppManager()
-    private var controllers: [UUID: WebAppController] = [:]
+    private var controllers: [UUID: WebAppController] = [:] {
+        didSet { updateActivity() }
+    }
+    private var activity: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+
+    init() {
+        // Nach dem Ruhezustand: hängengebliebene oder leere Seiten neu laden
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.controllers.values.forEach { $0.recoverIfNeeded(afterWake: true) }
+            }
+        }
+    }
+
+    /// Verhindert, dass macOS die Web-Apps im Hintergrund schlafen legt („App Nap“),
+    /// solange mindestens ein App-Fenster existiert – sonst bleiben Seiten gern weiß.
+    private func updateActivity() {
+        if controllers.isEmpty {
+            if let activity { ProcessInfo.processInfo.endActivity(activity) }
+            activity = nil
+        } else if activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep],
+                reason: "Web-Apps der Sidebar aktiv halten")
+        }
+    }
 
     func open(item: LinkItem, url: URL) {
-        controller(for: item, url: url).show()
+        let controller = controller(for: item, url: url)
+        controller.recoverIfNeeded(afterWake: false)
+        controller.show()
     }
 
     /// Feste Fenster-IDs je KI (Position und Größe werden pro Anbieter gemerkt)
@@ -103,6 +133,10 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     var keepAlive: Bool
 
     private let item: LinkItem
+    private var startURL: URL
+    private var contentProcessCrashed = false
+    private var lastLoadFailed = false
+    private var retryCount = 0
     private var titleCount = 0
     /// Fenster hatte schon eine gespeicherte Position/Größe
     private(set) var hasSavedFrame = false
@@ -136,6 +170,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
 
     init(item: LinkItem, url: URL) {
         self.item = item
+        self.startURL = url
         appName = item.displayName
         keepAlive = item.keepAlive == true
 
@@ -187,7 +222,26 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     }
 
     func load(_ url: URL) {
+        startURL = url
+        retryCount = 0
         webView.load(URLRequest(url: url))
+    }
+
+    /// Repariert eine weiße/leere Seite: neu laden, wenn der Seiten-Prozess beendet wurde,
+    /// das Laden fehlgeschlagen ist oder gar nichts geladen ist.
+    func recoverIfNeeded(afterWake: Bool) {
+        let nothingLoaded = webView.url == nil && !webView.isLoading
+        guard contentProcessCrashed || lastLoadFailed || nothingLoaded || afterWake && webView.title?.isEmpty != false else {
+            return
+        }
+        contentProcessCrashed = false
+        lastLoadFailed = false
+        retryCount = 0
+        if let current = webView.url, current.scheme?.hasPrefix("http") == true {
+            webView.reload()
+        } else {
+            webView.load(URLRequest(url: startURL))
+        }
     }
 
     func show() {
@@ -308,6 +362,65 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
             return
         }
         decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download)
+    }
+
+    /// macOS hat den Seiten-Prozess beendet (z. B. Speicher, Ruhezustand) → sonst bleibt das Fenster weiß.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard webView === self.webView else { return }
+        contentProcessCrashed = true
+        // Sichtbar oder im Hintergrund aktiv (Benachrichtigungen) → sofort neu laden
+        if webView.window?.isVisible == true || keepAlive {
+            recoverIfNeeded(afterWake: false)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Die eigene Hinweisseite (about:blank) zählt nicht als erfolgreich geladen
+        guard webView === self.webView, webView.url?.scheme?.hasPrefix("http") == true else { return }
+        lastLoadFailed = false
+        retryCount = 0
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        handleLoadError(error, in: webView)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        handleLoadError(error, in: webView)
+    }
+
+    /// Ladefehler (z. B. WLAN nach dem Aufwachen noch nicht da): automatisch erneut versuchen,
+    /// danach eine Hinweisseite statt einer leeren weißen Fläche.
+    private func handleLoadError(_ error: Error, in webView: WKWebView) {
+        let nsError = error as NSError
+        // Abgebrochen (z. B. neue Seite angeklickt) oder Download → kein Fehler
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
+        if nsError.domain == "WebKitErrorDomain" && nsError.code == 102 { return }
+        guard webView === self.webView else { return }
+        lastLoadFailed = true
+        if retryCount < 3 {
+            retryCount += 1
+            let delay = Double(retryCount) * 2
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard let self, self.lastLoadFailed else { return }
+                self.webView.load(URLRequest(url: self.webView.url ?? self.startURL))
+            }
+            return
+        }
+        let message = nsError.localizedDescription
+        let html = """
+        <html><head><meta charset="utf-8"><style>
+        body { font: 15px -apple-system, sans-serif; color: #444; display: flex; height: 90vh;
+               align-items: center; justify-content: center; text-align: center; }
+        a { display: inline-block; margin-top: 14px; padding: 8px 16px; border-radius: 8px;
+            background: #6f8f67; color: #fff; text-decoration: none; }
+        </style></head><body><div>
+        <b>Die Seite konnte nicht geladen werden.</b><br>\(message)<br>
+        <a href="\(startURL.absoluteString)">Erneut versuchen</a>
+        </div></body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
