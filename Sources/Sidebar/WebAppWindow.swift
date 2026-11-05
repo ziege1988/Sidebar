@@ -11,6 +11,40 @@ final class WebAppManager {
         controller(for: item, url: url).show()
     }
 
+    static let claudeID = UUID(uuidString: "00000000-0000-0000-0000-00000000C1AD")!
+
+    /// Claude als Seitenfenster neben der Sidebar (Weg 1: claude.ai mit deinem Konto).
+    /// - Parameter query: Frage, die mitgegeben wird (zusätzlich in der Zwischenablage)
+    func openClaude(query: String?, beside bar: NSRect, edge: ScreenEdge) {
+        var address = "https://claude.ai/new"
+        if let query, !query.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(query, forType: .string)
+            var allowed = CharacterSet.urlQueryAllowed
+            allowed.remove(charactersIn: "&+=?#")
+            address += "?q=" + (query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query)
+        }
+        guard let url = URL(string: address) else { return }
+        let item = LinkItem(id: Self.claudeID, name: "Claude", urlString: "https://claude.ai")
+        let isNew = controllers[Self.claudeID] == nil
+        let controller = controller(for: item, url: url)
+        if !isNew { controller.load(url) }
+        if !controller.hasSavedFrame, isNew,
+           let screen = NSScreen.screens.first(where: { $0.frame.intersects(bar) }) {
+            // Beim ersten Mal direkt neben die Sidebar setzen
+            let area = screen.visibleFrame
+            let width: CGFloat = 480
+            var frame = NSRect(x: 0, y: area.minY + 12, width: width, height: area.height - 24)
+            switch edge {
+            case .left: frame.origin.x = bar.maxX + 8
+            case .right: frame.origin.x = bar.minX - 8 - width
+            case .top, .bottom: frame.origin.x = area.maxX - width - 12
+            }
+            controller.window.setFrame(frame, display: true)
+        }
+        controller.show()
+    }
+
     /// Hält Web-Apps mit „Im Hintergrund aktiv“ unsichtbar geladen, damit Benachrichtigungen ankommen.
     func syncBackgroundApps(_ items: [LinkItem]) {
         let wanted = Set(items.map(\.id))
@@ -67,6 +101,8 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
 
     private let item: LinkItem
     private var titleCount = 0
+    /// Fenster hatte schon eine gespeicherte Position/Größe
+    private(set) var hasSavedFrame = false
     private let appName: String
     private var titleObservation: NSKeyValueObservation?
     private var popupWindows: [NSWindow] = []
@@ -128,7 +164,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         window.center()
         let autosaveName = "WebApp-\(item.id.uuidString)"
         window.setFrameAutosaveName(autosaveName)
-        window.setFrameUsingName(autosaveName)
+        hasSavedFrame = window.setFrameUsingName(autosaveName)
         installToolbarButtons()
 
         webView.navigationDelegate = self
@@ -144,6 +180,10 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
             Task { @MainActor in self?.updateTitle() }
         }
 
+        webView.load(URLRequest(url: url))
+    }
+
+    func load(_ url: URL) {
         webView.load(URLRequest(url: url))
     }
 

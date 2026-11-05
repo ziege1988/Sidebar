@@ -95,7 +95,7 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Uhr & Suche") {
+            Section("Uhr, KI & Google") {
                 Toggle("Analoge Uhr oben an der Sidebar", isOn: $store.config.settings.showClock)
                 if store.config.settings.showClock {
                     LabeledContent("Größe der Uhr: \(Int(store.config.settings.clockSize)) pt") {
@@ -103,10 +103,18 @@ struct GeneralSettingsView: View {
                     }
                     Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
                 }
-                Toggle("Such-Knopf (Google & Claude)", isOn: $store.config.settings.showSearch)
-                Text("Klick auf die Uhr öffnet den Kalender. Die Suche öffnet ein Eingabefeld: ↩ sucht bei Google, ⌘↩ fragt Claude. Die Frage wird zusätzlich in die Zwischenablage gelegt – falls Claude sie nicht automatisch übernimmt, einfach mit ⌘V einfügen.")
+                Toggle("KI- und Google-Knopf oben in der Leiste", isOn: $store.config.settings.showSearch)
+                if store.config.settings.showSearch {
+                    Picker("KI öffnen in", selection: $store.config.settings.aiTarget) {
+                        ForEach(AITarget.allCases) { target in
+                            Text(target.title).tag(target)
+                        }
+                    }
+                }
+                Text("Klick auf die Uhr öffnet den Kalender. Über KI bzw. Google fahren und direkt lostippen – ↩ öffnet das Ergebnis, esc schließt. Die Frage an Claude liegt zusätzlich in der Zwischenablage: Falls Claude sie nicht automatisch übernimmt, mit ⌘V einfügen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Ablagefach in der Leiste", isOn: $store.config.settings.showShelf)
             }
 
             Section("Größe & Verhalten") {

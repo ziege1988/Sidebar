@@ -69,7 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             },
             openSearch: { [weak self] in
-                self?.sidebar.openSearch()
+                self?.sidebar.showInput(.google)
+            },
+            triggerAction: { [weak self] action in
+                self?.runAction(action, text: nil)
             },
             drag: { [weak self] phase, point in
                 self?.sidebar.handleDrag(phase, at: point)
@@ -80,6 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Updater.shared.startAutomaticChecks { [weak self] in
             self?.store.config.settings.autoCheckUpdates ?? false
+        }
+
+        // Eingabefeld neben KI/Google: ↩ führt aus
+        HoverInputController.shared.onSubmit = { [weak self] text, action in
+            MainActor.assumeIsolated { self?.runAction(action, text: text) }
         }
 
         // Benachrichtigungen: Klick auf eine Mitteilung öffnet das App-Fenster
@@ -145,6 +153,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: - KI & Google
+
+    /// Klick auf KI/Google (ohne Text) bzw. ↩ im Eingabefeld (mit Text).
+    private func runAction(_ action: ActionButton, text: String?) {
+        let settings = store.config.settings
+        switch action {
+        case .google:
+            if let text {
+                QuickSearchController.run(text, target: .google)
+            } else if let url = URL(string: "https://www.google.com") {
+                NSWorkspace.shared.open(url)
+            }
+        case .ai:
+            switch settings.aiTarget {
+            case .sidePanel:
+                WebAppManager.shared.openClaude(query: text, beside: sidebar.barFrame, edge: settings.edge)
+            case .desktopApp:
+                if let text {
+                    QuickSearchController.run(text, target: .claude)
+                } else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+                    NSWorkspace.shared.open(app)
+                } else {
+                    WebAppManager.shared.openClaude(query: nil, beside: sidebar.barFrame, edge: settings.edge)
+                }
+            }
+        }
+    }
+
     // MARK: - Eigenes Bild als Icon
 
     private func chooseIcon(for itemID: UUID) {
@@ -177,7 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let settings = store.config.settings
 
-        menu.addItem(menuItem("Suchen / Claude fragen …") { [weak self] in self?.sidebar.openSearch() })
+        menu.addItem(menuItem("Google Suche …") { [weak self] in self?.sidebar.showInput(.google) })
+        menu.addItem(menuItem("Claude fragen …") { [weak self] in self?.sidebar.showInput(.ai) })
         menu.addItem(menuItem("Einstellungen …", key: ",") { [weak self] in self?.showSettings() })
         menu.addItem(.separator())
 

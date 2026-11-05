@@ -52,7 +52,8 @@ struct Palette {
     let clockFace: Color
     let clockNumerals: Color
     /// Gold für Zeiger und Akzente der Uhr
-    static let gold = Color(hex: 0xC9A247)
+    static let gold = Color(hex: 0xC5A04A)
+    static let goldLight = Color(hex: 0xE6CB86)
     static let goldDark = Color(hex: 0x8C6B22)
 
     var gradientTop: Color { Color(hex: gradientTopHex) }
@@ -82,8 +83,8 @@ struct Palette {
                 secondary: Color(hex: 0xA2A89E),
                 border: Color.white.opacity(0.09),
                 dashed: accent.opacity(0.45),
-                clockFace: Color(hex: mix(top, t.darkAccent, 0.24)),
-                clockNumerals: Color(hex: 0xF1EEE4)
+                clockFace: Color(hex: mix(t.darkAccent, 0xFFFFFF, 0.55)),
+                clockNumerals: Color(hex: 0x111111)
             )
         } else {
             let accent = Color(hex: t.accent)
@@ -104,8 +105,8 @@ struct Palette {
                 secondary: text.opacity(0.68),
                 border: text.opacity(0.10),
                 dashed: accent.opacity(0.55),
-                clockFace: Color(hex: mix(top, 0xFFFFFF, 0.38)),
-                clockNumerals: text
+                clockFace: Color(hex: mix(top, 0xFFFFFF, 0.62)),
+                clockNumerals: Color(hex: 0x111111)
             )
         }
     }

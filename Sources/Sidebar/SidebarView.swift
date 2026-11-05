@@ -17,6 +17,7 @@ final class SidebarState: ObservableObject {
 final class SidebarGeometry {
     var groupFrames: [UUID: CGRect] = [:]
     var favoriteFrames: [UUID: CGRect] = [:]
+    var actionFrames: [String: CGRect] = [:]
 }
 
 struct FavoriteFramesKey: PreferenceKey {
@@ -78,6 +79,8 @@ struct SidebarActions {
     var toggleFlyout: @MainActor (UUID) -> Void
     var installUpdate: @MainActor () -> Void
     var openSearch: @MainActor () -> Void
+    /// Klick auf den KI- bzw. Google-Knopf
+    var triggerAction: @MainActor (ActionButton) -> Void
     var drag: @MainActor (DragPhase, NSPoint) -> Void
 }
 
@@ -120,6 +123,9 @@ struct SidebarView: View {
         .onPreferenceChange(FavoriteFramesKey.self) { frames in
             geometry.favoriteFrames = frames
         }
+        .onPreferenceChange(ActionFramesKey.self) { frames in
+            geometry.actionFrames = frames
+        }
         .environment(\.colorTheme, settings.colorTheme)
     }
 
@@ -137,10 +143,6 @@ struct SidebarView: View {
                 Color.clear
                     .frame(width: vertical ? thickness : clockInset, height: vertical ? clockInset : thickness)
             }
-            DragHandle(horizontal: vertical, onDrag: actions.drag)
-                .frame(width: vertical ? thickness : 16, height: vertical ? 16 : thickness)
-                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
-
             GeometryReader { proxy in
                 let length = vertical ? proxy.size.height : proxy.size.width
                 let metrics = BarMetrics(available: length, cells: cellCount, thickness: thickness)
@@ -160,16 +162,21 @@ struct SidebarView: View {
                 }
             }
             BarButton(symbol: "gearshape", size: 15, tint: palette.secondary,
-                      cell: CGSize(width: vertical ? thickness : 40, height: vertical ? 40 : thickness),
+                      cell: CGSize(width: vertical ? thickness : 40, height: vertical ? 36 : thickness),
                       help: "Einstellungen") {
                 actions.openSettings()
             }
+            // Griff zum Verschieben ganz unten (wirkt so nicht wie eine Trennlinie)
+            DragHandle(horizontal: vertical, onDrag: actions.drag)
+                .frame(width: vertical ? thickness : 16, height: vertical ? 18 : thickness)
+                .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
         }
     }
 
     /// Anzahl der Zellen in der Leiste (für die automatische Icon-Größe).
     private var cellCount: Int {
         store.config.favorites.count + (showFavoriteSlot ? 1 : 0) + max(store.config.groups.count, 1)
+            + (settings.showSearch ? ActionButton.allCases.count : 0) + (settings.showShelf ? 1 : 0)
     }
 
     private func cells(_ palette: Palette, metrics: BarMetrics) -> some View {
@@ -180,6 +187,16 @@ struct SidebarView: View {
         // Lupe: Stärke aus den Einstellungen, höchstens so groß, dass das Icon in die Leiste passt
         let maxScale = min(CGFloat(settings.magnificationStrength), max(1, (thickness - 4) / metrics.icon))
         return stack {
+            // KI und Google ganz oben
+            if settings.showSearch {
+                ForEach(ActionButton.allCases) { action in
+                    ActionCell(action: action, iconSize: metrics.icon, cellSize: cellSize,
+                               showLabel: metrics.showLabels, actions: actions)
+                        .modifier(HoverScale(active: hovered == "action:\(action.rawValue)", scale: maxScale))
+                }
+                BarDivider(vertical: vertical, length: thickness * 0.5, color: palette.border)
+            }
+
             // Favoriten (max. 10)
             ForEach(store.config.favorites) { item in
                 FavoriteCell(item: item, iconSize: metrics.icon, cellSize: cellSize,
@@ -208,6 +225,114 @@ struct SidebarView: View {
                     actions.openSettings()
                 }
             }
+
+            // Ablagefach
+            if settings.showShelf {
+                BarDivider(vertical: vertical, length: thickness * 0.5, color: palette.border)
+                ShelfCell(store: store, isActive: state.flyoutGroupID == LinkGroup.shelfID,
+                          iconSize: metrics.icon, cellSize: cellSize, showLabel: metrics.showLabels,
+                          actions: actions)
+                    .modifier(HoverScale(active: hovered == "group:\(LinkGroup.shelfID)", scale: maxScale))
+            }
+        }
+    }
+}
+
+/// KI- bzw. Google-Knopf oben in der Leiste.
+struct ActionCell: View {
+    let action: ActionButton
+    let iconSize: CGFloat
+    let cellSize: CGSize
+    let showLabel: Bool
+    let actions: SidebarActions
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
+
+    var body: some View {
+        let palette = Palette.resolve(theme, scheme)
+        VStack(spacing: 3) {
+            ZStack {
+                Circle().fill(palette.accent)
+                Image(systemName: action.symbol)
+                    .font(.system(size: iconSize * 0.46, weight: .semibold))
+                    .foregroundStyle(palette.onAccent)
+            }
+            .frame(width: iconSize, height: iconSize)
+            if showLabel {
+                Text(action.title)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(palette.secondary)
+            }
+        }
+        .frame(width: cellSize.width, height: cellSize.height)
+        .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ActionFramesKey.self,
+                                       value: [action.rawValue: proxy.frame(in: .named("bar"))])
+            }
+        )
+        .onTapGesture { actions.triggerAction(action) }
+        .help(action == .ai ? "KI: darüberfahren und lostippen · Klick öffnet Claude"
+                            : "Google: darüberfahren und lostippen · Klick öffnet Google")
+    }
+}
+
+/// Ablagefach in der Leiste.
+struct ShelfCell: View {
+    @ObservedObject var store: ConfigStore
+    let isActive: Bool
+    let iconSize: CGFloat
+    let cellSize: CGSize
+    let showLabel: Bool
+    let actions: SidebarActions
+    @State private var targeted = false
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
+
+    var body: some View {
+        let palette = Palette.resolve(theme, scheme)
+        let highlighted = isActive || targeted
+        let count = store.config.shelf.count
+        VStack(spacing: 3) {
+            ZStack {
+                RoundedRectangle(cornerRadius: iconSize * 0.3, style: .continuous)
+                    .fill(highlighted ? palette.accent : palette.accentSoft)
+                Image(systemName: count > 0 ? "tray.full" : "tray")
+                    .font(.system(size: iconSize * 0.46, weight: .semibold))
+                    .foregroundStyle(highlighted ? palette.onAccent : palette.accent)
+            }
+            .frame(width: iconSize, height: iconSize)
+            .overlay(alignment: .topTrailing) {
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(palette.onAccent)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 15, minHeight: 15)
+                        .background(Capsule().fill(palette.accent))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
+                        .offset(x: 6, y: -5)
+                }
+            }
+            if showLabel {
+                Text("Ablage")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(palette.secondary)
+            }
+        }
+        .frame(width: cellSize.width, height: cellSize.height)
+        .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: GroupFramesKey.self,
+                                       value: [LinkGroup.shelfID: proxy.frame(in: .named("bar"))])
+            }
+        )
+        .onTapGesture { actions.toggleFlyout(LinkGroup.shelfID) }
+        .help("Ablagefach: Dateien hierher ziehen und später gesammelt weitergeben")
+        .linkDropTarget(isTargeted: $targeted) { payloads in
+            store.addToShelf(payloads)
         }
     }
 }
@@ -438,7 +563,9 @@ struct FlyoutView: View {
         ZStack {
             VisualEffectBackground()
             Rectangle().fill(palette.backgroundFill(gradient: store.config.settings.gradient)).opacity(0.95)
-            if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
+            if state.flyoutGroupID == LinkGroup.shelfID {
+                ShelfView(store: store, palette: palette)
+            } else if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
                 VStack(spacing: 0) {
                     HStack(spacing: 10) {
                         ZStack {

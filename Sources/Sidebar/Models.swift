@@ -141,6 +141,23 @@ struct LinkGroup: Codable, Identifiable, Hashable {
 
     /// Fester Bezeichner für die Favoritenleiste (wird wie eine Gruppe adressiert).
     static let favoritesID = UUID(uuidString: "00000000-0000-0000-0000-00000000FA00")!
+    /// Fester Bezeichner für das Ablagefach (öffnet sich wie ein Ordner)
+    static let shelfID = UUID(uuidString: "00000000-0000-0000-0000-00000000AB1A")!
+}
+
+/// Wo Fragen an die KI geöffnet werden.
+enum AITarget: String, Codable, CaseIterable, Identifiable {
+    /// claude.ai in einem Seitenfenster neben der Sidebar
+    case sidePanel
+    /// Claude-Desktop-App
+    case desktopApp
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .sidePanel: return "Seitenfenster neben der Sidebar (claude.ai)"
+        case .desktopApp: return "Claude-Desktop-App"
+        }
+    }
 }
 
 /// Hell (Pastell-Salbei), Dunkel (Pastell-Graphit) oder automatisch wie macOS.
@@ -186,7 +203,10 @@ struct SidebarSettings: Codable, Equatable {
     /// Durchmesser der Uhr in Punkten
     var clockSize: Double = 96
     var clockShowSeconds: Bool = true
+    /// KI- und Google-Knopf oben in der Leiste
     var showSearch: Bool = true
+    var aiTarget: AITarget = .sidePanel
+    var showShelf: Bool = true
 }
 
 extension SidebarSettings {
@@ -214,6 +234,8 @@ extension SidebarSettings {
         clockSize = try c.decodeIfPresent(Double.self, forKey: .clockSize) ?? clockSize
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
+        aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget
+        showShelf = try c.decodeIfPresent(Bool.self, forKey: .showShelf) ?? showShelf
     }
 }
 
@@ -223,6 +245,8 @@ struct SidebarConfig: Codable {
     var settings = SidebarSettings()
     var favorites: [LinkItem] = []
     var groups: [LinkGroup] = []
+    /// Ablagefach: Verweise auf Dateien (file://-Adressen), die Dateien bleiben, wo sie sind
+    var shelf: [String] = []
 }
 
 extension SidebarConfig {
@@ -232,6 +256,7 @@ extension SidebarConfig {
         settings = try c.decodeIfPresent(SidebarSettings.self, forKey: .settings) ?? settings
         favorites = try c.decodeIfPresent([LinkItem].self, forKey: .favorites) ?? []
         groups = try c.decodeIfPresent([LinkGroup].self, forKey: .groups) ?? []
+        shelf = try c.decodeIfPresent([String].self, forKey: .shelf) ?? []
     }
 }
 

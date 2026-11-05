@@ -359,6 +359,44 @@ final class ConfigStore: ObservableObject {
         array.insert(element, at: min(max(destination, 0), array.count))
     }
 
+    // MARK: - Ablagefach
+
+    /// Dateien im Ablagefach, die es noch gibt.
+    var shelfFiles: [URL] {
+        config.shelf.compactMap(URL.init(string:)).filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Dateien ins Ablagefach legen (Webadressen werden ignoriert).
+    @discardableResult
+    func addToShelf(_ payloads: [DropPayload]) -> Bool {
+        var shelf = config.shelf
+        for payload in payloads {
+            var url: URL?
+            switch payload {
+            case .file(let file), .image(let file):
+                url = file
+            case .internalItem(let id):
+                if let item = item(id: id), let local = item.url, local.isFileURL { url = local }
+            case .url, .internalGroup:
+                url = nil
+            }
+            if let url, !shelf.contains(url.absoluteString) {
+                shelf.append(url.absoluteString)
+            }
+        }
+        guard shelf != config.shelf else { return false }
+        config.shelf = shelf
+        return true
+    }
+
+    func removeFromShelf(_ url: URL) {
+        config.shelf.removeAll { $0 == url.absoluteString }
+    }
+
+    func clearShelf() {
+        config.shelf = []
+    }
+
     // MARK: - Position
 
     func setScreen(_ screen: NSScreen?) {

@@ -42,6 +42,9 @@ final class SidebarController {
     private var barEnteredAt: Date?
     private var anchorRect: NSRect = .zero
     private var isDragging = false
+    private var candidateAction: ActionButton?
+    private var candidateActionSince = Date.distantPast
+    private var inputLeftAt: Date?
     private var lastAutoHide: Bool?
 
     /// Breite des sichtbaren Streifens bei „Automatisch ausblenden“
@@ -103,7 +106,7 @@ final class SidebarController {
 
         // Inhalt geändert → Ordner-Fenster an neue Höhe anpassen (nach dem Speichern)
         store.$config
-            .map(\.groups)
+            .map { ($0.groups, $0.shelf) }
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.refreshFlyout() }
             }
@@ -197,6 +200,10 @@ final class SidebarController {
         // Kontextmenü offen oder Drag aus der Sidebar heraus → nichts schließen
         let tracking = RunLoop.current.currentMode == .eventTracking
 
+        let input = HoverInputController.shared
+        let inInput = input.isVisible
+            && (input.frame.insetBy(dx: -6, dy: -6).contains(mouse)
+                || input.anchor.union(input.frame).insetBy(dx: -4, dy: -4).contains(mouse))
         let inClock = clockPanel.isVisible && clockPanel.frame.contains(mouse)
         let inBar = panel.frame.contains(mouse)
         // Ausgeblendet: großzügiger Auslösebereich bis an den echten Bildschirmrand
@@ -209,7 +216,8 @@ final class SidebarController {
 
         // 1. Automatisch ausblenden: Leiste ein-/ausfahren
         if settings.autoHide {
-            if inBar || inClock || inRevealZone || inFlyout || tracking || QuickSearchController.shared.isVisible {
+            if inBar || inClock || inRevealZone || inFlyout || tracking || input.isVisible
+                || QuickSearchController.shared.isVisible {
                 barLeftAt = nil
                 if !state.isRevealed {
                     if barEnteredAt == nil { barEnteredAt = now }
@@ -248,15 +256,47 @@ final class SidebarController {
         let hoveredFavorite = (inBar && barUsable) ? favoriteAt(mouse) : nil
         updateLabel(hoveredFavorite)
 
+        // KI/Google unter der Maus → Eingabefeld daneben, sofort lostippen
+        let hoveredAction = (inBar && barUsable) ? actionAt(mouse) : nil
+        if let action = hoveredAction {
+            if !(input.isVisible && input.kind == action) {
+                if candidateAction != action {
+                    candidateAction = action
+                    candidateActionSince = now
+                }
+                // etwas längere Verzögerung, damit beim Vorbeifahren nicht der Fokus springt
+                if now.timeIntervalSince(candidateActionSince) >= max(settings.hoverDelay, 0.3),
+                   let anchor = screenRect(forAction: action) {
+                    input.show(action, anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
+                    inputLeftAt = nil
+                }
+            }
+        } else {
+            candidateAction = nil
+        }
+        if input.isVisible {
+            if hoveredAction != nil || inInput || input.hasText {
+                inputLeftAt = nil
+            } else {
+                if inputLeftAt == nil { inputLeftAt = now }
+                if let left = inputLeftAt, now.timeIntervalSince(left) > 0.5 {
+                    input.close(restoreFocus: true)
+                    inputLeftAt = nil
+                }
+            }
+        }
+
         // Lupen-Effekt: genau das Element unter der Maus
         if let favorite = hoveredFavorite {
             updateHovered("fav:\(favorite)")
+        } else if let action = hoveredAction {
+            updateHovered("action:\(action.rawValue)")
         } else if let group = hoveredGroup {
             updateHovered("group:\(group)")
         } else {
             updateHovered(nil)
         }
-        if hoveredFavorite != nil {
+        if hoveredFavorite != nil || hoveredAction != nil {
             if flyoutVisible { hideFlyout() }
             return
         }
@@ -278,6 +318,33 @@ final class SidebarController {
     private func updateHovered(_ value: String?) {
         if state.hoveredCell != value { state.hoveredCell = value }
     }
+
+    /// KI- bzw. Google-Knopf an einer Bildschirmposition.
+    private func actionAt(_ point: NSPoint) -> ActionButton? {
+        let frame = panel.frame
+        let local = CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
+        guard let key = geometry.actionFrames.first(where: { $0.value.contains(local) })?.key else { return nil }
+        return ActionButton(rawValue: key)
+    }
+
+    private func screenRect(forAction action: ActionButton) -> NSRect? {
+        guard let rect = geometry.actionFrames[action.rawValue] else { return nil }
+        let frame = panel.frame
+        return NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    /// Eingabefeld für Google öffnen (z. B. aus dem Menüleisten-Symbol).
+    func showInput(_ action: ActionButton) {
+        let settings = store.config.settings
+        if let anchor = screenRect(forAction: action), panel.isVisible {
+            HoverInputController.shared.show(action, anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
+        } else {
+            openSearch()
+        }
+    }
+
+    /// Rahmen der Leiste (für das Claude-Seitenfenster).
+    var barFrame: NSRect { frame(for: store.config.settings, forceVisible: true) }
 
     /// Favorit an einer Bildschirmposition.
     private func favoriteAt(_ point: NSPoint) -> UUID? {
@@ -344,8 +411,13 @@ final class SidebarController {
 
     // MARK: - Ordner-Fenster
 
+    private func flyoutTargetExists(_ id: UUID) -> Bool {
+        (id == LinkGroup.shelfID && store.config.settings.showShelf)
+            || store.config.groups.contains(where: { $0.id == id })
+    }
+
     private func showFlyout(_ groupID: UUID) {
-        guard store.config.groups.contains(where: { $0.id == groupID }) else { return }
+        guard flyoutTargetExists(groupID) else { return }
         state.flyoutGroupID = groupID
         candidateGroup = nil
         flyoutLeftAt = nil
@@ -364,7 +436,7 @@ final class SidebarController {
 
     private func refreshFlyout() {
         guard let id = state.flyoutGroupID else { return }
-        if store.config.groups.contains(where: { $0.id == id }) {
+        if flyoutTargetExists(id) {
             positionFlyout()
         } else {
             hideFlyout()
@@ -374,15 +446,24 @@ final class SidebarController {
     /// Ordner-Fenster neben das Symbol setzen – immer vom Bildschirmrand weg.
     private func positionFlyout() {
         guard let id = state.flyoutGroupID,
-              let group = store.config.groups.first(where: { $0.id == id }),
+              flyoutTargetExists(id),
               let anchor = screenRect(forGroup: id),
               let screen = targetScreen(for: store.config.settings) else { return }
         anchorRect = anchor
         let area = screen.visibleFrame.insetBy(dx: 8, dy: 8)
         let bar = panel.frame
         let gap: CGFloat = 6
-        let width = CGFloat(max(200, store.config.settings.expandedThickness))
-        let height = min(FlyoutView.idealHeight(itemCount: group.items.count), area.height)
+        let width: CGFloat
+        let ideal: CGFloat
+        if id == LinkGroup.shelfID {
+            width = ShelfView.width
+            ideal = ShelfView.idealHeight(fileCount: store.shelfFiles.count)
+        } else {
+            width = CGFloat(max(200, store.config.settings.expandedThickness))
+            let count = store.config.groups.first(where: { $0.id == id })?.items.count ?? 0
+            ideal = FlyoutView.idealHeight(itemCount: count)
+        }
+        let height = min(ideal, area.height)
 
         var frame = NSRect(x: 0, y: 0, width: width, height: height)
         switch store.config.settings.edge {
