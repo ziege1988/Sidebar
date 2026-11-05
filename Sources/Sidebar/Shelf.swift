@@ -82,7 +82,9 @@ struct ShelfView: View {
                     Label("Alle ziehen", systemImage: "hand.draw")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(palette.text)
-                    MultiFileDragSource(urls: files)
+                    FileDragSource(urls: files,
+                                   toolTip: "Alle Dateien zusammen herausziehen – sie verschwinden danach aus dem Fach",
+                                   onDragged: { [store] in store.removeFromShelf(files) })
                 }
                 .frame(height: 28)
                 .help("Hier anfassen und alle Dateien zusammen z. B. in eine Mail oder einen Ordner ziehen")
@@ -142,17 +144,36 @@ struct ShelfTile: View {
         }
         .frame(width: ShelfView.tile, height: ShelfView.tile)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .contentShape(Rectangle())
+        .overlay(
+            FileDragSource(
+                urls: [url],
+                image: thumbnails.image(for: url),
+                toolTip: url.lastPathComponent + " – herausziehen zum Weitergeben, Doppelklick öffnet",
+                onDoubleClick: { NSWorkspace.shared.open(url) },
+                menu: { [store] in
+                    let menu = NSMenu()
+                    menu.addItem(Self.item("Öffnen") { NSWorkspace.shared.open(url) })
+                    menu.addItem(Self.item("Im Finder zeigen") { NSWorkspace.shared.activateFileViewerSelecting([url]) })
+                    menu.addItem(.separator())
+                    menu.addItem(Self.item("Aus dem Ablagefach entfernen") { store.removeFromShelf(url) })
+                    return menu
+                },
+                onDragged: { [store] in
+                    // Erfolgreich woanders abgelegt → raus aus dem Fach
+                    store.removeFromShelf(url)
+                }
+            )
+        )
         .onAppear { thumbnails.load(url) }
-        .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
-        .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
-        .help(url.lastPathComponent + " – doppelklicken zum Öffnen, ziehen zum Weitergeben")
-        .contextMenu {
-            Button("Öffnen") { NSWorkspace.shared.open(url) }
-            Button("Im Finder zeigen") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            Divider()
-            Button("Aus dem Ablagefach entfernen") { store.removeFromShelf(url) }
-        }
+    }
+
+    @MainActor
+    private static func item(_ title: String, _ action: @escaping @MainActor () -> Void) -> NSMenuItem {
+        let target = MenuAction(action)
+        let item = NSMenuItem(title: title, action: #selector(MenuAction.fire(_:)), keyEquivalent: "")
+        item.target = target
+        item.representedObject = target
+        return item
     }
 }
 
@@ -181,38 +202,75 @@ struct ShelfDropTile: View {
     }
 }
 
-/// Unsichtbare Fläche, von der aus alle Dateien gemeinsam weggezogen werden.
-struct MultiFileDragSource: NSViewRepresentable {
+/// Unsichtbare Fläche, von der aus Dateien weggezogen werden.
+/// Meldet über `onDragged`, wenn die Dateien tatsächlich woanders abgelegt wurden.
+struct FileDragSource: NSViewRepresentable {
     let urls: [URL]
+    var image: NSImage? = nil
+    var toolTip: String? = nil
+    var onDoubleClick: (@MainActor () -> Void)? = nil
+    var menu: (@MainActor () -> NSMenu)? = nil
+    let onDragged: @MainActor () -> Void
 
-    func makeNSView(context: Context) -> MultiFileDragView {
-        let view = MultiFileDragView()
-        view.urls = urls
+    func makeNSView(context: Context) -> FileDragView {
+        let view = FileDragView()
+        update(view)
         return view
     }
 
-    func updateNSView(_ view: MultiFileDragView, context: Context) {
+    func updateNSView(_ view: FileDragView, context: Context) {
+        update(view)
+    }
+
+    private func update(_ view: FileDragView) {
         view.urls = urls
+        view.image = image
+        view.toolTip = toolTip
+        view.onDoubleClick = onDoubleClick
+        view.makeMenu = menu
+        view.onDragged = onDragged
     }
 }
 
-final class MultiFileDragView: NSView, NSDraggingSource {
+final class FileDragView: NSView, NSDraggingSource {
     var urls: [URL] = []
+    var image: NSImage?
+    var onDoubleClick: (@MainActor () -> Void)?
+    var makeMenu: (@MainActor () -> NSMenu)?
+    var onDragged: (@MainActor () -> Void)?
+    private var downLocation: NSPoint?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
-    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDown(with event: NSEvent) {
+        downLocation = event.locationInWindow
+        if event.clickCount == 2 { onDoubleClick?() }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        downLocation = nil
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        makeMenu?()
+    }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, let start = downLocation else { return }
+        // Erst ab ein paar Punkten Bewegung ziehen (Doppelklick bleibt möglich)
+        let moved = hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y)
+        guard moved >= 3 else { return }
+        downLocation = nil
+
         let location = convert(event.locationInWindow, from: nil)
         let items: [NSDraggingItem] = urls.enumerated().map { index, url in
             let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            let picture = (urls.count == 1 ? image : nil) ?? NSWorkspace.shared.icon(forFile: url.path)
             let offset = CGFloat(min(index, 4)) * 5
-            item.setDraggingFrame(NSRect(x: location.x - 24 + offset, y: location.y - 24 - offset,
-                                         width: 48, height: 48),
-                                  contents: icon)
+            item.setDraggingFrame(NSRect(x: location.x - 28 + offset, y: location.y - 28 - offset,
+                                         width: 56, height: 56),
+                                  contents: picture)
             return item
         }
         beginDraggingSession(with: items, event: event, source: self)
@@ -221,5 +279,15 @@ final class MultiFileDragView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession,
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        // Abgebrochen → bleibt im Fach
+        guard operation != [] else { return }
+        // Wieder auf der Sidebar abgelegt → bleibt im Fach
+        let droppedOnSidebar = NSApp.windows.contains { $0.isVisible && $0.frame.contains(screenPoint) }
+        guard !droppedOnSidebar else { return }
+        onDragged?()
     }
 }

@@ -390,7 +390,12 @@ final class ConfigStore: ObservableObject {
     }
 
     func removeFromShelf(_ url: URL) {
-        config.shelf.removeAll { $0 == url.absoluteString }
+        removeFromShelf([url])
+    }
+
+    func removeFromShelf(_ urls: [URL]) {
+        let remove = Set(urls.map(\.absoluteString))
+        config.shelf.removeAll { remove.contains($0) }
     }
 
     func clearShelf() {
