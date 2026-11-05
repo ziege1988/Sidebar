@@ -74,6 +74,7 @@ final class SidebarController {
         flyoutPanel = SidebarController.makePanel()
         labelPanel = SidebarController.makePanel()
         clockPanel = SidebarController.makePanel()
+        clockPanel.hasShadow = false // Schatten würde eine Kante zur Leiste zeichnen
         labelHost = NSHostingView(rootView: HoverLabel(text: ""))
         labelMeasure = NSHostingController(rootView: HoverLabel(text: ""))
         labelPanel.ignoresMouseEvents = true
@@ -89,7 +90,7 @@ final class SidebarController {
         flyout.sizingOptions = []
         flyoutPanel.contentView = flyout
 
-        let clock = FirstMouseHostingView(rootView: ClockPanelView(store: store, actions: actions))
+        let clock = FirstMouseHostingView(rootView: ClockPanelView(store: store, state: state, actions: actions))
         clock.sizingOptions = []
         clockPanel.contentView = clock
 
@@ -461,6 +462,9 @@ final class SidebarController {
             return
         }
         let bar = frame(for: settings, forceVisible: true)
+        // Verlauf der Uhr endet dort, wo der Verlauf der Leiste unter ihr steht
+        let fraction = settings.edge.isVertical ? Double(size.height / max(bar.height, 1)) : 1
+        if abs(state.clockGradientEnd - fraction) > 0.001 { state.clockGradientEnd = fraction }
         var origin = NSPoint.zero
         switch settings.edge {
         case .left: origin = NSPoint(x: bar.minX, y: bar.maxY - size.height)

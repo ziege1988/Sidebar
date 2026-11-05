@@ -36,9 +36,9 @@ enum ColorTheme: String, Codable, CaseIterable, Identifiable {
 /// Farbpalette der Sidebar.
 struct Palette {
     let background: Color
-    /// Verlauf: oben dunkler, unten heller (hebt die Uhr ab)
-    let gradientTop: Color
-    let gradientBottom: Color
+    /// Verlauf: oben deutlich dunkler, unten heller (hebt die Uhr ab)
+    let gradientTopHex: UInt32
+    let gradientBottomHex: UInt32
     let surface: Color
     let hover: Color
     let accent: Color
@@ -48,18 +48,31 @@ struct Palette {
     let secondary: Color
     let border: Color
     let dashed: Color
-    /// Zifferblatt der Uhr
+    /// Zifferblatt: Farbe der Farbwelt, etwas heller als der obere Verlauf
     let clockFace: Color
-    let clockHands: Color
+    let clockNumerals: Color
+    /// Gold für Zeiger und Akzente der Uhr
+    static let gold = Color(hex: 0xC9A247)
+    static let goldDark = Color(hex: 0x8C6B22)
+
+    var gradientTop: Color { Color(hex: gradientTopHex) }
+    var gradientBottom: Color { Color(hex: gradientBottomHex) }
+
+    /// Farbe des Verlaufs an einer Stelle (0 = oben, 1 = unten).
+    func gradientColor(at fraction: Double) -> Color {
+        Color(hex: Palette.mix(gradientTopHex, gradientBottomHex, min(max(fraction, 0), 1)))
+    }
 
     static func resolve(_ theme: ColorTheme, _ scheme: ColorScheme) -> Palette {
         let t = theme.tones
         if scheme == .dark {
             let accent = Color(hex: t.darkAccent)
+            let top = mix(0x121315, t.darkAccent, 0.05)
+            let bottom = mix(0x3D4046, t.darkAccent, 0.14)
             return Palette(
                 background: Color(hex: 0x2B2D31),
-                gradientTop: Color(hex: 0x1C1D20),
-                gradientBottom: Color(hex: 0x383B41),
+                gradientTopHex: top,
+                gradientBottomHex: bottom,
                 surface: Color(hex: 0x35383D),
                 hover: Color.white.opacity(0.08),
                 accent: accent,
@@ -69,16 +82,19 @@ struct Palette {
                 secondary: Color(hex: 0xA2A89E),
                 border: Color.white.opacity(0.09),
                 dashed: accent.opacity(0.45),
-                clockFace: Color(hex: 0xF2F3EF),
-                clockHands: Color(hex: 0x1E1F22)
+                clockFace: Color(hex: mix(top, t.darkAccent, 0.24)),
+                clockNumerals: Color(hex: 0xF1EEE4)
             )
         } else {
             let accent = Color(hex: t.accent)
             let text = Color(hex: t.text)
+            // Stärkerer Verlauf: oben kräftig in Richtung Akzent, unten fast weiß
+            let top = mix(t.lightTop, t.accent, 0.5)
+            let bottom = mix(t.light, 0xFFFFFF, 0.35)
             return Palette(
                 background: Color(hex: t.light),
-                gradientTop: Color(hex: t.lightTop),
-                gradientBottom: Color(hex: t.light).opacity(0.96),
+                gradientTopHex: top,
+                gradientBottomHex: bottom,
                 surface: Color.white.opacity(0.6),
                 hover: accent.opacity(0.16),
                 accent: accent,
@@ -88,8 +104,8 @@ struct Palette {
                 secondary: text.opacity(0.68),
                 border: text.opacity(0.10),
                 dashed: accent.opacity(0.55),
-                clockFace: Color(hex: 0xFBFBF8),
-                clockHands: text
+                clockFace: Color(hex: mix(top, 0xFFFFFF, 0.38)),
+                clockNumerals: text
             )
         }
     }
@@ -98,6 +114,16 @@ struct Palette {
     func backgroundFill(gradient: Bool) -> LinearGradient {
         LinearGradient(colors: gradient ? [gradientTop, gradientBottom] : [background, background],
                        startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Mischt zwei Farben (0 = a, 1 = b).
+    static func mix(_ a: UInt32, _ b: UInt32, _ t: Double) -> UInt32 {
+        func channel(_ shift: UInt32) -> UInt32 {
+            let ca = Double((a >> shift) & 0xFF)
+            let cb = Double((b >> shift) & 0xFF)
+            return UInt32((ca + (cb - ca) * t).rounded()) & 0xFF
+        }
+        return (channel(16) << 16) | (channel(8) << 8) | channel(0)
     }
 }
 

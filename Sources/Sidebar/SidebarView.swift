@@ -9,6 +9,8 @@ final class SidebarState: ObservableObject {
     @Published var isRevealed = false
     /// Element unter der Maus (für den Lupen-Effekt): "fav:<id>" bzw. "group:<id>"
     @Published var hoveredCell: String?
+    /// Wo der Verlauf am unteren Rand der Uhr steht (0 … 1), damit Uhr und Leiste nahtlos ineinander übergehen
+    @Published var clockGradientEnd: Double = 0.2
 }
 
 /// Positionen der Symbole in der Leiste (Koordinaten der Leiste, Ursprung oben links).
@@ -102,8 +104,7 @@ struct SidebarView: View {
         let palette = Palette.resolve(settings.colorTheme, scheme)
         ZStack {
             if showContent {
-                VisualEffectBackground()
-                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient)).opacity(0.92)
+                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient))
                 barContent(palette)
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
@@ -111,11 +112,6 @@ struct SidebarView: View {
             }
         }
         .clipShape(shape)
-        .overlay {
-            if showContent {
-                shape.stroke(palette.border, lineWidth: 1)
-            }
-        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .coordinateSpace(name: "bar")
         .onPreferenceChange(GroupFramesKey.self) { frames in

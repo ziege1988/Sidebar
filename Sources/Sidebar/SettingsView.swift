@@ -469,7 +469,7 @@ struct ThemeSwatch: View {
         let palette = Palette.resolve(theme, scheme)
         Button(action: action) {
             Circle()
-                .fill(LinearGradient(colors: [palette.gradientTop, palette.accent],
+                .fill(LinearGradient(colors: [palette.gradientTop, palette.gradientBottom],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(width: 22, height: 22)
                 .overlay(Circle().stroke(selected ? Color.primary : Color.primary.opacity(0.15),

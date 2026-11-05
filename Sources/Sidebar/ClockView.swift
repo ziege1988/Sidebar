@@ -3,18 +3,20 @@ import SwiftUI
 
 /// Größe des Uhr-Bereichs oben an der Leiste.
 enum ClockLayout {
-    static let padding: CGFloat = 10
-    static let searchHeight: CGFloat = 30
-    static let gap: CGFloat = 4
+    static let padding: CGFloat = 12
+    static let searchHeight: CGFloat = 26
+    /// Abstand zwischen Uhr und Such-Knopf
+    static let searchGap: CGFloat = 14
+    static let gap: CGFloat = 2
 
     static func panelSize(_ s: SidebarSettings) -> CGSize {
         guard s.showClock || s.showSearch else { return .zero }
         let thickness = CGFloat(s.collapsedThickness)
         let clock = CGFloat(s.clockSize)
         let width = s.showClock ? max(thickness, clock + 2 * padding) : thickness
-        var height: CGFloat = 0
-        if s.showClock { height += clock + 2 * padding }
-        if s.showSearch { height += searchHeight + (s.showClock ? 0 : padding * 2) }
+        var height = 2 * padding
+        if s.showClock { height += clock }
+        if s.showSearch { height += searchHeight + (s.showClock ? searchGap : 0) }
         return CGSize(width: width, height: height)
     }
 
@@ -42,9 +44,10 @@ enum EdgeShape {
     }
 }
 
-/// Bereich mit analoger Uhr und Such-Knopf, der oben aus der Leiste heraussteht.
+/// Bereich mit analoger Uhr und Such-Knopf – optisch der obere Teil der Leiste.
 struct ClockPanelView: View {
     @ObservedObject var store: ConfigStore
+    @ObservedObject var state: SidebarState
     let actions: SidebarActions
     @Environment(\.colorScheme) private var scheme
 
@@ -53,14 +56,19 @@ struct ClockPanelView: View {
     var body: some View {
         let palette = Palette.resolve(settings.colorTheme, scheme)
         let shape = EdgeShape.shape(for: settings.edge, radius: 16)
+        // Verlauf genau so fortsetzen wie in der Leiste darunter → keine sichtbare Kante
+        let fill: LinearGradient = settings.gradient
+            ? LinearGradient(colors: [palette.gradientTop, palette.gradientColor(at: state.clockGradientEnd)],
+                             startPoint: .top, endPoint: .bottom)
+            : LinearGradient(colors: [palette.background, palette.background], startPoint: .top, endPoint: .bottom)
+
         VStack(spacing: 0) {
             if settings.showClock {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     AnalogClock(date: context.date, showSeconds: settings.clockShowSeconds, palette: palette)
                 }
                 .frame(width: CGFloat(settings.clockSize), height: CGFloat(settings.clockSize))
-                .padding(ClockLayout.padding)
-                .contentShape(Rectangle())
+                .contentShape(Circle())
                 .onTapGesture {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
                 }
@@ -70,19 +78,14 @@ struct ClockPanelView: View {
                 SearchButton(compact: !settings.showClock || settings.clockSize < 80,
                              palette: palette, action: actions.openSearch)
                     .frame(height: ClockLayout.searchHeight)
-                    .padding(.bottom, settings.showClock ? 6 : ClockLayout.padding)
-                    .padding(.top, settings.showClock ? 0 : ClockLayout.padding)
+                    .padding(.top, settings.showClock ? ClockLayout.searchGap : 0)
             }
         }
+        .padding(.vertical, ClockLayout.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            ZStack {
-                VisualEffectBackground()
-                (settings.gradient ? palette.gradientTop : palette.background).opacity(0.95)
-            }
-        )
+        .background(fill)
         .clipShape(shape)
-        .overlay(shape.stroke(palette.border, lineWidth: 1))
+        .environment(\.colorTheme, settings.colorTheme)
     }
 }
 
@@ -97,28 +100,32 @@ struct SearchButton: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Palette.gold)
                 if !compact {
                     Text("Suchen")
                         .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(palette.clockNumerals)
                 }
             }
-            .foregroundStyle(palette.clockHands)
             .padding(.horizontal, compact ? 8 : 12)
             .frame(height: 24)
-            .background(Capsule().fill(palette.clockFace.opacity(0.92)))
+            .background(Capsule().fill(palette.clockFace))
+            .overlay(Capsule().stroke(Palette.gold.opacity(0.55), lineWidth: 1))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Google-Suche oder Claude fragen")
+        .help("Google Suche oder Claude fragen")
     }
 }
 
-/// Gut lesbare analoge Uhr: helles Zifferblatt, kräftige Zeiger.
+/// Edle analoge Uhr: Zifferblatt in der Farbwelt, römische Ziffern, goldene Zeiger.
 struct AnalogClock: View {
     let date: Date
     let showSeconds: Bool
     let palette: Palette
+
+    private static let romans = ["XII", "I", "II", "III", "IIII", "V", "VI", "VII", "VIII", "IX", "X", "XI"]
 
     var body: some View {
         Canvas { context, size in
@@ -139,50 +146,57 @@ struct AnalogClock: View {
                                style: StrokeStyle(lineWidth: width, lineCap: .round))
             }
 
-            // Zifferblatt
-            let faceRect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-            context.fill(Path(ellipseIn: faceRect), with: .color(palette.clockFace))
-            context.stroke(Path(ellipseIn: faceRect.insetBy(dx: 0.5, dy: 0.5)),
-                           with: .color(palette.clockHands.opacity(0.15)), lineWidth: 1)
-
-            // Striche: Stunden kräftig, Minuten fein (nur bei größerer Uhr)
-            for index in 0..<60 {
-                let isHour = index % 5 == 0
-                if !isHour && radius < 45 { continue }
-                let isQuarter = index % 15 == 0
-                let outer = radius * 0.92
-                let inner = radius * (isQuarter ? 0.76 : isHour ? 0.82 : 0.88)
-                let width = isQuarter ? radius * 0.06 : isHour ? radius * 0.035 : max(0.6, radius * 0.012)
-                line(from: point(Double(index) / 60, inner), to: point(Double(index) / 60, outer),
-                     width: width, color: palette.clockHands.opacity(isHour ? 0.85 : 0.45))
+            func circle(_ r: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
             }
 
-            // Ziffern 12 · 3 · 6 · 9 ab mittlerer Größe
-            if radius >= 34 {
-                let font = Font.system(size: radius * 0.22, weight: .semibold, design: .rounded)
-                for (label, fraction) in [("12", 0.0), ("3", 0.25), ("6", 0.5), ("9", 0.75)] {
-                    context.draw(Text(label).font(font).foregroundColor(palette.clockHands),
-                                 at: point(fraction, radius * 0.58))
+            // Zifferblatt mit goldenem Rand
+            context.fill(circle(radius), with: .color(palette.clockFace))
+            context.stroke(circle(radius - radius * 0.02), with: .color(Palette.gold),
+                           lineWidth: max(1, radius * 0.04))
+
+            // Minutenstriche fein, Stundenstriche in Gold
+            for index in 0..<60 {
+                let isHour = index % 5 == 0
+                if !isHour && radius < 40 { continue }
+                let outer = radius * 0.9
+                let inner = radius * (isHour ? 0.82 : 0.86)
+                line(from: point(Double(index) / 60, inner), to: point(Double(index) / 60, outer),
+                     width: isHour ? max(1, radius * 0.03) : max(0.5, radius * 0.01),
+                     color: isHour ? Palette.gold : palette.clockNumerals.opacity(0.35))
+            }
+
+            // Römische Ziffern: alle zwölf bei größerer Uhr, sonst XII · III · VI · IX
+            let allNumerals = radius >= 46
+            if radius >= 28 {
+                let fontSize = radius * (allNumerals ? 0.17 : 0.2)
+                let font = Font.system(size: fontSize, weight: .medium, design: .serif)
+                for hour in 0..<12 where allNumerals || hour % 3 == 0 {
+                    context.draw(Text(Self.romans[hour]).font(font).foregroundColor(palette.clockNumerals),
+                                 at: point(Double(hour) / 12, radius * (allNumerals ? 0.66 : 0.62)))
                 }
             }
 
-            // Zeiger
+            // Goldene Zeiger (mit dunklerer Kontur für Tiefe)
             let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
             let seconds = Double(parts.second ?? 0)
             let minutes = Double(parts.minute ?? 0) + seconds / 60
             let hours = Double((parts.hour ?? 0) % 12) + minutes / 60
 
-            line(from: point(hours / 12 + 0.5, radius * 0.1), to: point(hours / 12, radius * 0.5),
-                 width: radius * 0.085, color: palette.clockHands)
-            line(from: point(minutes / 60 + 0.5, radius * 0.1), to: point(minutes / 60, radius * 0.78),
-                 width: radius * 0.055, color: palette.clockHands)
-            if showSeconds {
-                line(from: point(seconds / 60 + 0.5, radius * 0.16), to: point(seconds / 60, radius * 0.84),
-                     width: max(1, radius * 0.022), color: Color(hex: 0xD9534F))
+            func hand(_ fraction: Double, length: CGFloat, width: CGFloat) {
+                let start = point(fraction + 0.5, radius * 0.08)
+                let end = point(fraction, length)
+                line(from: start, to: end, width: width + max(1, radius * 0.02), color: Palette.goldDark)
+                line(from: start, to: end, width: width, color: Palette.gold)
             }
-            let dot = radius * 0.07
-            context.fill(Path(ellipseIn: CGRect(x: center.x - dot, y: center.y - dot, width: dot * 2, height: dot * 2)),
-                         with: .color(showSeconds ? Color(hex: 0xD9534F) : palette.clockHands))
+            hand(hours / 12, length: radius * 0.47, width: radius * 0.07)
+            hand(minutes / 60, length: radius * 0.72, width: radius * 0.045)
+            if showSeconds {
+                line(from: point(seconds / 60 + 0.5, radius * 0.16), to: point(seconds / 60, radius * 0.8),
+                     width: max(0.8, radius * 0.016), color: Palette.gold)
+            }
+            context.fill(circle(radius * 0.075), with: .color(Palette.goldDark))
+            context.fill(circle(radius * 0.05), with: .color(Palette.gold))
         }
     }
 }

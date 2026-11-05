@@ -131,7 +131,7 @@ struct QuickSearchView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(palette.accent)
-                TextField("Suchen oder Claude fragen …", text: $text)
+                TextField("Google Suche", text: $text)
                     .textFieldStyle(.plain)
                     .font(.system(size: 17))
                     .foregroundStyle(palette.text)
