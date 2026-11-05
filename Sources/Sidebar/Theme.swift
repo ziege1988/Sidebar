@@ -69,7 +69,7 @@ struct Palette {
         let t = theme.tones
         if scheme == .dark {
             let accent = Color(hex: t.darkAccent)
-            let top = mix(0x121315, t.darkAccent, 0.05)
+            let top = mix(0x08090A, t.darkAccent, 0.04)
             let bottom = mix(0x3D4046, t.darkAccent, 0.14)
             return Palette(
                 background: Color(hex: 0x2B2D31),
@@ -90,8 +90,8 @@ struct Palette {
         } else {
             let accent = Color(hex: t.accent)
             let text = Color(hex: t.text)
-            // Stärkerer Verlauf: oben kräftig in Richtung Akzent, unten fast weiß
-            let top = mix(t.lightTop, t.accent, 0.5)
+            // Kräftiger Verlauf: oben ein dunkler Ton der Akzentfarbe, unten fast weiß
+            let top = mix(t.accent, 0x000000, 0.22)
             let bottom = mix(t.light, 0xFFFFFF, 0.35)
             return Palette(
                 background: Color(hex: t.light),
@@ -112,10 +112,35 @@ struct Palette {
         }
     }
 
-    /// Hintergrund der Leiste: Verlauf oder einfarbig.
-    func backgroundFill(gradient: Bool) -> LinearGradient {
-        LinearGradient(colors: gradient ? [gradientTop, gradientBottom] : [background, background],
-                       startPoint: .top, endPoint: .bottom)
+    /// Wie hell der Verlauf am unteren Rand der Uhr schon ist (0 = ganz dunkel, 1 = ganz hell).
+    static let clockBlend = 0.42
+
+    /// Farbe am unteren Rand der Uhr – dort gehen Uhr und Leiste ineinander über.
+    var clockEndColor: Color {
+        Color(hex: Palette.mix(gradientTopHex, gradientBottomHex, Palette.clockBlend))
+    }
+
+    /// Hintergrund der Leiste: dunkel hinter der Uhr, darunter rasch heller (gut lesbar).
+    /// - Parameter clockEnd: Anteil der Leistenhöhe, den die Uhr einnimmt (0 = keine Uhr)
+    func backgroundFill(gradient: Bool, clockEnd: Double = 0) -> LinearGradient {
+        guard gradient else {
+            return LinearGradient(colors: [background, background], startPoint: .top, endPoint: .bottom)
+        }
+        let knee = min(max(clockEnd, 0.12), 0.6)
+        return LinearGradient(stops: [
+            .init(color: gradientTop, location: 0),
+            .init(color: clockEndColor, location: knee),
+            .init(color: gradientBottom, location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Hintergrund der Ordner-Fenster: die helle Hälfte des Verlaufs (Text bleibt gut lesbar).
+    func panelFill(gradient: Bool) -> LinearGradient {
+        guard gradient else {
+            return LinearGradient(colors: [background, background], startPoint: .top, endPoint: .bottom)
+        }
+        return LinearGradient(colors: [Color(hex: Palette.mix(gradientTopHex, gradientBottomHex, 0.6)), gradientBottom],
+                              startPoint: .top, endPoint: .bottom)
     }
 
     /// Mischt zwei Farben (0 = a, 1 = b).

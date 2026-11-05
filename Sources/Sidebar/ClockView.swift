@@ -51,7 +51,7 @@ struct ClockPanelView: View {
         let shape = EdgeShape.shape(for: settings.edge, radius: 16)
         // Verlauf genau so fortsetzen wie in der Leiste darunter → keine sichtbare Kante
         let fill: LinearGradient = settings.gradient
-            ? LinearGradient(colors: [palette.gradientTop, palette.gradientColor(at: state.clockGradientEnd)],
+            ? LinearGradient(colors: [palette.gradientTop, palette.clockEndColor],
                              startPoint: .top, endPoint: .bottom)
             : LinearGradient(colors: [palette.background, palette.background], startPoint: .top, endPoint: .bottom)
 

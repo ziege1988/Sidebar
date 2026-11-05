@@ -107,7 +107,8 @@ struct SidebarView: View {
         let palette = Palette.resolve(settings.colorTheme, scheme)
         ZStack {
             if showContent {
-                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient))
+                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient,
+                                                        clockEnd: settings.showClock ? state.clockGradientEnd : 0))
                 barContent(palette)
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
@@ -571,7 +572,7 @@ struct FlyoutView: View {
         let palette = Palette.resolve(store.config.settings.colorTheme, scheme)
         ZStack {
             VisualEffectBackground()
-            Rectangle().fill(palette.backgroundFill(gradient: store.config.settings.gradient)).opacity(0.95)
+            Rectangle().fill(palette.panelFill(gradient: store.config.settings.gradient)).opacity(0.97)
             if state.flyoutGroupID == LinkGroup.shelfID {
                 ShelfView(store: store, palette: palette)
             } else if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
