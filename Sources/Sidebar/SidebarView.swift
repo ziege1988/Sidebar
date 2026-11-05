@@ -154,6 +154,19 @@ struct SidebarView: View {
                 }
             }
 
+            // Ablagefach: fest unten über den Einstellungen, hervorgehoben
+            if settings.showShelf {
+                let shelfIcon: CGFloat = 32
+                ShelfCell(store: store, isActive: state.flyoutGroupID == LinkGroup.shelfID,
+                          iconSize: shelfIcon,
+                          cellSize: CGSize(width: vertical ? thickness : 60, height: vertical ? 58 : thickness),
+                          showLabel: vertical, actions: actions)
+                    .modifier(HoverScale(active: settings.magnification && state.hoveredCell == "group:\(LinkGroup.shelfID)",
+                                         scale: min(CGFloat(settings.magnificationStrength),
+                                                    max(1, (thickness - 4) / shelfIcon))))
+                    .padding(vertical ? .top : .leading, 4)
+            }
+
             if let release = updater.availableRelease {
                 BarButton(symbol: "arrow.down.circle.fill", size: 20, tint: palette.accent,
                           cell: CGSize(width: vertical ? thickness : 40, height: vertical ? 36 : thickness),
@@ -176,7 +189,7 @@ struct SidebarView: View {
     /// Anzahl der Zellen in der Leiste (für die automatische Icon-Größe).
     private var cellCount: Int {
         store.config.favorites.count + (showFavoriteSlot ? 1 : 0) + max(store.config.groups.count, 1)
-            + (settings.showSearch ? ActionButton.allCases.count : 0) + (settings.showShelf ? 1 : 0)
+            + (settings.showSearch ? ActionButton.allCases.count : 0)
     }
 
     private func cells(_ palette: Palette, metrics: BarMetrics) -> some View {
@@ -224,15 +237,6 @@ struct SidebarView: View {
                           cell: cellSize, help: "Ordner anlegen") {
                     actions.openSettings()
                 }
-            }
-
-            // Ablagefach
-            if settings.showShelf {
-                BarDivider(vertical: vertical, length: thickness * 0.5, color: palette.border)
-                ShelfCell(store: store, isActive: state.flyoutGroupID == LinkGroup.shelfID,
-                          iconSize: metrics.icon, cellSize: cellSize, showLabel: metrics.showLabels,
-                          actions: actions)
-                    .modifier(HoverScale(active: hovered == "group:\(LinkGroup.shelfID)", scale: maxScale))
             }
         }
     }
@@ -296,29 +300,34 @@ struct ShelfCell: View {
         let count = store.config.shelf.count
         VStack(spacing: 3) {
             ZStack {
-                RoundedRectangle(cornerRadius: iconSize * 0.3, style: .continuous)
-                    .fill(highlighted ? palette.accent : palette.accentSoft)
-                Image(systemName: count > 0 ? "tray.full" : "tray")
+                // Immer gefüllt in der Akzentfarbe mit feinem Goldrand – hebt sich von den Ordnern ab
+                RoundedRectangle(cornerRadius: iconSize * 0.32, style: .continuous)
+                    .fill(LinearGradient(colors: [palette.accent.opacity(highlighted ? 1 : 0.92), palette.accent],
+                                         startPoint: .top, endPoint: .bottom))
+                RoundedRectangle(cornerRadius: iconSize * 0.32, style: .continuous)
+                    .strokeBorder(Palette.gold.opacity(highlighted ? 0.95 : 0.6), lineWidth: 1.2)
+                Image(systemName: count > 0 ? "tray.full.fill" : "tray.fill")
                     .font(.system(size: iconSize * 0.46, weight: .semibold))
-                    .foregroundStyle(highlighted ? palette.onAccent : palette.accent)
+                    .foregroundStyle(palette.onAccent)
             }
             .frame(width: iconSize, height: iconSize)
+            .shadow(color: palette.accent.opacity(highlighted ? 0.55 : 0.3), radius: highlighted ? 6 : 3, y: 1)
             .overlay(alignment: .topTrailing) {
                 if count > 0 {
                     Text("\(count)")
                         .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(palette.onAccent)
+                        .foregroundStyle(palette.accent)
                         .padding(.horizontal, 4)
                         .frame(minWidth: 15, minHeight: 15)
-                        .background(Capsule().fill(palette.accent))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
+                        .background(Capsule().fill(Color.white))
+                        .overlay(Capsule().stroke(Palette.gold.opacity(0.8), lineWidth: 1))
                         .offset(x: 6, y: -5)
                 }
             }
             if showLabel {
                 Text("Ablage")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(palette.secondary)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(palette.text)
             }
         }
         .frame(width: cellSize.width, height: cellSize.height)
