@@ -106,31 +106,29 @@ struct SidebarView: View {
     var body: some View {
         let palette = Palette.resolve(settings.colorTheme, scheme)
         let glass = settings.glassIntensity
-        // Unter der Uhr zeichnet die Leiste nichts – sonst doppelte Glasschicht/Kante
-        let clockSize = settings.showClock ? ClockLayout.panelSize(settings) : .zero
-        let cover = vertical ? clockSize.height : clockSize.width
-        let fill: LinearGradient = (settings.showClock && settings.gradient)
-            ? LinearGradient(colors: [palette.clockEndColor, palette.gradientBottom], startPoint: .top, endPoint: .bottom)
-            : palette.backgroundFill(gradient: settings.gradient)
-        let layout = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
-        ZStack {
+        let clockOn = settings.showClock && showContent
+        let clockSize = clockOn ? ClockLayout.panelSize(settings) : .zero
+        let clockAlong = vertical ? clockSize.height : clockSize.width
+        // Uhr und Leiste: ein gemeinsamer Umriss, eine Glasfläche, ein Rand – ohne Kante dazwischen
+        let outline = SidebarOutline(edge: edge, barCross: thickness,
+                                     clockCross: vertical ? clockSize.width : clockSize.height,
+                                     clockAlong: clockAlong)
+        Group {
             if showContent {
-                layout {
-                    if cover > 0 {
-                        Color.clear.frame(width: vertical ? nil : cover, height: vertical ? cover : nil)
+                ZStack {
+                    GeometryReader { proxy in
+                        let length = vertical ? proxy.size.height : proxy.size.width
+                        let clockEnd = (clockOn && vertical && length > 0) ? Double(clockAlong / length) : 0
+                        GlassFill(fill: palette.backgroundFill(gradient: settings.gradient, clockEnd: clockEnd),
+                                  intensity: glass, mask: AnyShape(outline))
+                            .clipShape(outline)
                     }
-                    GlassFill(fill: fill, intensity: glass)
+                    content(palette, clockOn: clockOn, clockSize: clockSize)
                 }
-                barContent(palette)
+                .overlay(GlassRim(shape: outline, intensity: glass))
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
                 palette.accent.opacity(0.55)
-            }
-        }
-        .clipShape(shape)
-        .overlay {
-            if showContent {
-                GlassRim(shape: shape, intensity: glass)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,6 +145,34 @@ struct SidebarView: View {
         .environment(\.colorTheme, settings.colorTheme)
     }
 
+    /// Uhr (falls sichtbar) und darunter bzw. daneben die Leiste – an der Bildschirmkante ausgerichtet.
+    @ViewBuilder
+    private func content(_ palette: Palette, clockOn: Bool, clockSize: CGSize) -> some View {
+        if vertical {
+            VStack(alignment: edge == .right ? .trailing : .leading, spacing: 0) {
+                if clockOn {
+                    ClockFace(settings: settings, palette: palette)
+                        .frame(width: clockSize.width, height: clockSize.height)
+                }
+                barContent(palette)
+                    .frame(width: thickness)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: edge == .right ? .topTrailing : .topLeading)
+        } else {
+            HStack(alignment: edge == .top ? .top : .bottom, spacing: 0) {
+                if clockOn {
+                    ClockFace(settings: settings, palette: palette)
+                        .frame(width: clockSize.width, height: clockSize.height)
+                }
+                barContent(palette)
+                    .frame(height: thickness)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: edge == .top ? .topLeading : .bottomLeading)
+        }
+    }
+
     /// Nur die zum Bildschirm zeigenden Ecken werden abgerundet.
     private var shape: UnevenRoundedRectangle {
         EdgeShape.shape(for: edge, radius: showContent ? 14 : 0)
@@ -154,13 +180,7 @@ struct SidebarView: View {
 
     private func barContent(_ palette: Palette) -> some View {
         let outer = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
-        let clockInset = ClockLayout.inset(settings)
         return outer {
-            // Platz für die Uhr, die oben aus der Leiste heraussteht
-            if clockInset > 0 {
-                Color.clear
-                    .frame(width: vertical ? thickness : clockInset, height: vertical ? clockInset : thickness)
-            }
             GeometryReader { proxy in
                 let length = vertical ? proxy.size.height : proxy.size.width
                 let metrics = BarMetrics(available: length, cells: cellCount, thickness: thickness)
@@ -589,7 +609,8 @@ struct FlyoutView: View {
         let palette = Palette.resolve(store.config.settings.colorTheme, scheme)
         ZStack {
             GlassFill(fill: palette.panelFill(gradient: store.config.settings.gradient),
-                      intensity: max(store.config.settings.glassIntensity, 0.05))
+                      intensity: max(store.config.settings.glassIntensity, 0.05),
+                      mask: AnyShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
             if state.flyoutGroupID == LinkGroup.shelfID {
                 ShelfView(store: store, palette: palette)
             } else if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
@@ -766,17 +787,4 @@ struct ItemContextMenu: View {
             Button("Entfernen", role: .destructive) { store.deleteItem(id: item.id) }
         }
     }
-}
-
-/// Unscharfer, halbtransparenter macOS-Hintergrund.
-struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar // passt sich hell/dunkel an
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }

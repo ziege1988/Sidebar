@@ -37,24 +37,12 @@ enum EdgeShape {
     }
 }
 
-/// Bereich mit der analogen Uhr – optisch der obere Teil der Leiste.
-struct ClockPanelView: View {
-    @ObservedObject var store: ConfigStore
-    @ObservedObject var state: SidebarState
-    let actions: SidebarActions
-    @Environment(\.colorScheme) private var scheme
-
-    private var settings: SidebarSettings { store.config.settings }
+/// Die analoge Uhr im oberen Teil der Sidebar (Klick öffnet den Kalender).
+struct ClockFace: View {
+    let settings: SidebarSettings
+    let palette: Palette
 
     var body: some View {
-        let palette = Palette.resolve(settings.colorTheme, scheme)
-        let shape = EdgeShape.shape(for: settings.edge, radius: 16)
-        // Verlauf genau so fortsetzen wie in der Leiste darunter → keine sichtbare Kante
-        let fill: LinearGradient = settings.gradient
-            ? LinearGradient(colors: [palette.gradientTop, palette.clockEndColor],
-                             startPoint: .top, endPoint: .bottom)
-            : LinearGradient(colors: [palette.background, palette.background], startPoint: .top, endPoint: .bottom)
-
         TimelineView(.periodic(from: .now, by: 1)) { context in
             AnalogClock(date: context.date, showSeconds: settings.clockShowSeconds, palette: palette)
         }
@@ -65,12 +53,6 @@ struct ClockPanelView: View {
         }
         .help(Date().formatted(date: .complete, time: .omitted) + " – Klick öffnet den Kalender")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(GlassFill(fill: fill, intensity: settings.glassIntensity))
-        .clipShape(shape)
-        .overlay(
-            GlassRim(shape: shape, intensity: settings.glassIntensity)
-                .mask(ClockJunctionMask(edge: settings.edge, thickness: CGFloat(settings.collapsedThickness)))
-        )
     }
 }
 

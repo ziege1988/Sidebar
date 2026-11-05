@@ -2,78 +2,152 @@ import AppKit
 import SwiftUI
 
 /// Glas-Effekt: Unschärfe des Hintergrunds, darüber die Farbe der Sidebar.
-/// Auch bei voller Stärke bleibt die Farbe gut erkennbar (mindestens 40 % deckend).
+/// Auch bei voller Stärke bleibt die Farbe erkennbar (mindestens 25 % deckend).
 enum Glass {
     /// Deckkraft der Farbschicht für eine Glas-Stärke (0 … 1)
     static func tintOpacity(_ intensity: Double) -> Double {
-        1 - 0.6 * min(max(intensity, 0), 1)
+        1 - 0.75 * min(max(intensity, 0), 1)
     }
 
     /// Helligkeit des Glasrands
     static func rimStrength(_ intensity: Double) -> Double {
-        intensity <= 0 ? 0 : 0.35 + 0.65 * min(intensity, 1)
+        0.3 + 0.7 * min(max(intensity, 0), 1)
     }
 }
 
-/// Hintergrund mit Glas: unscharfer Schreibtisch + Farbverlauf der Sidebar.
+/// Unscharfer macOS-Hintergrund, auf eine Form zugeschnitten (sonst würden die Ecken als Rechteck durchscheinen).
+struct VisualEffectBackground: NSViewRepresentable {
+    var mask: AnyShape? = nil
+
+    func makeNSView(context: Context) -> MaskedEffectView {
+        let view = MaskedEffectView()
+        view.material = .popover // passt sich hell/dunkel an und ist gut durchscheinend
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.maskShape = mask
+        return view
+    }
+
+    func updateNSView(_ view: MaskedEffectView, context: Context) {
+        view.maskShape = mask
+        view.needsLayout = true
+    }
+}
+
+final class MaskedEffectView: NSVisualEffectView {
+    var maskShape: AnyShape?
+    private var lastMaskSize: CGSize = .zero
+
+    override func layout() {
+        super.layout()
+        guard let maskShape, bounds.width > 0, bounds.height > 0 else {
+            maskImage = nil
+            return
+        }
+        guard bounds.size != lastMaskSize || maskImage == nil else { return }
+        lastMaskSize = bounds.size
+        let path = maskShape.path(in: CGRect(origin: .zero, size: bounds.size)).cgPath
+        maskImage = NSImage(size: bounds.size, flipped: true) { _ in
+            NSColor.black.setFill()
+            NSBezierPath(cgPath: path).fill()
+            return true
+        }
+    }
+}
+
+/// Hintergrund mit Glas: unscharfer Schreibtisch + Farbe der Sidebar.
 struct GlassFill: View {
     let fill: LinearGradient
     let intensity: Double
+    var mask: AnyShape? = nil
 
     var body: some View {
         ZStack {
             if intensity > 0 {
-                VisualEffectBackground()
+                VisualEffectBackground(mask: mask)
             }
             Rectangle()
                 .fill(fill)
                 .opacity(Glass.tintOpacity(intensity))
             if intensity > 0 {
                 // leichter Schimmer von oben, wie eine Glasscheibe
-                LinearGradient(colors: [Color.white.opacity(0.14 * intensity), .clear],
+                LinearGradient(colors: [Color.white.opacity(0.16 * intensity), .clear],
                                startPoint: .top, endPoint: .center)
             }
         }
     }
 }
 
-/// Heller Glasrand entlang der Kanten.
+/// Glaskante: feine dunkle Kontur, helle Lichtkante und ein weiches Leuchten nach innen.
 struct GlassRim<S: Shape>: View {
     let shape: S
     let intensity: Double
 
     var body: some View {
         let k = Glass.rimStrength(intensity)
-        shape
-            .stroke(LinearGradient(colors: [Color.white.opacity(0.85 * k), Color.white.opacity(0.25 * k)],
-                                   startPoint: .top, endPoint: .bottom),
-                    lineWidth: 1.2)
-            .opacity(k > 0 ? 1 : 0)
-            .allowsHitTesting(false)
+        ZStack {
+            shape.stroke(Color.black.opacity(0.14 * k), lineWidth: 1)
+            shape.stroke(Color.white.opacity(0.32 * k), lineWidth: 7)
+                .blur(radius: 4)
+                .clipShape(shape)
+            shape.stroke(LinearGradient(colors: [Color.white.opacity(0.9 * k), Color.white.opacity(0.3 * k)],
+                                        startPoint: .top, endPoint: .bottom),
+                         lineWidth: 1)
+                .padding(0.5)
+        }
+        .allowsHitTesting(false)
     }
 }
 
-/// Blendet den Glasrand der Uhr dort aus, wo sie in die Leiste übergeht (keine Trennlinie).
-struct ClockJunctionMask: View {
+/// Gemeinsamer Umriss von Uhr und Leiste: ein Stück, mit weich gerundetem Übergang („Schulter“).
+/// Gerechnet wird für die linke Kante und dann für die anderen Kanten gespiegelt/gedreht.
+struct SidebarOutline: Shape {
     let edge: ScreenEdge
-    let thickness: CGFloat
+    /// Breite der Leiste (quer zur Kante)
+    let barCross: CGFloat
+    /// Ausdehnung der Uhr quer zur Kante (0 = keine Uhr)
+    let clockCross: CGFloat
+    /// Ausdehnung der Uhr entlang der Kante
+    let clockAlong: CGFloat
+    var barRadius: CGFloat = 14
+    var clockRadius: CGFloat = 16
 
-    var body: some View {
-        ZStack(alignment: alignment) {
-            Rectangle()
-            Rectangle()
-                .frame(width: edge.isVertical ? thickness : 4, height: edge.isVertical ? 4 : thickness)
-                .blendMode(.destinationOut)
-        }
-        .compositingGroup()
-    }
+    func path(in rect: CGRect) -> Path {
+        let length = edge.isVertical ? rect.height : rect.width
 
-    private var alignment: Alignment {
-        switch edge {
-        case .left: return .bottomLeading
-        case .right: return .bottomTrailing
-        case .top: return .topTrailing
-        case .bottom: return .bottomTrailing
+        func map(_ c: CGFloat, _ a: CGFloat) -> CGPoint {
+            switch edge {
+            case .left: return CGPoint(x: c, y: a)
+            case .right: return CGPoint(x: rect.width - c, y: a)
+            case .top: return CGPoint(x: a, y: c)
+            case .bottom: return CGPoint(x: a, y: rect.height - c)
+            }
         }
+
+        var path = Path()
+        let t = barCross
+        let r = min(barRadius, t / 2)
+        path.move(to: map(0, 0))
+        if clockCross > t + 1 && clockAlong > 0 {
+            let cw = clockCross
+            let cl = min(clockAlong, length)
+            let rc = min(clockRadius, cw / 2, cl / 2)
+            let fillet = min(10, (cw - t) / 2)
+            path.addLine(to: map(cw - rc, 0))
+            path.addArc(tangent1End: map(cw, 0), tangent2End: map(cw, rc), radius: rc)
+            path.addLine(to: map(cw, cl - rc))
+            path.addArc(tangent1End: map(cw, cl), tangent2End: map(cw - rc, cl), radius: rc)
+            path.addLine(to: map(t + fillet, cl))
+            // weicher, nach innen gewölbter Übergang von der Uhr in die Leiste
+            path.addArc(tangent1End: map(t, cl), tangent2End: map(t, cl + fillet), radius: fillet)
+        } else {
+            path.addLine(to: map(t - r, 0))
+            path.addArc(tangent1End: map(t, 0), tangent2End: map(t, r), radius: r)
+        }
+        path.addLine(to: map(t, length - r))
+        path.addArc(tangent1End: map(t, length), tangent2End: map(t - r, length), radius: r)
+        path.addLine(to: map(0, length))
+        path.closeSubpath()
+        return path
     }
 }

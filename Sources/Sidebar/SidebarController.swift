@@ -26,7 +26,6 @@ final class SidebarController {
     private let panel: SidebarPanel
     private let flyoutPanel: SidebarPanel
     private let labelPanel: SidebarPanel
-    private let clockPanel: SidebarPanel
     private let labelHost: NSHostingView<HoverLabel>
     private let labelMeasure: NSHostingController<HoverLabel>
     private var labelItemID: UUID?
@@ -76,8 +75,6 @@ final class SidebarController {
         panel = SidebarController.makePanel()
         flyoutPanel = SidebarController.makePanel()
         labelPanel = SidebarController.makePanel()
-        clockPanel = SidebarController.makePanel()
-        clockPanel.hasShadow = false // Schatten würde eine Kante zur Leiste zeichnen
         labelHost = NSHostingView(rootView: HoverLabel(text: ""))
         labelMeasure = NSHostingController(rootView: HoverLabel(text: ""))
         labelPanel.ignoresMouseEvents = true
@@ -93,9 +90,6 @@ final class SidebarController {
         flyout.sizingOptions = []
         flyoutPanel.contentView = flyout
 
-        let clock = FirstMouseHostingView(rootView: ClockPanelView(store: store, state: state, actions: actions))
-        clock.sizingOptions = []
-        clockPanel.contentView = clock
 
         // Einstellungen geändert (Seite, Bildschirm, Breite, Farben …)
         store.$config
@@ -156,7 +150,6 @@ final class SidebarController {
         } else {
             hideFlyout()
             panel.orderOut(nil)
-            hideClock()
         }
     }
 
@@ -204,8 +197,8 @@ final class SidebarController {
         let inInput = input.isVisible
             && (input.frame.insetBy(dx: -6, dy: -6).contains(mouse)
                 || input.anchor.union(input.frame).insetBy(dx: -4, dy: -4).contains(mouse))
-        let inClock = clockPanel.isVisible && clockPanel.frame.contains(mouse)
-        let inBar = panel.frame.contains(mouse)
+        let inClock = clockRect(for: settings)?.contains(mouse) ?? false
+        let inBar = stripFrame(for: settings).contains(mouse) || inClock
         // Ausgeblendet: großzügiger Auslösebereich bis an den echten Bildschirmrand
         let inRevealZone = settings.autoHide && !state.isRevealed && revealZone(for: settings).contains(mouse)
         let flyoutVisible = flyoutPanel.isVisible
@@ -344,7 +337,7 @@ final class SidebarController {
     }
 
     /// Rahmen der Leiste (für das Claude-Seitenfenster).
-    var barFrame: NSRect { frame(for: store.config.settings, forceVisible: true) }
+    var barFrame: NSRect { stripFrame(for: store.config.settings, forceVisible: true) }
 
     /// Favorit an einer Bildschirmposition.
     private func favoriteAt(_ point: NSPoint) -> UUID? {
@@ -374,7 +367,7 @@ final class SidebarController {
             labelPanel.orderOut(nil)
             return
         }
-        let bar = panel.frame
+        let bar = stripFrame(for: store.config.settings, forceVisible: true)
         let anchor = NSRect(x: bar.minX + rect.minX, y: bar.maxY - rect.maxY, width: rect.width, height: rect.height)
         let gap: CGFloat = 4
         var origin = NSPoint.zero
@@ -451,7 +444,7 @@ final class SidebarController {
               let screen = targetScreen(for: store.config.settings) else { return }
         anchorRect = anchor
         let area = screen.visibleFrame.insetBy(dx: 8, dy: 8)
-        let bar = panel.frame
+        let bar = stripFrame(for: store.config.settings, forceVisible: true)
         let gap: CGFloat = 6
         let width: CGFloat
         let ideal: CGFloat
@@ -492,18 +485,12 @@ final class SidebarController {
         guard state.isRevealed != revealed else { return }
         state.isRevealed = revealed
         if !revealed { hideFlyout() }
-        let target = frame(for: store.config.settings)
-        hideClock()
-        NSAnimationContext.runAnimationGroup({ context in
+        let target = windowFrame(for: store.config.settings)
+        NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.panel.animator().setFrame(target, display: true)
-        }, completionHandler: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.positionClock(self.store.config.settings)
-            }
-        })
+        }
     }
 
     // MARK: - Geometrie & Einstellungen
@@ -519,7 +506,8 @@ final class SidebarController {
         return screens.first // primärer Bildschirm (mit Menüleiste)
     }
 
-    private func frame(for settings: SidebarSettings, forceVisible: Bool = false) -> NSRect {
+    /// Rahmen der eigentlichen Leiste (ohne den Teil der Uhr, der herausragt).
+    private func stripFrame(for settings: SidebarSettings, forceVisible: Bool = false) -> NSRect {
         guard let screen = targetScreen(for: settings) else { return panel.frame }
         let area = screen.visibleFrame // ohne Menüleiste und Dock
         let hidden = settings.autoHide && !state.isRevealed && !forceVisible
@@ -539,45 +527,32 @@ final class SidebarController {
 
     // MARK: - Uhr & Suche
 
-    /// Uhr oben an der Leiste – ragt in den Bildschirm hinein, wenn sie breiter als die Leiste ist.
-    private func positionClock(_ settings: SidebarSettings) {
+    /// Bereich der Uhr auf dem Bildschirm (`nil`, wenn keine Uhr sichtbar ist).
+    private func clockRect(for settings: SidebarSettings, forceVisible: Bool = false) -> NSRect? {
+        let hidden = settings.autoHide && !state.isRevealed && !forceVisible
         let size = ClockLayout.panelSize(settings)
-        let hidden = settings.autoHide && !state.isRevealed
-        guard isVisible, size != .zero, !hidden else {
-            hideClock()
-            return
-        }
-        let bar = frame(for: settings, forceVisible: true)
-        // Verlauf der Uhr endet dort, wo der Verlauf der Leiste unter ihr steht
-        let fraction = settings.edge.isVertical ? Double(size.height / max(bar.height, 1)) : 1
-        if abs(state.clockGradientEnd - fraction) > 0.001 { state.clockGradientEnd = fraction }
-        var origin = NSPoint.zero
+        guard settings.showClock, !hidden, size != .zero else { return nil }
+        let bar = stripFrame(for: settings, forceVisible: true)
         switch settings.edge {
-        case .left: origin = NSPoint(x: bar.minX, y: bar.maxY - size.height)
-        case .right: origin = NSPoint(x: bar.maxX - size.width, y: bar.maxY - size.height)
-        case .top: origin = NSPoint(x: bar.minX, y: bar.maxY - size.height)
-        case .bottom: origin = NSPoint(x: bar.minX, y: bar.minY)
+        case .left: return NSRect(x: bar.minX, y: bar.maxY - size.height, width: size.width, height: size.height)
+        case .right: return NSRect(x: bar.maxX - size.width, y: bar.maxY - size.height, width: size.width, height: size.height)
+        case .top: return NSRect(x: bar.minX, y: bar.maxY - size.height, width: size.width, height: size.height)
+        case .bottom: return NSRect(x: bar.minX, y: bar.minY, width: size.width, height: size.height)
         }
-        clockPanel.setFrame(NSRect(origin: origin, size: size), display: true)
-        // Als Kind-Fenster der Leiste: bleibt immer über ihr, auch wenn die Leiste angeklickt wird
-        if clockPanel.parent !== panel {
-            clockPanel.parent?.removeChildWindow(clockPanel)
-            panel.addChildWindow(clockPanel, ordered: .above)
-        }
-        clockPanel.orderFront(nil)
     }
 
-    private func hideClock() {
-        if clockPanel.parent != nil {
-            clockPanel.parent?.removeChildWindow(clockPanel)
-        }
-        clockPanel.orderOut(nil)
+    /// Fensterrahmen: Leiste plus der Teil der Uhr, der in den Bildschirm hineinragt.
+    /// Uhr und Leiste sind ein einziges Fenster – dadurch gibt es keine Kante dazwischen.
+    private func windowFrame(for settings: SidebarSettings, forceVisible: Bool = false) -> NSRect {
+        let strip = stripFrame(for: settings, forceVisible: forceVisible)
+        guard let clock = clockRect(for: settings, forceVisible: forceVisible) else { return strip }
+        return strip.union(clock)
     }
 
     /// Schnellsuche neben der Uhr öffnen.
     func openSearch() {
         let settings = store.config.settings
-        let anchor = clockPanel.isVisible ? clockPanel.frame : frame(for: settings, forceVisible: true)
+        let anchor = clockRect(for: settings) ?? stripFrame(for: settings, forceVisible: true)
         QuickSearchController.shared.toggle(anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
     }
 
@@ -586,7 +561,7 @@ final class SidebarController {
     /// außer dort, wo das Dock sitzt, damit es nicht ständig auslöst.
     private func revealZone(for settings: SidebarSettings) -> NSRect {
         guard let screen = targetScreen(for: settings) else { return panel.frame }
-        let strip = frame(for: settings)
+        let strip = stripFrame(for: settings)
         let full = screen.frame
         let visible = screen.visibleFrame
         let inward: CGFloat = 10
@@ -625,9 +600,7 @@ final class SidebarController {
             : .normal
         labelPanel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         if !settings.autoHide { state.isRevealed = false }
-        panel.setFrame(frame(for: settings), display: true)
-        clockPanel.level = panel.level
-        positionClock(settings)
+        panel.setFrame(windowFrame(for: settings), display: true)
         if flyoutPanel.isVisible {
             DispatchQueue.main.async { [weak self] in self?.positionFlyout() }
         }
@@ -640,7 +613,6 @@ final class SidebarController {
         case .began:
             isDragging = true
             hideFlyout()
-            hideClock()
         case .moved:
             guard let target = snapTarget(for: point) else {
                 previewPanel.orderOut(nil)
@@ -650,7 +622,7 @@ final class SidebarController {
             preview.edge = target.edge
             preview.screenID = target.screen.displayID
             preview.screenName = target.screen.localizedName
-            previewPanel.setFrame(frame(for: preview, forceVisible: true), display: true)
+            previewPanel.setFrame(windowFrame(for: preview, forceVisible: true), display: true)
             previewPanel.orderFrontRegardless()
         case .ended:
             isDragging = false
