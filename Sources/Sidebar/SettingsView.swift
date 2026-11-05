@@ -99,7 +99,7 @@ struct GeneralSettingsView: View {
                 Toggle("Analoge Uhr oben an der Sidebar", isOn: $store.config.settings.showClock)
                 if store.config.settings.showClock {
                     LabeledContent("Größe der Uhr: \(Int(store.config.settings.clockSize)) pt") {
-                        Slider(value: $store.config.settings.clockSize, in: 60...180, step: 4)
+                        Slider(value: $store.config.settings.clockSize, in: 64...220, step: 4)
                     }
                     Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
                 }

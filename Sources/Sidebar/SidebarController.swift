@@ -156,7 +156,7 @@ final class SidebarController {
         } else {
             hideFlyout()
             panel.orderOut(nil)
-            clockPanel.orderOut(nil)
+            hideClock()
         }
     }
 
@@ -493,12 +493,17 @@ final class SidebarController {
         state.isRevealed = revealed
         if !revealed { hideFlyout() }
         let target = frame(for: store.config.settings)
-        NSAnimationContext.runAnimationGroup { context in
+        hideClock()
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.panel.animator().setFrame(target, display: true)
-        }
-        positionClock(store.config.settings)
+        }, completionHandler: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.positionClock(self.store.config.settings)
+            }
+        })
     }
 
     // MARK: - Geometrie & Einstellungen
@@ -539,7 +544,7 @@ final class SidebarController {
         let size = ClockLayout.panelSize(settings)
         let hidden = settings.autoHide && !state.isRevealed
         guard isVisible, size != .zero, !hidden else {
-            clockPanel.orderOut(nil)
+            hideClock()
             return
         }
         let bar = frame(for: settings, forceVisible: true)
@@ -554,7 +559,19 @@ final class SidebarController {
         case .bottom: origin = NSPoint(x: bar.minX, y: bar.minY)
         }
         clockPanel.setFrame(NSRect(origin: origin, size: size), display: true)
-        clockPanel.orderFrontRegardless()
+        // Als Kind-Fenster der Leiste: bleibt immer über ihr, auch wenn die Leiste angeklickt wird
+        if clockPanel.parent !== panel {
+            clockPanel.parent?.removeChildWindow(clockPanel)
+            panel.addChildWindow(clockPanel, ordered: .above)
+        }
+        clockPanel.orderFront(nil)
+    }
+
+    private func hideClock() {
+        if clockPanel.parent != nil {
+            clockPanel.parent?.removeChildWindow(clockPanel)
+        }
+        clockPanel.orderOut(nil)
     }
 
     /// Schnellsuche neben der Uhr öffnen.
@@ -623,7 +640,7 @@ final class SidebarController {
         case .began:
             isDragging = true
             hideFlyout()
-            clockPanel.orderOut(nil)
+            hideClock()
         case .moved:
             guard let target = snapTarget(for: point) else {
                 previewPanel.orderOut(nil)

@@ -238,7 +238,9 @@ struct SidebarSettings: Codable, Equatable {
     var gradient: Bool = true
     var showClock: Bool = true
     /// Durchmesser der Uhr in Punkten
-    var clockSize: Double = 96
+    var clockSize: Double = 128
+    /// Interne Version der Einstellungen (für einmalige Anpassungen nach Updates)
+    var revision: Int = 1
     var clockShowSeconds: Bool = true
     /// KI- und Google-Knopf oben in der Leiste
     var showSearch: Bool = true
@@ -270,6 +272,7 @@ extension SidebarSettings {
         gradient = try c.decodeIfPresent(Bool.self, forKey: .gradient) ?? gradient
         showClock = try c.decodeIfPresent(Bool.self, forKey: .showClock) ?? showClock
         clockSize = try c.decodeIfPresent(Double.self, forKey: .clockSize) ?? clockSize
+        revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
         aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget

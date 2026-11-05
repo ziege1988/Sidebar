@@ -20,7 +20,19 @@ final class ConfigStore: ObservableObject {
         try? fm.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent("config.json")
         config = ConfigStore.load(from: fileURL)
+        migrate()
         if !fm.fileExists(atPath: fileURL.path) { save() }
+    }
+
+    /// Einmalige Anpassungen bestehender Einstellungen nach einem Update.
+    private func migrate() {
+        var settings = config.settings
+        if settings.revision < 1 {
+            // Uhr um ein Drittel größer
+            settings.clockSize = min(220, (settings.clockSize * 4 / 3).rounded())
+            settings.revision = 1
+        }
+        if settings != config.settings { config.settings = settings }
     }
 
     nonisolated static var supportDirectory: URL {
