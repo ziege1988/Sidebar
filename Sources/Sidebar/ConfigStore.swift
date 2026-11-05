@@ -375,16 +375,26 @@ final class ConfigStore: ObservableObject {
 
     @discardableResult
     func addNote(_ text: String) -> QuickNote {
-        let note = QuickNote(text: text)
+        // Jede neue Kachel bekommt den nächsten Farbton, damit sie sich leicht abheben
+        let lastTint = config.notes.first?.tint ?? -1
+        let note = QuickNote(text: text, tint: (lastTint + 1) % NoteTint.count)
         config.notes.insert(note, at: 0)
         return note
     }
 
-    func updateNote(id: UUID, text: String) {
+    func updateNote(id: UUID, text: String, rtf: Data? = nil) {
         guard let index = config.notes.firstIndex(where: { $0.id == id }) else { return }
         var notes = config.notes
         notes[index].text = text
+        notes[index].rtf = rtf
         notes[index].date = Date()
+        config.notes = notes
+    }
+
+    func cycleNoteTint(id: UUID) {
+        guard let index = config.notes.firstIndex(where: { $0.id == id }) else { return }
+        var notes = config.notes
+        notes[index].tint = ((notes[index].tint ?? 0) + 1) % NoteTint.count
         config.notes = notes
     }
 

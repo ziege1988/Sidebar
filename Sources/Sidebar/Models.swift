@@ -135,8 +135,13 @@ struct LinkItem: Codable, Identifiable, Hashable {
 /// Eine Schnellnotiz.
 struct QuickNote: Codable, Identifiable, Hashable {
     var id = UUID()
+    /// Reiner Text (für Kopieren, Vorschau, Suche)
     var text: String
     var date = Date()
+    /// Formatierter Text (fett, kursiv, Farben, Textmarker) als RTF
+    var rtf: Data?
+    /// Farbton der Kachel (Index in einer Palette gedeckter Farben)
+    var tint: Int?
 }
 
 /// Untergruppe, z. B. „Fotografie“ oder „ADS“.

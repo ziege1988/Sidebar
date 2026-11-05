@@ -160,7 +160,7 @@ final class NotesController {
                                                      onClose: { [weak self] in self?.close() }))
         host.sizingOptions = []
         panel.contentView = host
-        let size = NSSize(width: 340, height: 460)
+        let size = NSSize(width: NotesView.size.width, height: NotesView.size.height)
         let gap: CGFloat = 8
         var origin = NSPoint.zero
         switch edge {
@@ -210,58 +210,28 @@ struct NotesView: View {
     let theme: ColorTheme
     let onClose: () -> Void
     @Environment(\.colorScheme) private var scheme
-    @FocusState private var focusedNote: UUID?
+    @State private var newNoteID: UUID?
+
+    static let size = CGSize(width: 580, height: 560)
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
         let palette = Palette.resolve(theme, scheme)
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous).fill(palette.accent)
-                    Image(systemName: "note.text")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(palette.onAccent)
-                }
-                .frame(width: 24, height: 24)
-                Text("Schnellnotizen")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.text)
-                Spacer()
-                Button {
-                    let note = store.addNote("")
-                    DispatchQueue.main.async { focusedNote = note.id }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(palette.accent)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Neue Notiz")
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(palette.secondary)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .help("Schließen (esc)")
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 46)
-
+            header(palette)
+            Rectangle().fill(palette.border).frame(height: 1)
+            FormatBar(palette: palette)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
             Rectangle().fill(palette.border).frame(height: 1)
 
             if store.config.notes.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "note.text")
-                        .font(.system(size: 24))
+                        .font(.system(size: 26))
                         .foregroundStyle(palette.accent.opacity(0.6))
-                    Text("Noch keine Notizen.\nMit „+“ eine neue anlegen.")
+                    Text("Noch keine Notizen.\nMit „+“ eine neue Kachel anlegen.")
                         .font(.system(size: 12))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(palette.secondary)
@@ -269,17 +239,18 @@ struct NotesView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 8) {
+                    LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(store.config.notes) { note in
-                            NoteCard(note: note, store: store, palette: palette)
-                                .focused($focusedNote, equals: note.id)
+                            NoteTile(note: note, store: store, palette: palette,
+                                     focusOnAppear: note.id == newNoteID)
+                                .id(note.id)
                         }
                     }
-                    .padding(10)
+                    .padding(14)
                 }
             }
         }
-        .frame(width: 340, height: 460)
+        .frame(width: Self.size.width, height: Self.size.height)
         .background(GlassFill(fill: palette.panelFill(gradient: true),
                               intensity: max(store.config.settings.glassIntensity, 0.05),
                               mask: AnyShape(shape)))
@@ -287,37 +258,148 @@ struct NotesView: View {
         .overlay(shape.stroke(palette.border, lineWidth: 1))
         .overlay(GlassRim(shape: shape, intensity: store.config.settings.glassIntensity))
     }
+
+    private func header(_ palette: Palette) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(palette.accent)
+                Image(systemName: "note.text")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(palette.onAccent)
+            }
+            .frame(width: 24, height: 24)
+            Text("Schnellnotizen")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(palette.text)
+            Text("\(store.config.notes.count)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(palette.secondary)
+            Spacer()
+            Button {
+                let note = store.addNote("")
+                newNoteID = note.id
+            } label: {
+                Label("Neue Notiz", systemImage: "plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(palette.onAccent)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(Capsule().fill(palette.accent))
+            }
+            .buttonStyle(.plain)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(palette.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .help("Schließen (esc)")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+    }
 }
 
-struct NoteCard: View {
-    let note: QuickNote
-    let store: ConfigStore
+/// Werkzeugleiste: Fett, Kursiv, Unterstrichen, Textfarben, Textmarker.
+struct FormatBar: View {
     let palette: Palette
 
     var body: some View {
+        HStack(spacing: 6) {
+            formatButton("bold", "Fett (⌘B)") { NoteFormatting.toggleBold() }
+            formatButton("italic", "Kursiv (⌘I)") { NoteFormatting.toggleItalic() }
+            formatButton("underline", "Unterstrichen (⌘U)") { NoteFormatting.toggleUnderline() }
+            Rectangle().fill(palette.border).frame(width: 1, height: 18).padding(.horizontal, 4)
+            ForEach(NoteTextColor.allCases) { color in
+                Button {
+                    NoteFormatting.setColor(color)
+                } label: {
+                    Circle()
+                        .fill(color.swatch)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(palette.border, lineWidth: 1))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Textfarbe: \(color.title)")
+            }
+            Rectangle().fill(palette.border).frame(width: 1, height: 18).padding(.horizontal, 4)
+            Button {
+                NoteFormatting.toggleHighlight()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "highlighter")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Marker").font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(Color(nsColor: NoteFormatting.highlighterText))
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: NoteFormatting.highlighter)))
+            }
+            .buttonStyle(.plain)
+            .help("Neongelber Textmarker")
+            Spacer()
+            Text("Text markieren, dann formatieren")
+                .font(.system(size: 10))
+                .foregroundStyle(palette.secondary)
+        }
+    }
+
+    private func formatButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.text)
+                .frame(width: 26, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6).fill(palette.surface))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+/// Eine Notiz als Kachel in einem gedeckten Farbton.
+struct NoteTile: View {
+    let note: QuickNote
+    let store: ConfigStore
+    let palette: Palette
+    var focusOnAppear = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextEditor(text: Binding(
-                get: { store.config.notes.first(where: { $0.id == note.id })?.text ?? "" },
-                set: { store.updateNote(id: note.id, text: $0) }
-            ))
-            .font(.system(size: 13))
-            .foregroundStyle(palette.text)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 56, maxHeight: 120)
+            RichTextEditor(initialText: note.text, initialRTF: note.rtf, focusOnAppear: focusOnAppear) { plain, rtf in
+                store.updateNote(id: note.id, text: plain, rtf: rtf)
+            }
+            .frame(height: 118)
             HStack(spacing: 10) {
                 Text(note.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.system(size: 10))
                     .foregroundStyle(palette.secondary)
                 Spacer()
                 Button {
+                    store.cycleNoteTint(id: note.id)
+                } label: {
+                    Image(systemName: "paintpalette").font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(palette.secondary)
+                .help("Kachelfarbe wechseln")
+                Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(note.text, forType: .string)
+                    if let rtf = note.rtf { NSPasteboard.general.setData(rtf, forType: .rtf) }
                 } label: {
                     Image(systemName: "doc.on.doc").font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(palette.secondary)
-                .help("Kopieren")
+                .help("Kopieren (mit Formatierung)")
                 Button {
                     store.deleteNote(id: note.id)
                 } label: {
@@ -329,7 +411,12 @@ struct NoteCard: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.surface))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(palette.border, lineWidth: 1))
+        .frame(height: 160)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(NoteTint.color(note.tint, scheme: scheme))
+                .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(palette.border, lineWidth: 1))
     }
 }

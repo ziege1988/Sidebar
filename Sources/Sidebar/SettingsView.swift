@@ -17,29 +17,166 @@ final class SettingsRouter: ObservableObject {
     @Published var request: Request?
 }
 
-struct SettingsView: View {
-    enum Tab: Hashable { case links, appearance }
+/// Bereiche der Einstellungen (links in der Seitenleiste).
+enum SettingsCategory: String, CaseIterable, Identifiable {
+    case links, appearance, bar, clock, tools, opening, system
+    var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .links: return "Ordner & Links"
+        case .appearance: return "Farben & Glas"
+        case .bar: return "Leiste & Position"
+        case .clock: return "Uhr"
+        case .tools: return "KI, Ablage & Notizen"
+        case .opening: return "Links öffnen"
+        case .system: return "Updates & System"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .links: return "square.grid.2x2.fill"
+        case .appearance: return "paintpalette.fill"
+        case .bar: return "sidebar.left"
+        case .clock: return "clock.fill"
+        case .tools: return "sparkles"
+        case .opening: return "safari.fill"
+        case .system: return "gearshape.fill"
+        }
+    }
+
+    /// Farbe des Symbol-Kästchens (wie in den macOS-Systemeinstellungen)
+    var tint: Color {
+        switch self {
+        case .links: return Color(hex: 0x5B83A6)
+        case .appearance: return Color(hex: 0xC27A8C)
+        case .bar: return Color(hex: 0x6F8F67)
+        case .clock: return Color(hex: 0xC5A04A)
+        case .tools: return Color(hex: 0x7A6BA8)
+        case .opening: return Color(hex: 0x4E9384)
+        case .system: return Color(hex: 0x7C8088)
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .links: return "Favoriten, Ordner und Links verwalten – per Drag & Drop sortieren."
+        case .appearance: return "Farbwelt, hell/dunkel, Farbverlauf und Glas-Effekt."
+        case .bar: return "Bildschirm, Seite, Größe, Lupe und Ausblenden."
+        case .clock: return "Analoge Uhr oben an der Sidebar."
+        case .tools: return "KI- und Google-Suche, Ablagefach und Schnellnotizen."
+        case .opening: return "Wie Links standardmäßig geöffnet werden."
+        case .system: return "Version, Updates, Autostart und Konfiguration."
+        }
+    }
+}
+
+struct SettingsView: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var updater: Updater
     @ObservedObject var router: SettingsRouter
-    @State private var tab: Tab = .links
+    @State private var category: SettingsCategory = .links
 
     var body: some View {
-        TabView(selection: $tab) {
-            GroupsEditor(store: store, router: router)
-                .tabItem { Label("Ordner & Links", systemImage: "square.grid.2x2") }
-                .tag(Tab.links)
-            GeneralSettingsView(store: store, updater: updater)
-                .tabItem { Label("Darstellung", systemImage: "sidebar.left") }
-                .tag(Tab.appearance)
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 220)
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Divider()
+                Group {
+                    if category == .links {
+                        GroupsEditor(store: store, router: router)
+                            .padding(.top, 4)
+                    } else {
+                        GeneralSettingsView(store: store, updater: updater, category: category)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .padding()
-        .frame(minWidth: 740, minHeight: 500)
+        .frame(minWidth: 860, minHeight: 560)
         .onReceive(router.$request) { request in
-            if request != nil { tab = .links }
+            if request != nil { category = .links }
         }
         .environment(\.colorTheme, store.config.settings.colorTheme)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Sidebar").font(.system(size: 14, weight: .semibold))
+                    Text("Version \(updater.currentVersion)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            ForEach(SettingsCategory.allCases) { item in
+                Button {
+                    category = item
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(LinearGradient(colors: [item.tint.opacity(0.85), item.tint],
+                                                     startPoint: .top, endPoint: .bottom))
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 24, height: 24)
+                        Text(item.title)
+                            .font(.system(size: 13))
+                            .foregroundStyle(category == item ? Color.white : Color.primary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(category == item ? Color.accentColor : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+            }
+            Spacer()
+        }
+        .background(.regularMaterial)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(LinearGradient(colors: [category.tint.opacity(0.85), category.tint],
+                                         startPoint: .top, endPoint: .bottom))
+                Image(systemName: category.symbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 38, height: 38)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(category.title).font(.system(size: 20, weight: .semibold))
+                Text(category.subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
     }
 }
 
@@ -48,175 +185,206 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var updater: Updater
+    let category: SettingsCategory
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
     var body: some View {
         Form {
-            Section("Position") {
-                Picker("Bildschirm", selection: screenBinding) {
-                    Text("Primärer Bildschirm (mit Menüleiste)").tag(UInt32?.none)
-                    ForEach(NSScreen.screens, id: \.self) { screen in
-                        Text(screen.localizedName).tag(screen.displayID)
+            if category == .bar {
+                Section("Position") {
+                    Picker("Bildschirm", selection: screenBinding) {
+                        Text("Primärer Bildschirm (mit Menüleiste)").tag(UInt32?.none)
+                        ForEach(NSScreen.screens, id: \.self) { screen in
+                            Text(screen.localizedName).tag(screen.displayID)
+                        }
+                        if let missing = missingScreenName {
+                            Text("\(missing) (nicht verbunden)").tag(store.config.settings.screenID)
+                        }
                     }
-                    if let missing = missingScreenName {
-                        Text("\(missing) (nicht verbunden)").tag(store.config.settings.screenID)
+                    Picker("Seite", selection: $store.config.settings.edge) {
+                        ForEach(ScreenEdge.allCases) { edge in
+                            Text(edge.title).tag(edge)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    Text("Tipp: Du kannst die Sidebar auch am Griff (kleiner Balken oben bzw. links) an eine beliebige Kante oder auf einen anderen Bildschirm ziehen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Picker("Seite", selection: $store.config.settings.edge) {
-                    ForEach(ScreenEdge.allCases) { edge in
-                        Text(edge.title).tag(edge)
-                    }
-                }
-                .pickerStyle(.segmented)
-                Text("Tipp: Du kannst die Sidebar auch am Griff (kleiner Balken oben bzw. links) an eine beliebige Kante oder auf einen anderen Bildschirm ziehen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
-            Section("Farben") {
-                LabeledContent("Farbwelt") {
-                    HStack(spacing: 8) {
-                        ForEach(ColorTheme.allCases) { theme in
-                            ThemeSwatch(theme: theme, selected: store.config.settings.colorTheme == theme) {
-                                store.config.settings.colorTheme = theme
+            if category == .appearance {
+                Section("Farben") {
+                    LabeledContent("Farbwelt") {
+                        HStack(spacing: 8) {
+                            ForEach(ColorTheme.allCases) { theme in
+                                ThemeSwatch(theme: theme, selected: store.config.settings.colorTheme == theme) {
+                                    store.config.settings.colorTheme = theme
+                                }
                             }
                         }
                     }
-                }
-                Picker("Erscheinungsbild", selection: $store.config.settings.appearance) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                Toggle("Farbverlauf (oben dunkler, unten heller)", isOn: $store.config.settings.gradient)
-                LabeledContent("Glas-Effekt: \(Int((store.config.settings.glassIntensity * 100).rounded())) %") {
-                    Slider(value: $store.config.settings.glassIntensity, in: 0...1, step: 0.05)
-                }
-                Text("0 % = deckend. Je höher, desto mehr scheint der Hintergrund unscharf durch – die Farbe der Sidebar bleibt immer erkennbar.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Hell: Pastellton der Farbwelt · Dunkel: Graphit mit Pastell-Akzent. „Automatisch“ wechselt mit dem macOS-Modus.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Uhr, KI & Google") {
-                Toggle("Analoge Uhr oben an der Sidebar", isOn: $store.config.settings.showClock)
-                if store.config.settings.showClock {
-                    LabeledContent("Größe der Uhr: \(Int(store.config.settings.clockSize)) pt") {
-                        Slider(value: $store.config.settings.clockSize, in: 64...220, step: 4)
-                    }
-                    Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
-                }
-                Toggle("KI- und Google-Knopf oben in der Leiste", isOn: $store.config.settings.showSearch)
-                if store.config.settings.showSearch {
-                    Picker("KI-Anbieter", selection: $store.config.settings.aiProvider) {
-                        ForEach(AIProvider.allCases) { provider in
-                            Text(provider.title).tag(provider)
+                    Picker("Erscheinungsbild", selection: $store.config.settings.appearance) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
                         }
                     }
-                    Picker("KI öffnen in", selection: $store.config.settings.aiTarget) {
-                        ForEach(AITarget.allCases) { target in
-                            Text(target.title).tag(target)
-                        }
+                    Toggle("Farbverlauf (oben dunkler, unten heller)", isOn: $store.config.settings.gradient)
+                    LabeledContent("Glas-Effekt: \(Int((store.config.settings.glassIntensity * 100).rounded())) %") {
+                        Slider(value: $store.config.settings.glassIntensity, in: 0...1, step: 0.05)
                     }
-                }
-                Text("Klick auf die Uhr öffnet den Kalender. Über KI bzw. Google fahren und direkt lostippen – ↩ öffnet das Ergebnis, esc schließt. Im Seitenfenster steht die Frage bereits im Eingabefeld (bei ChatGPT noch einmal ↩ drücken). Die Frage liegt außerdem in der Zwischenablage – in der Desktop-App mit ⌘V einfügen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("Ablagefach in der Leiste", isOn: $store.config.settings.showShelf)
-                Toggle("Schnellnotiz in der Leiste", isOn: $store.config.settings.showNotes)
-            }
-
-            Section("Größe & Verhalten") {
-                LabeledContent("Breite der Leiste: \(Int(store.config.settings.collapsedThickness)) pt") {
-                    Slider(value: $store.config.settings.collapsedThickness, in: 44...88, step: 2)
-                }
-                LabeledContent("Breite der Ordner-Fenster: \(Int(store.config.settings.expandedThickness)) pt") {
-                    Slider(value: $store.config.settings.expandedThickness, in: 160...480, step: 10)
-                }
-                LabeledContent("Verzögerung beim Öffnen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
-                    Slider(value: $store.config.settings.hoverDelay, in: 0...0.8, step: 0.05)
-                }
-                Toggle("Lupen-Effekt beim Darüberfahren", isOn: $store.config.settings.magnification)
-                if store.config.settings.magnification {
-                    LabeledContent("Stärke der Lupe: \(Int((store.config.settings.magnificationStrength - 1) * 100 + 0.5)) %") {
-                        Slider(value: $store.config.settings.magnificationStrength, in: 1.1...1.8, step: 0.05)
-                    }
-                    Text("Vergrößert nur das Element unter der Maus. Die maximale Größe ist durch die Breite der Leiste begrenzt – für mehr Wirkung die Leiste etwas breiter stellen.")
+                    Text("0 % = deckend. Je höher, desto mehr scheint der Hintergrund unscharf durch – die Farbe der Sidebar bleibt immer erkennbar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Hell: Pastellton der Farbwelt · Dunkel: Graphit mit Pastell-Akzent. „Automatisch“ wechselt mit dem macOS-Modus.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Toggle("Automatisch ausblenden", isOn: $store.config.settings.autoHide)
-                if store.config.settings.autoHide {
-                    Text("Die Sidebar wird zu einem schmalen farbigen Streifen. Zum Einblenden die Maus an den Bildschirmrand schieben und kurz stehen lassen. Abschalten geht auch über das Menüleisten-Symbol.")
+            }
+
+            if category == .clock {
+                Section("Uhr") {
+                    Toggle("Analoge Uhr oben an der Sidebar", isOn: $store.config.settings.showClock)
+                    if store.config.settings.showClock {
+                        LabeledContent("Größe der Uhr: \(Int(store.config.settings.clockSize)) pt") {
+                            Slider(value: $store.config.settings.clockSize, in: 64...220, step: 4)
+                        }
+                        Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
+                    }
+                    Text("Klick auf die Uhr öffnet den Kalender.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Toggle("Immer im Vordergrund", isOn: $store.config.settings.alwaysOnTop)
-                Text(store.config.settings.alwaysOnTop
-                     ? "Die Sidebar liegt immer über allen Fenstern."
-                     : "Fenster anderer Programme können die Sidebar verdecken. Fährst du mit der Maus auf einen sichtbaren Teil der Sidebar, kommt sie nach vorne.")
+            }
+
+            if category == .tools {
+                Section("KI & Google") {
+                    Toggle("KI- und Google-Knopf in der Leiste", isOn: $store.config.settings.showSearch)
+                    if store.config.settings.showSearch {
+                        Picker("KI-Anbieter", selection: $store.config.settings.aiProvider) {
+                            ForEach(AIProvider.allCases) { provider in
+                                Text(provider.title).tag(provider)
+                            }
+                        }
+                        Picker("KI öffnen in", selection: $store.config.settings.aiTarget) {
+                            ForEach(AITarget.allCases) { target in
+                                Text(target.title).tag(target)
+                            }
+                        }
+                    }
+                    Text("Über KI bzw. Google fahren und direkt lostippen – ↩ öffnet das Ergebnis, esc schließt. Im Seitenfenster steht die Frage bereits im Eingabefeld (bei ChatGPT noch einmal ↩ drücken). Die Frage liegt außerdem in der Zwischenablage – in der Desktop-App mit ⌘V einfügen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if category == .tools {
+                Section("Ablage & Notizen") {
+                    Toggle("Ablagefach in der Leiste", isOn: $store.config.settings.showShelf)
+                    Toggle("Schnellnotiz in der Leiste", isOn: $store.config.settings.showNotes)
+                    Text("Das Ablagefach sammelt Dateien zum späteren Weitergeben. Schnellnotizen werden als Kacheln mit Formatierung gespeichert.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if category == .bar {
+                Section("Größe & Verhalten") {
+                    LabeledContent("Breite der Leiste: \(Int(store.config.settings.collapsedThickness)) pt") {
+                        Slider(value: $store.config.settings.collapsedThickness, in: 44...88, step: 2)
+                    }
+                    LabeledContent("Breite der Ordner-Fenster: \(Int(store.config.settings.expandedThickness)) pt") {
+                        Slider(value: $store.config.settings.expandedThickness, in: 160...480, step: 10)
+                    }
+                    LabeledContent("Verzögerung beim Öffnen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
+                        Slider(value: $store.config.settings.hoverDelay, in: 0...0.8, step: 0.05)
+                    }
+                    Toggle("Lupen-Effekt beim Darüberfahren", isOn: $store.config.settings.magnification)
+                    if store.config.settings.magnification {
+                        LabeledContent("Stärke der Lupe: \(Int((store.config.settings.magnificationStrength - 1) * 100 + 0.5)) %") {
+                            Slider(value: $store.config.settings.magnificationStrength, in: 1.1...1.8, step: 0.05)
+                        }
+                        Text("Vergrößert nur das Element unter der Maus. Die maximale Größe ist durch die Breite der Leiste begrenzt – für mehr Wirkung die Leiste etwas breiter stellen.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Toggle("Automatisch ausblenden", isOn: $store.config.settings.autoHide)
+                    if store.config.settings.autoHide {
+                        Text("Die Sidebar wird zu einem schmalen farbigen Streifen. Zum Einblenden die Maus an den Bildschirmrand schieben und kurz stehen lassen. Abschalten geht auch über das Menüleisten-Symbol.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Toggle("Immer im Vordergrund", isOn: $store.config.settings.alwaysOnTop)
+                    Text(store.config.settings.alwaysOnTop
+                         ? "Die Sidebar liegt immer über allen Fenstern."
+                         : "Fenster anderer Programme können die Sidebar verdecken. Fährst du mit der Maus auf einen sichtbaren Teil der Sidebar, kommt sie nach vorne.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if category == .opening {
+                Section("Links öffnen") {
+                    Picker("Standard-Öffnungsart", selection: $store.config.settings.defaultOpenMode) {
+                        ForEach(OpenMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    Picker("Browser für Chrome-App-Fenster", selection: $store.config.settings.chromiumBundleID) {
+                        ForEach(ChromiumBrowser.all) { browser in
+                            Text(isInstalled(browser) ? browser.name : "\(browser.name) (nicht installiert)")
+                                .tag(browser.bundleID)
+                        }
+                    }
+                    Text("""
+                    • Standard-Browser: öffnet einen neuen Tab in Safari/Chrome/…
+                    • Integriertes App-Fenster: eigenes Fenster in dieser App, Logins bleiben gespeichert (getrennt von deinem Browser).
+                    • Chrome-App-Fenster: eigenes Fenster ohne Tabs und Adressleiste, nutzt die Logins deines Chrome/Edge/Brave-Profils.
+                    Die Öffnungsart lässt sich pro Link überschreiben.
+                    """)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                }
             }
 
-            Section("Links öffnen") {
-                Picker("Standard-Öffnungsart", selection: $store.config.settings.defaultOpenMode) {
-                    ForEach(OpenMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+            if category == .system {
+                Section("Updates") {
+                    LabeledContent("Installierte Version") {
+                        Text(updater.currentVersion).monospacedDigit()
                     }
-                }
-                Picker("Browser für Chrome-App-Fenster", selection: $store.config.settings.chromiumBundleID) {
-                    ForEach(ChromiumBrowser.all) { browser in
-                        Text(isInstalled(browser) ? browser.name : "\(browser.name) (nicht installiert)")
-                            .tag(browser.bundleID)
-                    }
-                }
-                Text("""
-                • Standard-Browser: öffnet einen neuen Tab in Safari/Chrome/…
-                • Integriertes App-Fenster: eigenes Fenster in dieser App, Logins bleiben gespeichert (getrennt von deinem Browser).
-                • Chrome-App-Fenster: eigenes Fenster ohne Tabs und Adressleiste, nutzt die Logins deines Chrome/Edge/Brave-Profils.
-                Die Öffnungsart lässt sich pro Link überschreiben.
-                """)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Section("Updates") {
-                LabeledContent("Installierte Version") {
-                    Text(updater.currentVersion).monospacedDigit()
-                }
-                Toggle("Automatisch nach Updates suchen", isOn: $store.config.settings.autoCheckUpdates)
-                HStack {
-                    Text(updateStatusText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let release = updater.availableRelease {
-                        Button("Auf \(release.version) aktualisieren") {
-                            Task { await updater.install(release) }
+                    Toggle("Automatisch nach Updates suchen", isOn: $store.config.settings.autoCheckUpdates)
+                    HStack {
+                        Text(updateStatusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if let release = updater.availableRelease {
+                            Button("Auf \(release.version) aktualisieren") {
+                                Task { await updater.install(release) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Button("Jetzt prüfen") {
+                                Task { await updater.check(userInitiated: true) }
+                            }
+                            .disabled(updater.isBusy)
                         }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Jetzt prüfen") {
-                            Task { await updater.check(userInitiated: true) }
-                        }
-                        .disabled(updater.isBusy)
                     }
                 }
             }
 
-            Section("System") {
-                Toggle("Bei Anmeldung automatisch starten", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
-                if let loginError {
-                    Text(loginError).font(.caption).foregroundStyle(.red)
-                }
-                LabeledContent("Konfigurationsdatei") {
-                    Button("Im Finder zeigen") {
-                        NSWorkspace.shared.activateFileViewerSelecting([store.fileURL])
+            if category == .system {
+                Section("System") {
+                    Toggle("Bei Anmeldung automatisch starten", isOn: $launchAtLogin)
+                        .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                    if let loginError {
+                        Text(loginError).font(.caption).foregroundStyle(.red)
+                    }
+                    LabeledContent("Konfigurationsdatei") {
+                        Button("Im Finder zeigen") {
+                            NSWorkspace.shared.activateFileViewerSelecting([store.fileURL])
+                        }
                     }
                 }
             }
