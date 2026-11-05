@@ -7,8 +7,8 @@ final class SidebarState: ObservableObject {
     @Published var flyoutGroupID: UUID?
     /// Bei „Automatisch ausblenden“: Leiste gerade sichtbar
     @Published var isRevealed = false
-    /// Mausposition entlang der Leiste (für den Lupen-Effekt), `nil` = Maus nicht in der Leiste
-    @Published var pointer: CGFloat?
+    /// Element unter der Maus (für den Lupen-Effekt): "fav:<id>" bzw. "group:<id>"
+    @Published var hoveredCell: String?
 }
 
 /// Positionen der Symbole in der Leiste (Koordinaten der Leiste, Ursprung oben links).
@@ -24,44 +24,17 @@ struct FavoriteFramesKey: PreferenceKey {
     }
 }
 
-private struct CellCenterKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-/// Lupen-Effekt wie im Dock: Je näher die Maus, desto größer das Icon.
-struct Magnify: ViewModifier {
-    let pointer: CGFloat?
-    let vertical: Bool
-    let maxScale: CGFloat
-    /// Reichweite in Punkten, in der Nachbarn mitwachsen
-    var range: CGFloat = 110
-    @State private var center: CGFloat = -10_000
-
-    private var scale: CGFloat {
-        guard let pointer, maxScale > 1 else { return 1 }
-        let distance = abs(center - pointer)
-        guard distance < range else { return 1 }
-        let falloff = (cos(.pi * distance / range) + 1) / 2 // 1 direkt unter der Maus → 0 am Rand
-        return 1 + (maxScale - 1) * falloff
-    }
+/// Lupen-Effekt: Nur das Element unter der Maus wird vergrößert.
+struct HoverScale: ViewModifier {
+    let active: Bool
+    let scale: CGFloat
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(scale)
-            .animation(.easeOut(duration: 0.12), value: scale)
-            .zIndex(Double(scale))
-            .background(
-                GeometryReader { proxy in
-                    let frame = proxy.frame(in: .named("bar"))
-                    Color.clear.preference(key: CellCenterKey.self, value: vertical ? frame.midY : frame.midX)
-                }
-            )
-            .onPreferenceChange(CellCenterKey.self) { value in
-                center = value
-            }
+            .scaleEffect(active ? scale : 1)
+            .zIndex(active ? 1 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: active)
+            .animation(.easeOut(duration: 0.15), value: scale)
     }
 }
 
@@ -207,15 +180,15 @@ struct SidebarView: View {
         let stack = vertical ? AnyLayout(VStackLayout(spacing: metrics.spacing))
                              : AnyLayout(HStackLayout(spacing: metrics.spacing))
         let cellSize = CGSize(width: vertical ? thickness : metrics.cell, height: vertical ? metrics.cell : thickness)
-        let pointer = settings.magnification ? state.pointer : nil
-        // Lupe: höchstens so groß, dass das Icon noch in die Leiste passt
-        let maxScale = min(1.55, max(1, (thickness - 6) / metrics.icon))
+        let hovered = settings.magnification ? state.hoveredCell : nil
+        // Lupe: Stärke aus den Einstellungen, höchstens so groß, dass das Icon in die Leiste passt
+        let maxScale = min(CGFloat(settings.magnificationStrength), max(1, (thickness - 4) / metrics.icon))
         return stack {
             // Favoriten (max. 10)
             ForEach(store.config.favorites) { item in
                 FavoriteCell(item: item, iconSize: metrics.icon, cellSize: cellSize,
                              store: store, actions: actions)
-                    .modifier(Magnify(pointer: pointer, vertical: vertical, maxScale: maxScale))
+                    .modifier(HoverScale(active: hovered == "fav:\(item.id)", scale: maxScale))
             }
             if showFavoriteSlot {
                 AddSlotCell(containerID: LinkGroup.favoritesID,
@@ -231,7 +204,7 @@ struct SidebarView: View {
                 GroupCell(group: group, isActive: state.flyoutGroupID == group.id,
                           iconSize: metrics.icon, cellSize: cellSize, showLabel: metrics.showLabels,
                           store: store, actions: actions)
-                    .modifier(Magnify(pointer: pointer, vertical: vertical, maxScale: maxScale))
+                    .modifier(HoverScale(active: hovered == "group:\(group.id)", scale: maxScale))
             }
             if store.config.groups.isEmpty {
                 BarButton(symbol: "folder.badge.plus", size: metrics.icon * 0.6, tint: palette.secondary,

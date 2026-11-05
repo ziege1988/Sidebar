@@ -14,8 +14,8 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
 - **Ordner-Fenster beim Hover:** Fährst du über einen Ordner, öffnet sich
   daneben ein Fenster mit allen Links, immer vom Rand weg (links → nach
   rechts, rechts → nach links, oben → nach unten, unten → nach oben).
-- **Lupen-Effekt wie im Dock:** Das Icon unter der Maus wächst, die Nachbarn
-  etwas weniger. Abschaltbar in den Einstellungen.
+- **Lupen-Effekt:** Das Element unter der Maus (App, Ordner, Link, Datei) wird
+  vergrößert. Stärke in den Einstellungen einstellbar.
 - **Icons passen sich an:** Je mehr in der Leiste ist, desto kleiner werden
   die Icons. Erst wenn sie zu klein würden, lässt sich die Leiste scrollen.
 - **Drag & Drop:**

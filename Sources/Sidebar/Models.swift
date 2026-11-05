@@ -175,6 +175,8 @@ struct SidebarSettings: Codable, Equatable {
     var appearance: AppearanceMode = .system
     /// Lupen-Effekt: Icons unter der Maus vergrößern (wie im Dock)
     var magnification: Bool = true
+    /// Stärke der Lupe (1,1 = dezent … 1,8 = stark)
+    var magnificationStrength: Double = 1.45
 }
 
 extension SidebarSettings {
@@ -195,6 +197,7 @@ extension SidebarSettings {
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? alwaysOnTop
         appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? appearance
         magnification = try c.decodeIfPresent(Bool.self, forKey: .magnification) ?? magnification
+        magnificationStrength = try c.decodeIfPresent(Double.self, forKey: .magnificationStrength) ?? magnificationStrength
     }
 }
 

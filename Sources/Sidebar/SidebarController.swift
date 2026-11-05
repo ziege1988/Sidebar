@@ -27,6 +27,7 @@ final class SidebarController {
     private let flyoutPanel: SidebarPanel
     private let labelPanel: SidebarPanel
     private let labelHost: NSHostingView<HoverLabel>
+    private let labelMeasure: NSHostingController<HoverLabel>
     private var labelItemID: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var pollTimer: Timer?
@@ -72,6 +73,7 @@ final class SidebarController {
         flyoutPanel = SidebarController.makePanel()
         labelPanel = SidebarController.makePanel()
         labelHost = NSHostingView(rootView: HoverLabel(text: ""))
+        labelMeasure = NSHostingController(rootView: HoverLabel(text: ""))
         labelPanel.ignoresMouseEvents = true
         labelHost.sizingOptions = []
         labelPanel.contentView = labelHost
@@ -177,7 +179,7 @@ final class SidebarController {
 
     private func tick() {
         guard isVisible, !isDragging else {
-            updatePointer(nil)
+            updateHovered(nil)
             updateLabel(nil)
             return
         }
@@ -233,17 +235,18 @@ final class SidebarController {
             candidateGroup = nil
         }
 
-        // Lupen-Effekt: Mausposition entlang der Leiste weitergeben
-        if inBar && barUsable {
-            let local = CGPoint(x: mouse.x - panel.frame.minX, y: panel.frame.maxY - mouse.y)
-            updatePointer(settings.edge.isVertical ? local.y : local.x)
-        } else {
-            updatePointer(nil)
-        }
-
         // Favorit unter der Maus: nur den Namen zeigen, kein Ordner-Fenster
         let hoveredFavorite = (inBar && barUsable) ? favoriteAt(mouse) : nil
         updateLabel(hoveredFavorite)
+
+        // Lupen-Effekt: genau das Element unter der Maus
+        if let favorite = hoveredFavorite {
+            updateHovered("fav:\(favorite)")
+        } else if let group = hoveredGroup {
+            updateHovered("group:\(group)")
+        } else {
+            updateHovered(nil)
+        }
         if hoveredFavorite != nil {
             if flyoutVisible { hideFlyout() }
             return
@@ -263,15 +266,8 @@ final class SidebarController {
         }
     }
 
-    private func updatePointer(_ value: CGFloat?) {
-        switch (state.pointer, value) {
-        case (nil, nil):
-            return
-        case let (old?, new?) where abs(old - new) < 0.5:
-            return
-        default:
-            state.pointer = value
-        }
+    private func updateHovered(_ value: String?) {
+        if state.hoveredCell != value { state.hoveredCell = value }
     }
 
     /// Favorit an einer Bildschirmposition.
@@ -293,7 +289,14 @@ final class SidebarController {
             return
         }
         labelHost.rootView = HoverLabel(text: item.displayName)
-        let size = labelHost.fittingSize
+        // Größe des Etiketts messen (die Anzeige selbst meldet keine Größe zurück)
+        labelMeasure.rootView = HoverLabel(text: item.displayName)
+        let measured = labelMeasure.sizeThatFits(in: CGSize(width: 600, height: 200))
+        let size = NSSize(width: ceil(measured.width), height: ceil(measured.height))
+        guard size.width > 0, size.height > 0 else {
+            labelPanel.orderOut(nil)
+            return
+        }
         let bar = panel.frame
         let anchor = NSRect(x: bar.minX + rect.minX, y: bar.maxY - rect.maxY, width: rect.width, height: rect.height)
         let gap: CGFloat = 4

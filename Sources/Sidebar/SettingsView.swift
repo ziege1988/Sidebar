@@ -94,7 +94,15 @@ struct GeneralSettingsView: View {
                 LabeledContent("Verzögerung beim Öffnen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
                     Slider(value: $store.config.settings.hoverDelay, in: 0...0.8, step: 0.05)
                 }
-                Toggle("Lupen-Effekt beim Darüberfahren (wie im Dock)", isOn: $store.config.settings.magnification)
+                Toggle("Lupen-Effekt beim Darüberfahren", isOn: $store.config.settings.magnification)
+                if store.config.settings.magnification {
+                    LabeledContent("Stärke der Lupe: \(Int((store.config.settings.magnificationStrength - 1) * 100 + 0.5)) %") {
+                        Slider(value: $store.config.settings.magnificationStrength, in: 1.1...1.8, step: 0.05)
+                    }
+                    Text("Vergrößert nur das Element unter der Maus. Die maximale Größe ist durch die Breite der Leiste begrenzt – für mehr Wirkung die Leiste etwas breiter stellen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Toggle("Automatisch ausblenden", isOn: $store.config.settings.autoHide)
                 if store.config.settings.autoHide {
                     Text("Die Sidebar wird zu einem schmalen farbigen Streifen. Zum Einblenden die Maus an den Bildschirmrand schieben und kurz stehen lassen. Abschalten geht auch über das Menüleisten-Symbol.")
