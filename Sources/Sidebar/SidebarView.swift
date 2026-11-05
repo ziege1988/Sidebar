@@ -445,7 +445,7 @@ struct FlyoutRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(item.url?.absoluteString ?? item.urlString)
+        .help(item.location)
         .contextMenu {
             ItemContextMenu(item: item, isFavorite: false, store: store, actions: actions)
         }
@@ -505,9 +505,15 @@ struct ItemContextMenu: View {
 
     var body: some View {
         Button("Öffnen") { actions.open(item, nil) }
-        Menu("Öffnen als") {
-            ForEach(OpenMode.allCases) { mode in
-                Button(mode.title) { actions.open(item, mode) }
+        if item.isLocal {
+            Button("Im Finder zeigen") {
+                if let url = item.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+        } else {
+            Menu("Öffnen als") {
+                ForEach(OpenMode.allCases) { mode in
+                    Button(mode.title) { actions.open(item, mode) }
+                }
             }
         }
         Divider()
@@ -521,9 +527,10 @@ struct ItemContextMenu: View {
         if item.customIcon != nil {
             Button("Eigenes Bild entfernen") { store.removeCustomIcon(itemID: item.id) }
         }
-        Button("Adresse kopieren") {
+        Button(item.isLocal ? "Pfad kopieren" : "Adresse kopieren") {
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(item.url?.absoluteString ?? item.urlString, forType: .string)
+            NSPasteboard.general.setString(item.isLocal ? item.location : (item.url?.absoluteString ?? item.urlString),
+                                           forType: .string)
         }
         Divider()
         Button("Bearbeiten …") { actions.editItem(item.id) }

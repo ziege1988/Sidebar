@@ -10,8 +10,10 @@ enum DropPayload {
     case internalGroup(UUID)
     /// Eine Webadresse (aus der Adressleiste, ein Link von einer Webseite, eine .webloc-Datei)
     case url(URL)
-    /// Eine Bilddatei (wird als eigenes Icon verwendet)
+    /// Eine Bilddatei (auf einen Link gezogen: eigenes Icon, sonst als Datei abgelegt)
     case image(URL)
+    /// Ein Programm, eine Datei oder ein Ordner vom Mac (z. B. aus Finder oder Dock)
+    case file(URL)
 }
 
 enum DropSupport {
@@ -28,7 +30,9 @@ enum DropSupport {
     /// Für Links aus der Sidebar: intern als ID, nach außen (Browser) als Webadresse.
     static func provider(for item: LinkItem) -> NSItemProvider {
         let provider = NSItemProvider(object: (internalPrefix + item.id.uuidString) as NSString)
-        if let url = item.url {
+        // Webadresse auch nach außen anbieten (z. B. in den Browser ziehen).
+        // Lokale Programme bewusst nicht – sonst würde der Finder sie kopieren.
+        if let url = item.url, !url.isFileURL {
             provider.registerObject(url as NSURL, visibility: .all)
         }
         provider.suggestedName = item.displayName
@@ -117,7 +121,8 @@ enum DropSupport {
         if let type = UTType(filenameExtension: ext), type.conforms(to: .image) {
             return .image(url)
         }
-        return nil
+        // Programme (.app), Dateien und Ordner
+        return .file(url)
     }
 }
 

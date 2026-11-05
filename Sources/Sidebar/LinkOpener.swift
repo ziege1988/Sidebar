@@ -7,6 +7,20 @@ enum LinkOpener {
             NSSound.beep()
             return
         }
+        // Programm, Datei oder Ordner auf dem Mac → mit macOS öffnen
+        if url.isFileURL {
+            if FileManager.default.fileExists(atPath: url.path) {
+                NSWorkspace.shared.open(url)
+            } else {
+                let alert = NSAlert()
+                alert.messageText = "„\(item.displayName)“ wurde nicht gefunden"
+                alert.informativeText = "Das Programm bzw. die Datei liegt nicht mehr unter \(url.path). Wurde sie verschoben oder gelöscht?"
+                alert.addButton(withTitle: "OK")
+                NSApp.activate()
+                alert.runModal()
+            }
+            return
+        }
         switch mode ?? item.openMode ?? settings.defaultOpenMode {
         case .defaultBrowser:
             NSWorkspace.shared.open(url)

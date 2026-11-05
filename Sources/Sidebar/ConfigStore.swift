@@ -239,10 +239,27 @@ final class ConfigStore: ObservableObject {
             if let current = insertAt { insertAt = current + 1 }
         }
 
+        /// Neuen Link einfügen (Favoriten: höchstens 6).
+        func insertNew(_ item: LinkItem) -> Bool {
+            if containerID == LinkGroup.favoritesID && cfg.favorites.count >= SidebarConfig.maxFavorites {
+                NSSound.beep()
+                return false
+            }
+            insert(item)
+            return true
+        }
+
         for payload in payloads {
             switch payload {
             case .image(let url):
-                if let target = targetItem { pendingIcon = (target, url) }
+                if let target = targetItem {
+                    pendingIcon = (target, url) // Bild auf einen Link → eigenes Icon
+                } else {
+                    changed = insertNew(LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString)) || changed
+                }
+
+            case .file(let url):
+                changed = insertNew(LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString)) || changed
 
             case .internalGroup:
                 continue // Ordner werden über moveGroup sortiert
@@ -293,12 +310,7 @@ final class ConfigStore: ObservableObject {
                 changed = true
 
             case .url(let url):
-                if containerID == LinkGroup.favoritesID && cfg.favorites.count >= SidebarConfig.maxFavorites {
-                    NSSound.beep()
-                    continue
-                }
-                insert(LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString))
-                changed = true
+                changed = insertNew(LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString)) || changed
             }
         }
 

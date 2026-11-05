@@ -83,17 +83,34 @@ struct LinkItem: Codable, Identifiable, Hashable {
     var url: URL? { LinkItem.normalizedURL(from: urlString) }
     var host: String? { url?.host }
 
+    /// Programm, Datei oder Ordner auf dem Mac (statt Webadresse)
+    var isLocal: Bool { url?.isFileURL == true }
+
+    /// Webadresse bzw. Pfad auf dem Mac – zum Anzeigen
+    var location: String {
+        if isLocal, let url { return url.path }
+        return urlString
+    }
+
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
+        if let url, url.isFileURL { return LinkItem.suggestedName(for: url) }
         if let host { return LinkItem.prettyHost(host) }
         return urlString
     }
 
     /// Ergänzt fehlendes `https://` und prüft, ob ein Host vorhanden ist.
+    /// Pfade auf dem Mac (`file://…`, `/Applications/…`, `~/…`) werden ebenfalls akzeptiert.
     static func normalizedURL(from string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        if trimmed.lowercased().hasPrefix("file://") {
+            return URL(string: trimmed)
+        }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") {
+            return URL(fileURLWithPath: (trimmed as NSString).expandingTildeInPath)
+        }
         let candidate = trimmed.contains("://") ? trimmed : "https://" + trimmed
         guard let url = URL(string: candidate), let host = url.host, !host.isEmpty else { return nil }
         return url
@@ -104,6 +121,10 @@ struct LinkItem: Codable, Identifiable, Hashable {
     }
 
     static func suggestedName(for url: URL) -> String {
+        if url.isFileURL {
+            let name = FileManager.default.displayName(atPath: url.path)
+            return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+        }
         if let host = url.host { return prettyHost(host) }
         return url.absoluteString
     }

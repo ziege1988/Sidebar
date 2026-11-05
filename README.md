@@ -21,6 +21,9 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
     die Favoriten ziehen
   - Link aus einem Ordner auf die Favoritenleiste ziehen
   - Link in einen anderen Ordner ziehen
+  - **Programme, Dateien und Ordner vom Mac** aus Finder, Dock oder vom
+    Schreibtisch hineinziehen. Sie öffnen sich mit macOS und zeigen ihr
+    Original-Icon.
   - Bilddatei auf ein Icon ziehen = eigenes Icon
   - **Reihenfolge per Ziehen:** Favoriten untereinander, Links im
     Ordner-Fenster und Ordner in der Leiste

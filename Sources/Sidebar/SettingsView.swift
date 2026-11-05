@@ -404,7 +404,7 @@ struct GroupDetail: View {
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
 
-            LinkDropZone(text: "Links hierher ziehen – aus dem Browser oder aus einem anderen Ordner") { payloads in
+            LinkDropZone(text: "Hierher ziehen: Webadressen aus dem Browser, Programme aus Finder/Dock oder Links aus einem anderen Ordner") { payloads in
                 store.handleDrop(payloads, into: groupID)
             }
 
@@ -516,7 +516,7 @@ struct ItemRow: View {
             FaviconView(item: item, size: 20)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.displayName)
-                Text(item.urlString)
+                Text(item.location)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -595,13 +595,19 @@ struct ItemEditorSheet: View {
                             Button("Standard-Icon") { item.customIcon = nil }
                         }
                     }
-                    Text("Oder ein Bild auf das Icon ziehen. Ohne eigenes Bild wird das Icon der Webseite verwendet.")
+                    Text("Oder ein Bild auf das Icon ziehen. Ohne eigenes Bild wird das Icon der Webseite bzw. des Programms verwendet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Form {
-                TextField("Adresse (URL)", text: $item.urlString, prompt: Text("z. B. ads.google.com"))
+                LabeledContent("Adresse oder Programm") {
+                    HStack {
+                        TextField("", text: $item.urlString, prompt: Text("z. B. ads.google.com"))
+                            .labelsHidden()
+                        Button("Programm/Datei …") { chooseLocalTarget() }
+                    }
+                }
                 TextField("Name", text: $item.name, prompt: Text("leer = Domain verwenden"))
                 Picker("Ablegen in", selection: $groupID) {
                     Label("Favoriten", systemImage: "star.fill").tag(LinkGroup.favoritesID)
@@ -609,10 +615,12 @@ struct ItemEditorSheet: View {
                         Label(group.name, systemImage: group.symbol).tag(group.id)
                     }
                 }
-                Picker("Öffnen als", selection: $item.openMode) {
-                    Text("Standard (aus Einstellungen)").tag(OpenMode?.none)
-                    ForEach(OpenMode.allCases) { mode in
-                        Text(mode.title).tag(OpenMode?.some(mode))
+                if !item.isLocal {
+                    Picker("Öffnen als", selection: $item.openMode) {
+                        Text("Standard (aus Einstellungen)").tag(OpenMode?.none)
+                        ForEach(OpenMode.allCases) { mode in
+                            Text(mode.title).tag(OpenMode?.some(mode))
+                        }
                     }
                 }
             }
@@ -640,6 +648,22 @@ struct ItemEditorSheet: View {
         }
         .padding()
         .frame(width: 480)
+    }
+
+    /// Programm, Datei oder Ordner auf dem Mac auswählen.
+    private func chooseLocalTarget() {
+        let panel = NSOpenPanel()
+        panel.title = "Programm, Datei oder Ordner wählen"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        item.urlString = url.absoluteString
+        if item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            item.name = LinkItem.suggestedName(for: url)
+        }
+        item.openMode = nil
     }
 
     private func chooseImage() {

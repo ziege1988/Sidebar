@@ -118,6 +118,12 @@ struct FaviconView: View {
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
+            } else if let url = item.url, url.isFileURL {
+                // Programm/Datei vom Mac: Original-Icon von macOS
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
             } else if let host = item.host, let image = favicons.image(for: host) {
                 RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
                     .fill(Color.white.opacity(scheme == .dark ? 0.9 : 0.75))
