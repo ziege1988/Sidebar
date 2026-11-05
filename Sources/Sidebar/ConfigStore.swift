@@ -371,6 +371,43 @@ final class ConfigStore: ObservableObject {
         array.insert(element, at: min(max(destination, 0), array.count))
     }
 
+    // MARK: - Sichern & Übertragen (z. B. auf einen anderen Benutzer oder Mac)
+
+    /// Inhalt einer Sicherungsdatei: Einrichtung plus eigene Icons.
+    struct Backup: Codable {
+        var format = 1
+        var created = Date()
+        var config: SidebarConfig
+        /// Dateiname → PNG-Daten der eigenen Icons
+        var icons: [String: Data]
+    }
+
+    /// Einrichtung exportieren (Ordner, Links, Favoriten, Notizen, Einstellungen, eigene Icons).
+    /// Das Ablagefach wird nicht mitgenommen – es verweist auf Dateien dieses Benutzers.
+    func exportBackup(to url: URL) throws {
+        var cfg = config
+        cfg.shelf = []
+        let files = Set((cfg.favorites + cfg.groups.flatMap(\.items)).compactMap(\.customIcon))
+        var icons: [String: Data] = [:]
+        for file in files {
+            if let data = IconStore.shared.data(named: file) { icons[file] = data }
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(Backup(config: cfg, icons: icons)).write(to: url, options: .atomic)
+    }
+
+    /// Einrichtung aus einer Sicherungsdatei übernehmen (ersetzt die aktuelle Einrichtung).
+    func importBackup(from url: URL) throws {
+        let backup = try JSONDecoder().decode(Backup.self, from: Data(contentsOf: url))
+        for (file, data) in backup.icons {
+            IconStore.shared.write(data, named: file)
+        }
+        var imported = backup.config
+        imported.shelf = config.shelf // eigenes Ablagefach behalten
+        config = imported
+    }
+
     // MARK: - Schnellnotizen
 
     @discardableResult

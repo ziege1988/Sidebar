@@ -5,9 +5,9 @@ import SwiftUI
 struct EdgeTab: Shape {
     let edge: ScreenEdge
     /// Länge der nach außen geschwungenen Ausläufe am Bildschirmrand
-    var flare: CGFloat = 9
-    /// Rundung der Ecken zur Bildschirmmitte
-    var radius: CGFloat = 13
+    var flare: CGFloat = 16
+    /// Rundung zur Bildschirmmitte (nil = Halbkreis, so rund wie möglich)
+    var radius: CGFloat? = nil
 
     func path(in rect: CGRect) -> Path {
         let along = edge.isVertical ? rect.height : rect.width
@@ -25,7 +25,7 @@ struct EdgeTab: Shape {
         let f = min(flare, along / 4)
         let top = f
         let bottom = along - f
-        let r = min(radius, (bottom - top) / 2, cross / 2)
+        let r = min(radius ?? (bottom - top) / 2, (bottom - top) / 2, cross / 2)
 
         var path = Path()
         path.move(to: map(0, 0))
@@ -54,9 +54,9 @@ struct HoverBubble: View {
     var body: some View {
         GeometryReader { proxy in
             if let cell {
-                let flare: CGFloat = 9
-                let along = (edge.isVertical ? cell.height : cell.width) - 4 + 2 * flare
-                let cross = barThickness - 5
+                let flare: CGFloat = 16
+                let along = (edge.isVertical ? cell.height : cell.width) + 2 * flare
+                let cross = barThickness - 4
                 let size = edge.isVertical ? CGSize(width: cross, height: along) : CGSize(width: along, height: cross)
                 let center: CGPoint = {
                     switch edge {

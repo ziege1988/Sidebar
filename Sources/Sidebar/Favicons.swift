@@ -95,6 +95,17 @@ final class IconStore {
         }
     }
 
+    /// Rohdaten eines eigenen Icons (für Export).
+    func data(named file: String) -> Data? {
+        try? Data(contentsOf: directory.appendingPathComponent(file))
+    }
+
+    /// Eigenes Icon mit festem Namen ablegen (für Import).
+    func write(_ data: Data, named file: String) {
+        try? data.write(to: directory.appendingPathComponent(file), options: .atomic)
+        cache[file] = nil
+    }
+
     func delete(_ file: String?) {
         guard let file else { return }
         cache[file] = nil

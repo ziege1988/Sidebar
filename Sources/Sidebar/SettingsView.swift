@@ -188,6 +188,7 @@ struct GeneralSettingsView: View {
     let category: SettingsCategory
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var backupMessage: String?
 
     var body: some View {
         Form {
@@ -388,8 +389,60 @@ struct GeneralSettingsView: View {
                     }
                 }
             }
+
+            if category == .system {
+                Section("Einrichtung übertragen") {
+                    LabeledContent("Sicherung") {
+                        HStack {
+                            Button("Exportieren …") { exportSetup() }
+                            Button("Importieren …") { importSetup() }
+                        }
+                    }
+                    if let backupMessage {
+                        Text(backupMessage).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Für einen zweiten Benutzer oder Mac: exportieren, die Datei z. B. in den Ordner „Für alle Benutzer“ (/Users/Shared) legen und beim anderen Benutzer importieren. Übertragen werden Ordner, Links, Favoriten, Notizen, Einstellungen und eigene Icons – nicht das Ablagefach und keine Logins.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func exportSetup() {
+        let panel = NSSavePanel()
+        panel.title = "Einrichtung exportieren"
+        panel.nameFieldStringValue = "Sidebar-Einrichtung.sidebarbackup"
+        panel.directoryURL = URL(fileURLWithPath: "/Users/Shared")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try store.exportBackup(to: url)
+            backupMessage = "Exportiert: \(url.lastPathComponent)"
+        } catch {
+            backupMessage = "Export fehlgeschlagen: \(error.localizedDescription)"
+        }
+    }
+
+    private func importSetup() {
+        let panel = NSOpenPanel()
+        panel.title = "Einrichtung importieren"
+        panel.directoryURL = URL(fileURLWithPath: "/Users/Shared")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let alert = NSAlert()
+        alert.messageText = "Einrichtung übernehmen?"
+        alert.informativeText = "Ordner, Links, Favoriten, Notizen und Einstellungen werden durch die Sicherung ersetzt."
+        alert.addButton(withTitle: "Übernehmen")
+        alert.addButton(withTitle: "Abbrechen")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try store.importBackup(from: url)
+            backupMessage = "Importiert aus \(url.lastPathComponent)"
+        } catch {
+            backupMessage = "Import fehlgeschlagen – ist das eine Sidebar-Sicherung? (\(error.localizedDescription))"
+        }
     }
 
     private var updateStatusText: String {

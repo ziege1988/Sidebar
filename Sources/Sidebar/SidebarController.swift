@@ -92,7 +92,8 @@ final class SidebarController {
         bar.sizingOptions = []
         panel.contentView = bar
 
-        let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, actions: actions))
+        let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, geometry: geometry,
+                                                                actions: actions))
         flyout.sizingOptions = []
         flyoutPanel.contentView = flyout
 
@@ -218,6 +219,15 @@ final class SidebarController {
         // Korridor zwischen Ordner-Symbol und Ordner-Fenster (diagonale Mausbewegung)
         let corridor = anchorRect.union(flyoutPanel.frame).insetBy(dx: -4, dy: -4)
         let inFlyout = flyoutVisible && (flyoutZone.contains(mouse) || corridor.contains(mouse))
+
+        // Link im Ordner-Fenster unter der Maus (Lupe + Hervorhebung)
+        var row: UUID?
+        if flyoutVisible && flyoutPanel.frame.contains(mouse) {
+            let frame = flyoutPanel.frame
+            let local = CGPoint(x: mouse.x - frame.minX, y: frame.maxY - mouse.y)
+            row = geometry.flyoutRowFrames.first(where: { $0.value.contains(local) })?.key
+        }
+        if state.hoveredRow != row { state.hoveredRow = row }
 
         // 1. Automatisch ausblenden: Leiste ein-/ausfahren
         if settings.autoHide {

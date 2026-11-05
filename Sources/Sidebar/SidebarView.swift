@@ -13,6 +13,8 @@ final class SidebarState: ObservableObject {
     @Published var hoveredCell: String?
     /// Rahmen des Elements unter der Maus (für die Blase vom Bildschirmrand)
     @Published var hoverRect: CGRect?
+    /// Link im Ordner-Fenster unter der Maus
+    @Published var hoveredRow: UUID?
     /// Wo der Verlauf am unteren Rand der Uhr steht (0 … 1), damit Uhr und Leiste nahtlos ineinander übergehen
     @Published var clockGradientEnd: Double = 0.2
 }
@@ -22,6 +24,15 @@ final class SidebarGeometry {
     var groupFrames: [UUID: CGRect] = [:]
     var favoriteFrames: [UUID: CGRect] = [:]
     var actionFrames: [String: CGRect] = [:]
+    /// Links im Ordner-Fenster (Koordinaten des Ordner-Fensters)
+    var flyoutRowFrames: [UUID: CGRect] = [:]
+}
+
+struct FlyoutRowFramesKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
 }
 
 struct FavoriteFramesKey: PreferenceKey {
@@ -651,6 +662,7 @@ struct AddSlotCell: View {
 struct FlyoutView: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var state: SidebarState
+    let geometry: SidebarGeometry
     let actions: SidebarActions
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorTheme) private var theme
@@ -701,7 +713,8 @@ struct FlyoutView: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: Self.rowSpacing) {
                             ForEach(group.items) { item in
-                                FlyoutRow(item: item, groupID: group.id, store: store, actions: actions)
+                                FlyoutRow(item: item, groupID: group.id, store: store, actions: actions,
+                                          isHovered: state.hoveredRow == item.id)
                             }
                             AddLinkRow(containerID: group.id, store: store, actions: actions)
                         }
@@ -715,6 +728,10 @@ struct FlyoutView: View {
         .overlay(GlassRim(shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
                           intensity: store.config.settings.glassIntensity))
         .environment(\.colorTheme, store.config.settings.colorTheme)
+        .coordinateSpace(name: "flyout")
+        .onPreferenceChange(FlyoutRowFramesKey.self) { frames in
+            geometry.flyoutRowFrames = frames
+        }
     }
 }
 
@@ -723,8 +740,8 @@ struct FlyoutRow: View {
     let groupID: UUID
     let store: ConfigStore
     let actions: SidebarActions
+    var isHovered = false
     @ObservedObject private var badges = BadgeStore.shared
-    @State private var hovering = false
     @State private var targeted = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.colorTheme) private var theme
@@ -734,10 +751,13 @@ struct FlyoutRow: View {
         Button {
             actions.open(item, nil)
         } label: {
+            let active = isHovered || targeted
             HStack(spacing: 10) {
                 FaviconView(item: item, size: 24)
+                    // leichter Lupen-Effekt auf dem Icon
+                    .scaleEffect(active ? 1.18 : 1)
                 Text(item.displayName)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: active ? .medium : .regular))
                     .foregroundStyle(palette.text)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -747,13 +767,26 @@ struct FlyoutRow: View {
             .padding(.horizontal, 8)
             .frame(height: FlyoutView.rowHeight)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(hovering || targeted ? palette.hover : Color.clear)
+                // gleiche weiße, leicht durchscheinende Hervorhebung wie die Blase in der Leiste
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(active ? (scheme == .dark ? 0.16 : 0.42) : 0))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(active ? (scheme == .dark ? 0.22 : 0.6) : 0), lineWidth: 0.8)
+                    )
+                    .shadow(color: .black.opacity(active ? 0.06 : 0), radius: 3, y: 1)
             )
+            .scaleEffect(active ? 1.03 : 1, anchor: .leading)
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: active)
             .contentShape(Rectangle())
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: FlyoutRowFramesKey.self,
+                                           value: [item.id: proxy.frame(in: .named("flyout"))])
+                }
+            )
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
         .help(item.location)
         .contextMenu {
             ItemContextMenu(item: item, isFavorite: false, store: store, actions: actions)
