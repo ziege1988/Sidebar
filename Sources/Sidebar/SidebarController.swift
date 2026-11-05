@@ -37,6 +37,10 @@ final class SidebarController {
     private var barEnteredAt: Date?
     private var anchorRect: NSRect = .zero
     private var isDragging = false
+    private var lastAutoHide: Bool?
+
+    /// Breite des sichtbaren Streifens bei „Automatisch ausblenden“
+    private static let hiddenThickness: CGFloat = 6
 
     /// Halbtransparente Vorschau, wo die Sidebar beim Loslassen andockt.
     private lazy var previewPanel: NSPanel = {
@@ -171,6 +175,8 @@ final class SidebarController {
         let tracking = RunLoop.current.currentMode == .eventTracking
 
         let inBar = panel.frame.contains(mouse)
+        // Ausgeblendet: großzügiger Auslösebereich bis an den echten Bildschirmrand
+        let inRevealZone = settings.autoHide && !state.isRevealed && revealZone(for: settings).contains(mouse)
         let flyoutVisible = flyoutPanel.isVisible
         let flyoutZone = flyoutPanel.frame.insetBy(dx: -8, dy: -8)
         // Korridor zwischen Ordner-Symbol und Ordner-Fenster (diagonale Mausbewegung)
@@ -179,7 +185,7 @@ final class SidebarController {
 
         // 1. Automatisch ausblenden: Leiste ein-/ausfahren
         if settings.autoHide {
-            if inBar || inFlyout || tracking {
+            if inBar || inRevealZone || inFlyout || tracking {
                 barLeftAt = nil
                 if !state.isRevealed {
                     if barEnteredAt == nil { barEnteredAt = now }
@@ -336,7 +342,7 @@ final class SidebarController {
         guard let screen = targetScreen(for: settings) else { return panel.frame }
         let area = screen.visibleFrame // ohne Menüleiste und Dock
         let hidden = settings.autoHide && !state.isRevealed && !forceVisible
-        let thickness = CGFloat(hidden ? 4 : settings.collapsedThickness)
+        let thickness = hidden ? Self.hiddenThickness : CGFloat(settings.collapsedThickness)
 
         switch settings.edge {
         case .left:
@@ -350,8 +356,44 @@ final class SidebarController {
         }
     }
 
+    /// Bereich, in dem die Maus die ausgeblendete Leiste hervorholt.
+    /// Reicht bis an den echten Bildschirmrand (auch über die Menüleiste) und etwas nach innen –
+    /// außer dort, wo das Dock sitzt, damit es nicht ständig auslöst.
+    private func revealZone(for settings: SidebarSettings) -> NSRect {
+        guard let screen = targetScreen(for: settings) else { return panel.frame }
+        let strip = frame(for: settings)
+        let full = screen.frame
+        let visible = screen.visibleFrame
+        let inward: CGFloat = 10
+        let dockTolerance: CGFloat = 10
+
+        switch settings.edge {
+        case .left:
+            let outer = visible.minX - full.minX <= dockTolerance ? full.minX : strip.minX
+            return NSRect(x: outer, y: strip.minY, width: strip.maxX + inward - outer, height: strip.height)
+        case .right:
+            let outer = full.maxX - visible.maxX <= dockTolerance ? full.maxX : strip.maxX
+            let inner = strip.minX - inward
+            return NSRect(x: inner, y: strip.minY, width: outer - inner, height: strip.height)
+        case .top:
+            // Oben liegt nur die Menüleiste – bis zum oberen Rand auslösen
+            let inner = strip.minY - inward
+            return NSRect(x: strip.minX, y: inner, width: strip.width, height: full.maxY - inner)
+        case .bottom:
+            let outer = visible.minY - full.minY <= dockTolerance ? full.minY : strip.minY
+            return NSRect(x: strip.minX, y: outer, width: strip.width, height: strip.maxY + inward - outer)
+        }
+    }
+
     private func applySettings(_ settings: SidebarSettings) {
         NSApp.appearance = settings.appearance.nsAppearance
+        // Gerade eingeschaltet: Leiste kurz zeigen und dann sichtbar einfahren,
+        // damit klar ist, was passiert.
+        if settings.autoHide && lastAutoHide == false {
+            state.isRevealed = true
+            barLeftAt = Date().addingTimeInterval(1.2)
+        }
+        lastAutoHide = settings.autoHide
         panel.level = settings.alwaysOnTop ? .floating : .normal
         flyoutPanel.level = settings.alwaysOnTop
             ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)

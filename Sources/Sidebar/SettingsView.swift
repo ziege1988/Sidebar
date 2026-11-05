@@ -94,8 +94,12 @@ struct GeneralSettingsView: View {
                 LabeledContent("Verzögerung beim Öffnen: \(String(format: "%.2f", store.config.settings.hoverDelay)) s") {
                     Slider(value: $store.config.settings.hoverDelay, in: 0...0.8, step: 0.05)
                 }
-                Toggle("Automatisch ausblenden (eingeklappt nur schmaler Rand sichtbar)",
-                       isOn: $store.config.settings.autoHide)
+                Toggle("Automatisch ausblenden", isOn: $store.config.settings.autoHide)
+                if store.config.settings.autoHide {
+                    Text("Die Sidebar wird zu einem schmalen farbigen Streifen. Zum Einblenden die Maus an den Bildschirmrand schieben und kurz stehen lassen. Abschalten geht auch über das Menüleisten-Symbol.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Toggle("Immer im Vordergrund", isOn: $store.config.settings.alwaysOnTop)
                 Text(store.config.settings.alwaysOnTop
                      ? "Die Sidebar liegt immer über allen Fenstern."

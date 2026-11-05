@@ -165,6 +165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         onTop.state = settings.alwaysOnTop ? .on : .off
         menu.addItem(onTop)
 
+        let autoHide = menuItem("Automatisch ausblenden") { [weak self] in
+            self?.store.config.settings.autoHide.toggle()
+        }
+        autoHide.state = settings.autoHide ? .on : .off
+        menu.addItem(autoHide)
+
         let appearanceMenu = NSMenu()
         for mode in AppearanceMode.allCases {
             let item = menuItem(mode.title) { [weak self] in
