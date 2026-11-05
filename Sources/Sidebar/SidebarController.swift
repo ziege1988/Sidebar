@@ -5,7 +5,9 @@ import SwiftUI
 /// Rahmenloses, schwebendes Panel, das die App nicht aktiviert
 /// (der Fokus bleibt in der App, mit der du gerade arbeitest).
 final class SidebarPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    /// Nur die Leiste selbst (wegen der Eingabefelder) – und nur, wenn ein Feld angeklickt wird
+    var allowsKey = false
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 }
 
@@ -73,6 +75,8 @@ final class SidebarController {
     init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
         self.store = store
         panel = SidebarController.makePanel()
+        panel.allowsKey = true
+        panel.becomesKeyOnlyIfNeeded = true
         flyoutPanel = SidebarController.makePanel()
         labelPanel = SidebarController.makePanel()
         labelHost = NSHostingView(rootView: HoverLabel(text: ""))
@@ -210,7 +214,8 @@ final class SidebarController {
         // 1. Automatisch ausblenden: Leiste ein-/ausfahren
         if settings.autoHide {
             if inBar || inClock || inRevealZone || inFlyout || tracking || input.isVisible
-                || QuickSearchController.shared.isVisible {
+                || QuickSearchController.shared.isVisible || panel.isKeyWindow
+                || NotesController.shared.isVisible {
                 barLeftAt = nil
                 if !state.isRevealed {
                     if barEnteredAt == nil { barEnteredAt = now }
@@ -324,6 +329,11 @@ final class SidebarController {
         guard let rect = geometry.actionFrames[action.rawValue] else { return nil }
         let frame = panel.frame
         return NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    /// Bildschirmbereich eines Knopfs (für Fenster, die daneben aufgehen).
+    func anchor(for action: ActionButton) -> NSRect {
+        screenRect(forAction: action) ?? barFrame
     }
 
     /// Eingabefeld für Google öffnen (z. B. aus dem Menüleisten-Symbol).

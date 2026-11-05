@@ -4,13 +4,14 @@ import SwiftUI
 
 /// Die beiden Knöpfe oben in der Leiste.
 enum ActionButton: String, CaseIterable, Identifiable {
-    case ai, google
+    case ai, google, note
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .ai: return "KI"
         case .google: return "Google"
+        case .note: return "Notiz"
         }
     }
 
@@ -18,6 +19,7 @@ enum ActionButton: String, CaseIterable, Identifiable {
         switch self {
         case .ai: return "sparkles"
         case .google: return "magnifyingglass"
+        case .note: return "note.text"
         }
     }
 
@@ -25,7 +27,13 @@ enum ActionButton: String, CaseIterable, Identifiable {
         switch self {
         case .ai: return "KI fragen …"
         case .google: return "Google Suche"
+        case .note: return "Schnellnotiz …"
         }
+    }
+
+    /// Knöpfe oben in der Leiste. Quer ist Google als festes Eingabefeld eingebaut.
+    static func topButtons(vertical: Bool) -> [ActionButton] {
+        vertical ? [.ai, .google] : [.ai]
     }
 }
 

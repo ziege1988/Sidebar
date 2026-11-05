@@ -371,6 +371,27 @@ final class ConfigStore: ObservableObject {
         array.insert(element, at: min(max(destination, 0), array.count))
     }
 
+    // MARK: - Schnellnotizen
+
+    @discardableResult
+    func addNote(_ text: String) -> QuickNote {
+        let note = QuickNote(text: text)
+        config.notes.insert(note, at: 0)
+        return note
+    }
+
+    func updateNote(id: UUID, text: String) {
+        guard let index = config.notes.firstIndex(where: { $0.id == id }) else { return }
+        var notes = config.notes
+        notes[index].text = text
+        notes[index].date = Date()
+        config.notes = notes
+    }
+
+    func deleteNote(id: UUID) {
+        config.notes.removeAll { $0.id == id }
+    }
+
     // MARK: - Ablagefach
 
     /// Dateien im Ablagefach, die es noch gibt.

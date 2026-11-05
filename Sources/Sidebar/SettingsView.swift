@@ -126,6 +126,7 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Ablagefach in der Leiste", isOn: $store.config.settings.showShelf)
+                Toggle("Schnellnotiz in der Leiste", isOn: $store.config.settings.showNotes)
             }
 
             Section("Größe & Verhalten") {

@@ -79,8 +79,10 @@ struct SidebarActions {
     var toggleFlyout: @MainActor (UUID) -> Void
     var installUpdate: @MainActor () -> Void
     var openSearch: @MainActor () -> Void
-    /// Klick auf den KI- bzw. Google-Knopf
+    /// Klick auf den KI-, Google- bzw. Notiz-Knopf
     var triggerAction: @MainActor (ActionButton) -> Void
+    /// Eingabe aus einem festen Feld in der Leiste (Google-Suche, Schnellnotiz)
+    var submitAction: @MainActor (ActionButton, String) -> Void
     var drag: @MainActor (DragPhase, NSPoint) -> Void
 }
 
@@ -181,15 +183,48 @@ struct SidebarView: View {
     private func barContent(_ palette: Palette) -> some View {
         let outer = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
         return outer {
+            // Quer: Google-Suche als festes, kurzes Eingabefeld
+            if !vertical && settings.showSearch {
+                InlineField(kind: .google, width: 200, palette: palette) { text in
+                    actions.submitAction(.google, text)
+                }
+                .padding(.horizontal, 8)
+            }
+
             GeometryReader { proxy in
                 let length = vertical ? proxy.size.height : proxy.size.width
-                let metrics = BarMetrics(available: length, cells: cellCount, thickness: thickness)
-                ScrollView(vertical ? .vertical : .horizontal, showsIndicators: false) {
-                    cells(palette, metrics: metrics)
-                        .padding(vertical ? .vertical : .horizontal, BarMetrics.padding)
-                        .frame(minWidth: vertical ? proxy.size.width : nil,
-                               minHeight: vertical ? nil : proxy.size.height)
+                // Quer: Notizfeld nur, wenn alle Ordner in voller Größe Platz haben (Ordner haben Vorrang)
+                let noteField: CGFloat = 220
+                let fitsNoteField = !vertical && settings.showNotes
+                    && length - BarMetrics.naturalLength(cells: cellCount, thickness: thickness) >= noteField + 16
+                let noteIconOnBar = !vertical && settings.showNotes && !fitsNoteField
+                let available = fitsNoteField ? length - noteField - 16 : (noteIconOnBar ? length - 64 : length)
+                let metrics = BarMetrics(available: available, cells: cellCount, thickness: thickness)
+                let row = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+                row {
+                    ScrollView(vertical ? .vertical : .horizontal, showsIndicators: false) {
+                        cells(palette, metrics: metrics)
+                            .padding(vertical ? .vertical : .horizontal, BarMetrics.padding)
+                            .frame(minWidth: vertical ? proxy.size.width : nil,
+                                   minHeight: vertical ? nil : proxy.size.height)
+                    }
+                    .frame(width: vertical ? nil : available, height: vertical ? available : nil)
+                    if fitsNoteField {
+                        InlineField(kind: .note, width: noteField, palette: palette,
+                                    onSubmit: { text in actions.submitAction(.note, text) },
+                                    onOpen: { actions.triggerAction(.note) })
+                            .padding(.horizontal, 8)
+                            .frame(maxHeight: .infinity)
+                    } else if noteIconOnBar {
+                        noteCell
+                    }
                 }
+            }
+
+            // Hochformat: Schnellnotiz als hervorgehobenes Symbol über dem Ablagefach
+            if vertical && settings.showNotes {
+                noteCell
+                    .padding(.top, 4)
             }
 
             // Ablagefach: fest unten über den Einstellungen, hervorgehoben
@@ -224,10 +259,20 @@ struct SidebarView: View {
         }
     }
 
+    /// Notiz-Symbol (hervorgehoben wie das Ablagefach)
+    private var noteCell: some View {
+        let icon: CGFloat = 32
+        return NoteCell(store: store, iconSize: icon,
+                        cellSize: CGSize(width: vertical ? thickness : 60, height: vertical ? 58 : thickness),
+                        showLabel: vertical, actions: actions)
+            .modifier(HoverScale(active: settings.magnification && state.hoveredCell == "action:note",
+                                 scale: min(CGFloat(settings.magnificationStrength), max(1, (thickness - 4) / icon))))
+    }
+
     /// Anzahl der Zellen in der Leiste (für die automatische Icon-Größe).
     private var cellCount: Int {
         store.config.favorites.count + (showFavoriteSlot ? 1 : 0) + max(store.config.groups.count, 1)
-            + (settings.showSearch ? ActionButton.allCases.count : 0)
+            + (settings.showSearch ? ActionButton.topButtons(vertical: vertical).count : 0)
     }
 
     private func cells(_ palette: Palette, metrics: BarMetrics) -> some View {
@@ -240,7 +285,7 @@ struct SidebarView: View {
         return stack {
             // KI und Google ganz oben
             if settings.showSearch {
-                ForEach(ActionButton.allCases) { action in
+                ForEach(ActionButton.topButtons(vertical: vertical)) { action in
                     ActionCell(action: action, iconSize: metrics.icon, cellSize: cellSize,
                                showLabel: metrics.showLabels, actions: actions)
                         .modifier(HoverScale(active: hovered == "action:\(action.rawValue)", scale: maxScale))
@@ -387,6 +432,11 @@ struct ShelfCell: View {
 /// Berechnet, wie groß Icons sein dürfen, damit alles in die Leiste passt.
 struct BarMetrics {
     static let padding: CGFloat = 8
+
+    /// Platz, den alle Zellen in voller Größe brauchen
+    static func naturalLength(cells: Int, thickness: CGFloat) -> CGFloat {
+        2 * padding + 12 + CGFloat(max(cells, 1)) * (thickness * 0.95 + 4)
+    }
     let cell: CGFloat
     let icon: CGFloat
     let spacing: CGFloat

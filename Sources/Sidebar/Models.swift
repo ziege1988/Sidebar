@@ -132,6 +132,13 @@ struct LinkItem: Codable, Identifiable, Hashable {
     }
 }
 
+/// Eine Schnellnotiz.
+struct QuickNote: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var text: String
+    var date = Date()
+}
+
 /// Untergruppe, z. B. „Fotografie“ oder „ADS“.
 struct LinkGroup: Codable, Identifiable, Hashable {
     var id = UUID()
@@ -249,6 +256,7 @@ struct SidebarSettings: Codable, Equatable {
     var aiTarget: AITarget = .sidePanel
     var aiProvider: AIProvider = .chatgpt
     var showShelf: Bool = true
+    var showNotes: Bool = true
 }
 
 extension SidebarSettings {
@@ -281,6 +289,7 @@ extension SidebarSettings {
         aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget
         aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider) ?? aiProvider
         showShelf = try c.decodeIfPresent(Bool.self, forKey: .showShelf) ?? showShelf
+        showNotes = try c.decodeIfPresent(Bool.self, forKey: .showNotes) ?? showNotes
     }
 }
 
@@ -292,6 +301,8 @@ struct SidebarConfig: Codable {
     var groups: [LinkGroup] = []
     /// Ablagefach: Verweise auf Dateien (file://-Adressen), die Dateien bleiben, wo sie sind
     var shelf: [String] = []
+    /// Schnellnotizen (neueste zuerst)
+    var notes: [QuickNote] = []
 }
 
 extension SidebarConfig {
@@ -302,6 +313,7 @@ extension SidebarConfig {
         favorites = try c.decodeIfPresent([LinkItem].self, forKey: .favorites) ?? []
         groups = try c.decodeIfPresent([LinkGroup].self, forKey: .groups) ?? []
         shelf = try c.decodeIfPresent([String].self, forKey: .shelf) ?? []
+        notes = try c.decodeIfPresent([QuickNote].self, forKey: .notes) ?? []
     }
 }
 

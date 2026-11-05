@@ -74,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             triggerAction: { [weak self] action in
                 self?.runAction(action, text: nil)
             },
+            submitAction: { [weak self] action, text in
+                self?.runAction(action, text: text)
+            },
             drag: { [weak self] phase, point in
                 self?.sidebar.handleDrag(phase, at: point)
             }
@@ -159,6 +162,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func runAction(_ action: ActionButton, text: String?) {
         let settings = store.config.settings
         switch action {
+        case .note:
+            if let text {
+                store.addNote(text)
+            } else {
+                NotesController.shared.show(store: store, anchor: sidebar.anchor(for: .note),
+                                            edge: settings.edge, theme: settings.colorTheme)
+            }
         case .google:
             if let text {
                 QuickSearchController.run(text, target: .google)
@@ -219,7 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settings = store.config.settings
 
         menu.addItem(menuItem("Google Suche …") { [weak self] in self?.sidebar.showInput(.google) })
-        menu.addItem(menuItem("Claude fragen …") { [weak self] in self?.sidebar.showInput(.ai) })
+        menu.addItem(menuItem("KI fragen …") { [weak self] in self?.sidebar.showInput(.ai) })
+        menu.addItem(menuItem("Schnellnotizen …") { [weak self] in self?.runAction(.note, text: nil) })
         menu.addItem(menuItem("Einstellungen …", key: ",") { [weak self] in self?.showSettings() })
         menu.addItem(.separator())
 
