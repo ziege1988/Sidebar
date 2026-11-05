@@ -70,14 +70,12 @@ struct ClockPanelView: View {
     }
 }
 
-/// Edle analoge Uhr: helles Zifferblatt in der Farbwelt, schwarze römische Ziffern,
-/// filigrane goldene Zeiger, kein Rahmen.
+/// Edle analoge Uhr (Minimal-Luxus): Sonnenschliff-Zifferblatt in der Farbwelt,
+/// goldene Stab-Markierungen an jeder Stunde, facettierte Dauphine-Zeiger, kein Rahmen.
 struct AnalogClock: View {
     let date: Date
     let showSeconds: Bool
     let palette: Palette
-
-    private static let romans = ["XII", "I", "II", "III", "IIII", "V", "VI", "VII", "VIII", "IX", "X", "XI"]
 
     var body: some View {
         Canvas { context, size in
@@ -90,79 +88,83 @@ struct AnalogClock: View {
                                y: center.y - CGFloat(cos(angle)) * length)
             }
 
-            func circle(_ r: CGFloat) -> Path {
-                Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
+            func circle(_ r: CGFloat, at c: CGPoint? = nil) -> Path {
+                let m = c ?? center
+                return Path(ellipseIn: CGRect(x: m.x - r, y: m.y - r, width: r * 2, height: r * 2))
             }
 
-            /// Schlanker, spitz zulaufender Zeiger (wie bei klassischen Uhren)
-            func hand(_ fraction: Double, length: CGFloat, width: CGFloat, tail: CGFloat) {
+            func line(_ from: CGPoint, _ to: CGPoint, width: CGFloat, color: Color) {
+                var path = Path()
+                path.move(to: from)
+                path.addLine(to: to)
+                context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
+            }
+
+            /// Dauphine-Zeiger: spitz, in der Mitte geteilt in helles und dunkles Gold (wirkt geschliffen)
+            func dauphine(_ fraction: Double, length: CGFloat, width: CGFloat) {
                 let angle = fraction * 2 * .pi
                 let dir = CGPoint(x: CGFloat(sin(angle)), y: -CGFloat(cos(angle)))
                 let normal = CGPoint(x: -dir.y, y: dir.x)
-                let half = width / 2
+                let base = CGPoint(x: center.x - dir.x * length * 0.08, y: center.y - dir.y * length * 0.08)
+                let widest = CGPoint(x: center.x + dir.x * length * 0.3, y: center.y + dir.y * length * 0.3)
                 let tip = CGPoint(x: center.x + dir.x * length, y: center.y + dir.y * length)
-                let back = CGPoint(x: center.x - dir.x * tail, y: center.y - dir.y * tail)
-                let shoulder = CGPoint(x: center.x + dir.x * length * 0.18, y: center.y + dir.y * length * 0.18)
-                var path = Path()
-                path.move(to: back)
-                path.addLine(to: CGPoint(x: shoulder.x + normal.x * half, y: shoulder.y + normal.y * half))
-                path.addLine(to: tip)
-                path.addLine(to: CGPoint(x: shoulder.x - normal.x * half, y: shoulder.y - normal.y * half))
-                path.closeSubpath()
-                context.fill(path, with: .linearGradient(
-                    Gradient(colors: [Palette.goldLight, Palette.gold, Palette.goldDark]),
-                    startPoint: CGPoint(x: shoulder.x + normal.x * half, y: shoulder.y + normal.y * half),
-                    endPoint: CGPoint(x: shoulder.x - normal.x * half, y: shoulder.y - normal.y * half)))
+                let left = CGPoint(x: widest.x + normal.x * width / 2, y: widest.y + normal.y * width / 2)
+                let right = CGPoint(x: widest.x - normal.x * width / 2, y: widest.y - normal.y * width / 2)
+                var light = Path()
+                light.move(to: base); light.addLine(to: left); light.addLine(to: tip); light.closeSubpath()
+                var dark = Path()
+                dark.move(to: base); dark.addLine(to: right); dark.addLine(to: tip); dark.closeSubpath()
+                context.fill(light, with: .color(Palette.goldLight))
+                context.fill(dark, with: .color(Palette.goldDark))
             }
 
-            // Zifferblatt – ohne Rahmen
-            context.fill(circle(radius), with: .color(palette.clockFace))
-
-            // Feine Minutenstriche, Stunden als goldene Punkte
-            for index in 0..<60 {
-                let fraction = Double(index) / 60
-                if index % 5 == 0 {
-                    let dot = point(fraction, radius * 0.9)
-                    let r = max(0.8, radius * 0.022)
-                    context.fill(Path(ellipseIn: CGRect(x: dot.x - r, y: dot.y - r, width: r * 2, height: r * 2)),
-                                 with: .color(Palette.gold))
-                } else if radius >= 40 {
-                    var path = Path()
-                    path.move(to: point(fraction, radius * 0.88))
-                    path.addLine(to: point(fraction, radius * 0.92))
-                    context.stroke(path, with: .color(palette.clockNumerals.opacity(0.28)),
-                                   lineWidth: max(0.4, radius * 0.008))
+            // Zifferblatt mit Sonnenschliff: Mitte heller, Rand etwas dunkler, feine Strahlen
+            let faceHex = palette.clockFaceHex
+            context.fill(circle(radius), with: .radialGradient(
+                Gradient(colors: [Color(hex: Palette.mix(faceHex, 0xFFFFFF, 0.45)),
+                                  Color(hex: faceHex),
+                                  Color(hex: Palette.mix(faceHex, 0x000000, 0.08))]),
+                center: CGPoint(x: center.x, y: center.y - radius * 0.16),
+                startRadius: 0, endRadius: radius * 1.15))
+            if radius >= 30 {
+                for ray in 0..<120 {
+                    line(point(Double(ray) / 120, radius * 0.1), point(Double(ray) / 120, radius * 0.97),
+                         width: max(0.4, radius * 0.01),
+                         color: Color.white.opacity(ray % 2 == 0 ? 0.09 : 0.035))
                 }
             }
 
-            // Schwarze römische Ziffern in Serifenschrift
-            let allNumerals = radius >= 46
-            if radius >= 28 {
-                let fontSize = radius * (allNumerals ? 0.15 : 0.18)
-                let font = Font.system(size: fontSize, weight: .regular, design: .serif)
-                for hour in 0..<12 where allNumerals || hour % 3 == 0 {
-                    context.draw(Text(Self.romans[hour]).font(font).foregroundColor(palette.clockNumerals),
-                                 at: point(Double(hour) / 12, radius * (allNumerals ? 0.7 : 0.66)))
+            // Feine Minutenpunkte
+            if radius >= 36 {
+                for minute in 0..<60 where minute % 5 != 0 {
+                    context.fill(circle(max(0.35, radius * 0.008), at: point(Double(minute) / 60, radius * 0.92)),
+                                 with: .color(Color.black.opacity(0.4)))
                 }
             }
 
-            // Filigrane goldene Zeiger
+            // Goldene Stab-Markierungen an jeder Stunde
+            for hour in 0..<12 {
+                let fraction = Double(hour) / 12
+                let inner = point(fraction, radius * 0.72)
+                let outer = point(fraction, radius * 0.87)
+                line(inner, outer, width: max(1.4, radius * 0.034), color: Palette.goldDark)
+                line(inner, outer, width: max(0.8, radius * 0.022), color: Palette.gold)
+            }
+
+            // Zeiger
             let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
             let seconds = Double(parts.second ?? 0)
             let minutes = Double(parts.minute ?? 0) + seconds / 60
             let hours = Double((parts.hour ?? 0) % 12) + minutes / 60
 
-            hand(hours / 12, length: radius * 0.5, width: max(2, radius * 0.06), tail: radius * 0.1)
-            hand(minutes / 60, length: radius * 0.76, width: max(1.6, radius * 0.045), tail: radius * 0.12)
+            dauphine(hours / 12, length: radius * 0.52, width: max(3, radius * 0.085))
+            dauphine(minutes / 60, length: radius * 0.8, width: max(2.4, radius * 0.065))
             if showSeconds {
-                var path = Path()
-                path.move(to: point(seconds / 60 + 0.5, radius * 0.18))
-                path.addLine(to: point(seconds / 60, radius * 0.84))
-                context.stroke(path, with: .color(Palette.gold),
-                               style: StrokeStyle(lineWidth: max(0.6, radius * 0.012), lineCap: .round))
+                line(point(seconds / 60 + 0.5, radius * 0.2), point(seconds / 60, radius * 0.9),
+                     width: max(0.6, radius * 0.01), color: Palette.gold)
             }
-            context.fill(circle(max(1.6, radius * 0.045)), with: .color(Palette.gold))
-            context.fill(circle(max(0.6, radius * 0.018)), with: .color(Palette.goldDark))
+            context.fill(circle(max(1.6, radius * 0.045)), with: .color(Palette.goldDark))
+            context.fill(circle(max(0.7, radius * 0.02)), with: .color(Palette.goldLight))
         }
     }
 }

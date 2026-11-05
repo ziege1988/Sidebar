@@ -49,7 +49,8 @@ struct Palette {
     let border: Color
     let dashed: Color
     /// Zifferblatt: Farbe der Farbwelt, etwas heller als der obere Verlauf
-    let clockFace: Color
+    let clockFaceHex: UInt32
+    var clockFace: Color { Color(hex: clockFaceHex) }
     let clockNumerals: Color
     /// Gold für Zeiger und Akzente der Uhr
     static let gold = Color(hex: 0xC5A04A)
@@ -83,7 +84,7 @@ struct Palette {
                 secondary: Color(hex: 0xA2A89E),
                 border: Color.white.opacity(0.09),
                 dashed: accent.opacity(0.45),
-                clockFace: Color(hex: mix(t.darkAccent, 0xFFFFFF, 0.55)),
+                clockFaceHex: mix(t.darkAccent, 0xFFFFFF, 0.55),
                 clockNumerals: Color(hex: 0x111111)
             )
         } else {
@@ -105,7 +106,7 @@ struct Palette {
                 secondary: text.opacity(0.68),
                 border: text.opacity(0.10),
                 dashed: accent.opacity(0.55),
-                clockFace: Color(hex: mix(top, 0xFFFFFF, 0.62)),
+                clockFaceHex: mix(top, 0xFFFFFF, 0.62),
                 clockNumerals: Color(hex: 0x111111)
             )
         }
