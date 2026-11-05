@@ -41,10 +41,11 @@ struct HoverScale: ViewModifier {
 /// Name als kleines Etikett beim Darüberfahren über einen Favoriten.
 struct HoverLabel: View {
     let text: String
+    var theme: ColorTheme = .sage
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         Text(text)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(palette.text)
@@ -74,6 +75,7 @@ struct SidebarActions {
     var chooseIcon: @MainActor (UUID) -> Void
     var toggleFlyout: @MainActor (UUID) -> Void
     var installUpdate: @MainActor () -> Void
+    var openSearch: @MainActor () -> Void
     var drag: @MainActor (DragPhase, NSPoint) -> Void
 }
 
@@ -87,6 +89,7 @@ struct SidebarView: View {
     let actions: SidebarActions
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     private var settings: SidebarSettings { store.config.settings }
     private var edge: ScreenEdge { settings.edge }
@@ -96,11 +99,11 @@ struct SidebarView: View {
     private var showFavoriteSlot: Bool { store.config.favorites.count < SidebarConfig.maxFavorites }
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(settings.colorTheme, scheme)
         ZStack {
             if showContent {
                 VisualEffectBackground()
-                palette.background.opacity(0.88)
+                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient)).opacity(0.92)
                 barContent(palette)
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
@@ -121,26 +124,23 @@ struct SidebarView: View {
         .onPreferenceChange(FavoriteFramesKey.self) { frames in
             geometry.favoriteFrames = frames
         }
+        .environment(\.colorTheme, settings.colorTheme)
     }
 
     /// Nur die zum Bildschirm zeigenden Ecken werden abgerundet.
     private var shape: UnevenRoundedRectangle {
-        let r: CGFloat = showContent ? 14 : 0
-        switch edge {
-        case .left:
-            return UnevenRoundedRectangle(bottomTrailingRadius: r, topTrailingRadius: r, style: .continuous)
-        case .right:
-            return UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: r, style: .continuous)
-        case .top:
-            return UnevenRoundedRectangle(bottomLeadingRadius: r, bottomTrailingRadius: r, style: .continuous)
-        case .bottom:
-            return UnevenRoundedRectangle(topLeadingRadius: r, topTrailingRadius: r, style: .continuous)
-        }
+        EdgeShape.shape(for: edge, radius: showContent ? 14 : 0)
     }
 
     private func barContent(_ palette: Palette) -> some View {
         let outer = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+        let clockInset = ClockLayout.inset(settings)
         return outer {
+            // Platz für die Uhr, die oben aus der Leiste heraussteht
+            if clockInset > 0 {
+                Color.clear
+                    .frame(width: vertical ? thickness : clockInset, height: vertical ? clockInset : thickness)
+            }
             DragHandle(horizontal: vertical, onDrag: actions.drag)
                 .frame(width: vertical ? thickness : 16, height: vertical ? 16 : thickness)
                 .help("Ziehen, um die Sidebar an eine andere Kante oder auf einen anderen Bildschirm zu verschieben")
@@ -277,14 +277,20 @@ struct FavoriteCell: View {
     let store: ConfigStore
     let actions: SidebarActions
     @State private var targeted = false
+    @ObservedObject private var badges = BadgeStore.shared
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         Button {
             actions.open(item, nil)
         } label: {
             FaviconView(item: item, size: iconSize)
+                .overlay(alignment: .topTrailing) {
+                    BadgeView(count: badges.count(for: item))
+                        .offset(x: 6, y: -5)
+                }
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -319,10 +325,12 @@ struct GroupCell: View {
     let store: ConfigStore
     let actions: SidebarActions
     @State private var targeted = false
+    @ObservedObject private var badges = BadgeStore.shared
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         let highlighted = isActive || targeted
         VStack(spacing: 3) {
             ZStack {
@@ -333,6 +341,10 @@ struct GroupCell: View {
                     .foregroundStyle(highlighted ? palette.onAccent : palette.accent)
             }
             .frame(width: iconSize, height: iconSize)
+            .overlay(alignment: .topTrailing) {
+                BadgeView(count: badges.count(for: group))
+                    .offset(x: 6, y: -5)
+            }
             if showLabel {
                 Text(group.name)
                     .font(.system(size: 9, weight: .medium))
@@ -377,9 +389,10 @@ struct AddSlotCell: View {
     let actions: SidebarActions
     @State private var targeted = false
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         Button {
             actions.addLink(containerID)
         } label: {
@@ -411,6 +424,7 @@ struct FlyoutView: View {
     @ObservedObject var state: SidebarState
     let actions: SidebarActions
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     static let headerHeight: CGFloat = 44
     static let rowHeight: CGFloat = 34
@@ -424,10 +438,10 @@ struct FlyoutView: View {
     }
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(store.config.settings.colorTheme, scheme)
         ZStack {
             VisualEffectBackground()
-            palette.background.opacity(0.94)
+            Rectangle().fill(palette.backgroundFill(gradient: store.config.settings.gradient)).opacity(0.95)
             if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
                 VStack(spacing: 0) {
                     HStack(spacing: 10) {
@@ -466,6 +480,7 @@ struct FlyoutView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(palette.border, lineWidth: 1))
+        .environment(\.colorTheme, store.config.settings.colorTheme)
     }
 }
 
@@ -474,12 +489,14 @@ struct FlyoutRow: View {
     let groupID: UUID
     let store: ConfigStore
     let actions: SidebarActions
+    @ObservedObject private var badges = BadgeStore.shared
     @State private var hovering = false
     @State private var targeted = false
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         Button {
             actions.open(item, nil)
         } label: {
@@ -491,6 +508,7 @@ struct FlyoutRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+                BadgeView(count: badges.count(for: item))
             }
             .padding(.horizontal, 8)
             .frame(height: FlyoutView.rowHeight)
@@ -520,9 +538,10 @@ struct AddLinkRow: View {
     let actions: SidebarActions
     @State private var targeted = false
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         Button {
             actions.addLink(containerID)
         } label: {

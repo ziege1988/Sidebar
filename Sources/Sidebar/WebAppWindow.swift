@@ -8,17 +8,50 @@ final class WebAppManager {
     private var controllers: [UUID: WebAppController] = [:]
 
     func open(item: LinkItem, url: URL) {
-        if let existing = controllers[item.id] {
-            existing.show()
-            return
+        controller(for: item, url: url).show()
+    }
+
+    /// Hält Web-Apps mit „Im Hintergrund aktiv“ unsichtbar geladen, damit Benachrichtigungen ankommen.
+    func syncBackgroundApps(_ items: [LinkItem]) {
+        let wanted = Set(items.map(\.id))
+        for item in items where controllers[item.id] == nil {
+            guard let url = item.url, !url.isFileURL else { continue }
+            _ = controller(for: item, url: url)
         }
+        for (id, controller) in controllers where !wanted.contains(id) {
+            controller.keepAlive = false
+            if !controller.window.isVisible && !controller.window.isMiniaturized {
+                controller.window.close()
+            }
+        }
+    }
+
+    private func controller(for item: LinkItem, url: URL) -> WebAppController {
+        if let existing = controllers[item.id] { return existing }
         let controller = WebAppController(item: item, url: url)
         let id = item.id
         controller.onClose = { [weak self] in
             self?.controllers[id] = nil
         }
         controllers[id] = controller
-        controller.show()
+        return controller
+    }
+}
+
+/// Leitet Nachrichten aus der Webseite weiter, ohne den Controller festzuhalten.
+final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WebAppController?
+
+    init(_ target: WebAppController) {
+        self.target = target
+    }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        let body = message.body
+        MainActor.assumeIsolated {
+            target?.handleWebNotification(body)
+        }
     }
 }
 
@@ -29,14 +62,43 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     let window: NSWindow
     let webView: WKWebView
     var onClose: (@MainActor () -> Void)?
+    /// Beim Schließen nur ausblenden (Benachrichtigungen laufen weiter)
+    var keepAlive: Bool
 
+    private let item: LinkItem
+    private var titleCount = 0
     private let appName: String
     private var titleObservation: NSKeyValueObservation?
     private var popupWindows: [NSWindow] = []
     private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
+    /// Ersetzt `window.Notification` der Webseite, damit Mitteilungen als macOS-Banner erscheinen.
+    private static let notificationShim = """
+    (function () {
+      function post(title, options) {
+        try {
+          window.webkit.messageHandlers.sidebarNotify.postMessage({
+            title: String(title || ''),
+            body: String((options && options.body) || '')
+          });
+        } catch (e) {}
+      }
+      function SidebarNotification(title, options) { post(title, options); this.title = title; }
+      SidebarNotification.permission = 'granted';
+      SidebarNotification.requestPermission = function (callback) {
+        if (callback) { callback('granted'); }
+        return Promise.resolve('granted');
+      };
+      SidebarNotification.prototype.close = function () {};
+      SidebarNotification.prototype.addEventListener = function () {};
+      window.Notification = SidebarNotification;
+    })();
+    """
+
     init(item: LinkItem, url: URL) {
+        self.item = item
         appName = item.displayName
+        keepAlive = item.keepAlive == true
 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
@@ -72,6 +134,12 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         webView.navigationDelegate = self
         webView.uiDelegate = self
 
+        let contentController = webView.configuration.userContentController
+        contentController.addUserScript(WKUserScript(source: Self.notificationShim,
+                                                     injectionTime: .atDocumentStart,
+                                                     forMainFrameOnly: false))
+        contentController.add(WeakScriptHandler(self), name: "sidebarNotify")
+
         titleObservation = webView.observe(\.title, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.updateTitle() }
         }
@@ -82,6 +150,21 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     func show() {
         if window.isMiniaturized { window.deminiaturize(nil) }
         DockPresence.present(window)
+        // Gesehen: nur noch den Zähler aus dem Seitentitel anzeigen
+        BadgeStore.shared.set(titleCount, for: item)
+    }
+
+    /// Mitteilung aus der Webseite (über window.Notification)
+    func handleWebNotification(_ body: Any) {
+        guard let dict = body as? [String: Any] else { return }
+        let title = (dict["title"] as? String) ?? ""
+        let text = (dict["body"] as? String) ?? ""
+        SystemNotifier.shared.post(title: title.isEmpty ? appName : "\(appName): \(title)",
+                                   body: text, itemID: item.id)
+        // Seiten ohne Zähler im Titel: selbst mitzählen, solange das Fenster nicht vorne ist
+        if titleCount == 0 && !(window.isKeyWindow && NSApp.isActive) {
+            BadgeStore.shared.increment(for: item)
+        }
     }
 
     // MARK: - Titelleiste
@@ -121,7 +204,21 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     }
 
     private func updateTitle() {
-        window.subtitle = webView.title ?? ""
+        let title = webView.title ?? ""
+        window.subtitle = title
+        let count = BadgeStore.count(fromTitle: title)
+        if count != titleCount {
+            titleCount = count
+            BadgeStore.shared.set(count, for: item)
+        }
+    }
+
+    // Fenster mit „Im Hintergrund aktiv“ nur ausblenden statt schließen
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === window, keepAlive else { return true }
+        window.orderOut(nil)
+        Task { @MainActor in DockPresence.update() }
+        return false
     }
 
     // MARK: - NSWindowDelegate
@@ -133,6 +230,8 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
             popupWindows.removeAll()
             popups.forEach { $0.close() }
             titleObservation = nil
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "sidebarNotify")
+            BadgeStore.shared.set(0, for: item)
             webView.stopLoading()
             onClose?()
         } else {

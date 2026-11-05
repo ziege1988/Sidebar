@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var sidebar: SidebarController!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         store = ConfigStore.shared
@@ -66,6 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     Updater.shared.promptToInstall(release)
                 }
             },
+            openSearch: { [weak self] in
+                self?.sidebar.openSearch()
+            },
             drag: { [weak self] phase, point in
                 self?.sidebar.handleDrag(phase, at: point)
             }
@@ -76,6 +81,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Updater.shared.startAutomaticChecks { [weak self] in
             self?.store.config.settings.autoCheckUpdates ?? false
         }
+
+        // Benachrichtigungen: Klick auf eine Mitteilung öffnet das App-Fenster
+        SystemNotifier.shared.setUp()
+        SystemNotifier.shared.onOpen = { [weak self] id in
+            MainActor.assumeIsolated {
+                guard let self, let item = self.store.item(id: id) else { return }
+                LinkOpener.open(item, mode: .appWindow, settings: self.store.config.settings)
+            }
+        }
+
+        // Web-Apps mit „Im Hintergrund aktiv“ unsichtbar geladen halten
+        store.$config
+            .map { config in
+                (config.favorites + config.groups.flatMap(\.items)).filter { $0.keepAlive == true }
+            }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { items in
+                WebAppManager.shared.syncBackgroundApps(items)
+            }
+            .store(in: &cancellables)
 
         // Dock-Symbol wieder ausblenden, sobald das letzte Fenster geschlossen ist.
         _ = NotificationCenter.default.addObserver(
@@ -151,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let settings = store.config.settings
 
+        menu.addItem(menuItem("Suchen / Claude fragen …") { [weak self] in self?.sidebar.openSearch() })
         menu.addItem(menuItem("Einstellungen …", key: ",") { [weak self] in self?.showSettings() })
         menu.addItem(.separator())
 

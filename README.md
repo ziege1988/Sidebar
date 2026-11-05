@@ -36,8 +36,16 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
   Favoriten (solange Platz ist). Hineinziehen oder klicken.
 - **Eigene Bilder als Icons:** Rechtsklick → „Eigenes Bild wählen …“ oder im
   Link-Editor. Das Bild wird quadratisch zugeschnitten.
-- **Farben:** hell in Pastell-Salbeigrün, dunkel in Pastell-Graphit oder
-  automatisch passend zum macOS-Modus.
+- **Farben:** 7 Farbwelten (Salbei, Lavendel, Puder-Rosé, Himmelblau, Sand,
+  Mint, Graphit), jeweils hell (Pastell) und dunkel (Graphit), automatisch
+  passend zum macOS-Modus, optional mit Farbverlauf (oben dunkler).
+- **Analoge Uhr** oben an der Sidebar, Größe einstellbar, gut lesbar.
+  Klick öffnet den Kalender.
+- **Schnellsuche:** Eingabefeld für Google (↩) oder eine Frage an
+  Claude (⌘↩).
+- **Benachrichtigungen:** Web-Apps im integrierten App-Fenster können im
+  Hintergrund aktiv bleiben. Neue Nachrichten erscheinen als Zähler am Icon
+  und als macOS-Mitteilung.
 - **Jeder Bildschirm, jede Seite:** am Griff an eine Kante oder auf einen
   anderen Monitor ziehen. Die Position wird gespeichert.
 - **Vordergrund wählbar:** „Immer im Vordergrund“ oder hinter Fenstern.

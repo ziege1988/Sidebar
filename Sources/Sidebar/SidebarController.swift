@@ -26,6 +26,7 @@ final class SidebarController {
     private let panel: SidebarPanel
     private let flyoutPanel: SidebarPanel
     private let labelPanel: SidebarPanel
+    private let clockPanel: SidebarPanel
     private let labelHost: NSHostingView<HoverLabel>
     private let labelMeasure: NSHostingController<HoverLabel>
     private var labelItemID: UUID?
@@ -72,6 +73,7 @@ final class SidebarController {
         panel = SidebarController.makePanel()
         flyoutPanel = SidebarController.makePanel()
         labelPanel = SidebarController.makePanel()
+        clockPanel = SidebarController.makePanel()
         labelHost = NSHostingView(rootView: HoverLabel(text: ""))
         labelMeasure = NSHostingController(rootView: HoverLabel(text: ""))
         labelPanel.ignoresMouseEvents = true
@@ -86,6 +88,10 @@ final class SidebarController {
         let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, actions: actions))
         flyout.sizingOptions = []
         flyoutPanel.contentView = flyout
+
+        let clock = FirstMouseHostingView(rootView: ClockPanelView(store: store, actions: actions))
+        clock.sizingOptions = []
+        clockPanel.contentView = clock
 
         // Einstellungen geändert (Seite, Bildschirm, Breite, Farben …)
         store.$config
@@ -146,6 +152,7 @@ final class SidebarController {
         } else {
             hideFlyout()
             panel.orderOut(nil)
+            clockPanel.orderOut(nil)
         }
     }
 
@@ -189,6 +196,7 @@ final class SidebarController {
         // Kontextmenü offen oder Drag aus der Sidebar heraus → nichts schließen
         let tracking = RunLoop.current.currentMode == .eventTracking
 
+        let inClock = clockPanel.isVisible && clockPanel.frame.contains(mouse)
         let inBar = panel.frame.contains(mouse)
         // Ausgeblendet: großzügiger Auslösebereich bis an den echten Bildschirmrand
         let inRevealZone = settings.autoHide && !state.isRevealed && revealZone(for: settings).contains(mouse)
@@ -200,7 +208,7 @@ final class SidebarController {
 
         // 1. Automatisch ausblenden: Leiste ein-/ausfahren
         if settings.autoHide {
-            if inBar || inRevealZone || inFlyout || tracking {
+            if inBar || inClock || inRevealZone || inFlyout || tracking || QuickSearchController.shared.isVisible {
                 barLeftAt = nil
                 if !state.isRevealed {
                     if barEnteredAt == nil { barEnteredAt = now }
@@ -288,9 +296,10 @@ final class SidebarController {
             labelPanel.orderOut(nil)
             return
         }
-        labelHost.rootView = HoverLabel(text: item.displayName)
+        let theme = store.config.settings.colorTheme
+        labelHost.rootView = HoverLabel(text: item.displayName, theme: theme)
         // Größe des Etiketts messen (die Anzeige selbst meldet keine Größe zurück)
-        labelMeasure.rootView = HoverLabel(text: item.displayName)
+        labelMeasure.rootView = HoverLabel(text: item.displayName, theme: theme)
         let measured = labelMeasure.sizeThatFits(in: CGSize(width: 600, height: 200))
         let size = NSSize(width: ceil(measured.width), height: ceil(measured.height))
         guard size.width > 0, size.height > 0 else {
@@ -407,6 +416,7 @@ final class SidebarController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             self.panel.animator().setFrame(target, display: true)
         }
+        positionClock(store.config.settings)
     }
 
     // MARK: - Geometrie & Einstellungen
@@ -438,6 +448,35 @@ final class SidebarController {
         case .bottom:
             return NSRect(x: area.minX, y: area.minY, width: area.width, height: thickness)
         }
+    }
+
+    // MARK: - Uhr & Suche
+
+    /// Uhr oben an der Leiste – ragt in den Bildschirm hinein, wenn sie breiter als die Leiste ist.
+    private func positionClock(_ settings: SidebarSettings) {
+        let size = ClockLayout.panelSize(settings)
+        let hidden = settings.autoHide && !state.isRevealed
+        guard isVisible, size != .zero, !hidden else {
+            clockPanel.orderOut(nil)
+            return
+        }
+        let bar = frame(for: settings, forceVisible: true)
+        var origin = NSPoint.zero
+        switch settings.edge {
+        case .left: origin = NSPoint(x: bar.minX, y: bar.maxY - size.height)
+        case .right: origin = NSPoint(x: bar.maxX - size.width, y: bar.maxY - size.height)
+        case .top: origin = NSPoint(x: bar.minX, y: bar.maxY - size.height)
+        case .bottom: origin = NSPoint(x: bar.minX, y: bar.minY)
+        }
+        clockPanel.setFrame(NSRect(origin: origin, size: size), display: true)
+        clockPanel.orderFrontRegardless()
+    }
+
+    /// Schnellsuche neben der Uhr öffnen.
+    func openSearch() {
+        let settings = store.config.settings
+        let anchor = clockPanel.isVisible ? clockPanel.frame : frame(for: settings, forceVisible: true)
+        QuickSearchController.shared.toggle(anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
     }
 
     /// Bereich, in dem die Maus die ausgeblendete Leiste hervorholt.
@@ -485,6 +524,8 @@ final class SidebarController {
         labelPanel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         if !settings.autoHide { state.isRevealed = false }
         panel.setFrame(frame(for: settings), display: true)
+        clockPanel.level = panel.level
+        positionClock(settings)
         if flyoutPanel.isVisible {
             DispatchQueue.main.async { [weak self] in self?.positionFlyout() }
         }
@@ -497,6 +538,7 @@ final class SidebarController {
         case .began:
             isDragging = true
             hideFlyout()
+            clockPanel.orderOut(nil)
         case .moved:
             guard let target = snapTarget(for: point) else {
                 previewPanel.orderOut(nil)

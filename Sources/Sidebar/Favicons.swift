@@ -109,9 +109,10 @@ struct FaviconView: View {
 
     @ObservedObject private var favicons = FaviconStore.shared
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorTheme) private var theme
 
     var body: some View {
-        let palette = Palette.forScheme(scheme)
+        let palette = Palette.resolve(theme, scheme)
         ZStack {
             if let file = item.customIcon, let custom = IconStore.shared.image(named: file) {
                 Image(nsImage: custom)

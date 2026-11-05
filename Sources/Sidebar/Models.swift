@@ -79,6 +79,8 @@ struct LinkItem: Codable, Identifiable, Hashable {
     var openMode: OpenMode?
     /// Dateiname eines eigenen Bildes in `…/Sidebar/Icons` (`nil` = Favicon der Seite)
     var customIcon: String?
+    /// Im Hintergrund geladen halten, damit Benachrichtigungen ankommen (nur integriertes App-Fenster)
+    var keepAlive: Bool?
 
     var url: URL? { LinkItem.normalizedURL(from: urlString) }
     var host: String? { url?.host }
@@ -148,8 +150,8 @@ enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .system: return "Automatisch (wie macOS)"
-        case .light: return "Hell – Salbei"
-        case .dark: return "Dunkel – Graphit"
+        case .light: return "Hell (Pastell)"
+        case .dark: return "Dunkel (Graphit)"
         }
     }
 }
@@ -177,6 +179,14 @@ struct SidebarSettings: Codable, Equatable {
     var magnification: Bool = true
     /// Stärke der Lupe (1,1 = dezent … 1,8 = stark)
     var magnificationStrength: Double = 1.45
+    var colorTheme: ColorTheme = .sage
+    /// Hintergrund als Verlauf: oben dunkler, unten heller
+    var gradient: Bool = true
+    var showClock: Bool = true
+    /// Durchmesser der Uhr in Punkten
+    var clockSize: Double = 96
+    var clockShowSeconds: Bool = true
+    var showSearch: Bool = true
 }
 
 extension SidebarSettings {
@@ -198,6 +208,12 @@ extension SidebarSettings {
         appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? appearance
         magnification = try c.decodeIfPresent(Bool.self, forKey: .magnification) ?? magnification
         magnificationStrength = try c.decodeIfPresent(Double.self, forKey: .magnificationStrength) ?? magnificationStrength
+        colorTheme = try c.decodeIfPresent(ColorTheme.self, forKey: .colorTheme) ?? colorTheme
+        gradient = try c.decodeIfPresent(Bool.self, forKey: .gradient) ?? gradient
+        showClock = try c.decodeIfPresent(Bool.self, forKey: .showClock) ?? showClock
+        clockSize = try c.decodeIfPresent(Double.self, forKey: .clockSize) ?? clockSize
+        clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
+        showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
     }
 }
 

@@ -39,6 +39,7 @@ struct SettingsView: View {
         .onReceive(router.$request) { request in
             if request != nil { tab = .links }
         }
+        .environment(\.colorTheme, store.config.settings.colorTheme)
     }
 }
 
@@ -74,12 +75,36 @@ struct GeneralSettingsView: View {
             }
 
             Section("Farben") {
+                LabeledContent("Farbwelt") {
+                    HStack(spacing: 8) {
+                        ForEach(ColorTheme.allCases) { theme in
+                            ThemeSwatch(theme: theme, selected: store.config.settings.colorTheme == theme) {
+                                store.config.settings.colorTheme = theme
+                            }
+                        }
+                    }
+                }
                 Picker("Erscheinungsbild", selection: $store.config.settings.appearance) {
                     ForEach(AppearanceMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
                 }
-                Text("Hell: Pastell-Salbeigrün · Dunkel: Pastell-Graphit. „Automatisch“ wechselt mit dem macOS-Modus.")
+                Toggle("Farbverlauf (oben dunkler, unten heller)", isOn: $store.config.settings.gradient)
+                Text("Hell: Pastellton der Farbwelt · Dunkel: Graphit mit Pastell-Akzent. „Automatisch“ wechselt mit dem macOS-Modus.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Uhr & Suche") {
+                Toggle("Analoge Uhr oben an der Sidebar", isOn: $store.config.settings.showClock)
+                if store.config.settings.showClock {
+                    LabeledContent("Größe der Uhr: \(Int(store.config.settings.clockSize)) pt") {
+                        Slider(value: $store.config.settings.clockSize, in: 60...180, step: 4)
+                    }
+                    Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
+                }
+                Toggle("Such-Knopf (Google & Claude)", isOn: $store.config.settings.showSearch)
+                Text("Klick auf die Uhr öffnet den Kalender. Die Suche öffnet ein Eingabefeld: ↩ sucht bei Google, ⌘↩ fragt Claude. Die Frage wird zusätzlich in die Zwischenablage gelegt – falls Claude sie nicht automatisch übernimmt, einfach mit ⌘V einfügen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -433,6 +458,29 @@ struct GroupDetail: View {
     }
 }
 
+/// Farbfeld zur Auswahl der Farbwelt.
+struct ThemeSwatch: View {
+    let theme: ColorTheme
+    let selected: Bool
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.resolve(theme, scheme)
+        Button(action: action) {
+            Circle()
+                .fill(LinearGradient(colors: [palette.gradientTop, palette.accent],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: 22, height: 22)
+                .overlay(Circle().stroke(selected ? Color.primary : Color.primary.opacity(0.15),
+                                         lineWidth: selected ? 2 : 1))
+                .padding(2)
+        }
+        .buttonStyle(.plain)
+        .help(theme.title)
+    }
+}
+
 /// Gestrichelte Fläche zum Hineinziehen von Links.
 struct LinkDropZone: View {
     let text: String
@@ -630,6 +678,18 @@ struct ItemEditorSheet: View {
                         ForEach(OpenMode.allCases) { mode in
                             Text(mode.title).tag(OpenMode?.some(mode))
                         }
+                    }
+                    Toggle("Benachrichtigungen (im Hintergrund aktiv halten)", isOn: Binding(
+                        get: { item.keepAlive == true },
+                        set: { enabled in
+                            item.keepAlive = enabled ? true : nil
+                            if enabled { item.openMode = .appWindow }
+                        }
+                    ))
+                    if item.keepAlive == true {
+                        Text("Die Seite läuft unsichtbar im integrierten App-Fenster weiter. Neue Nachrichten erscheinen als Zähler am Icon und als macOS-Mitteilung. Einmal öffnen und anmelden ist nötig.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
