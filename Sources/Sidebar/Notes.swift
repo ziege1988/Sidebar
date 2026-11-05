@@ -62,6 +62,13 @@ struct InlineField: View {
         }
         .padding(.horizontal, 10)
         .frame(width: width, height: 28)
+        .background(
+            GeometryReader { proxy in
+                // Position merken, damit das Notiz-Fenster direkt am Feld aufgeht
+                Color.clear.preference(key: ActionFramesKey.self,
+                                       value: kind == .note ? ["noteField": proxy.frame(in: .named("bar"))] : [:])
+            }
+        )
         .background(Capsule().fill(palette.gradientBottom.opacity(0.85)))
         .overlay(Capsule().stroke(palette.accent.opacity(focused ? 0.9 : 0.3), lineWidth: 1))
         .onChange(of: focused) { _, isFocused in

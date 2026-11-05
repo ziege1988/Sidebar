@@ -44,6 +44,8 @@ final class SidebarController {
     private var anchorRect: NSRect = .zero
     private var isDragging = false
     private var candidateAction: ActionButton?
+    /// Nach einem Klick auf KI/Google/Notiz keine Eingabeblase, bis die Maus den Knopf verlässt
+    private var suppressedAction: ActionButton?
     private var candidateActionSince = Date.distantPast
     private var inputLeftAt: Date?
     private var lastAutoHide: Bool?
@@ -149,8 +151,14 @@ final class SidebarController {
     func setVisible(_ visible: Bool) {
         isVisible = visible
         if visible {
+            // Frisch starten: eingeklappt bei „Automatisch ausblenden“, sonst voll sichtbar
+            state.isRevealed = false
+            barEnteredAt = nil
+            barLeftAt = nil
             applySettings(store.config.settings)
             panel.orderFrontRegardless()
+            panel.contentView?.needsLayout = true
+            panel.displayIfNeeded()
         } else {
             hideFlyout()
             panel.orderOut(nil)
@@ -256,7 +264,8 @@ final class SidebarController {
 
         // KI/Google unter der Maus → Eingabefeld daneben, sofort lostippen
         let hoveredAction = (inBar && barUsable) ? actionAt(mouse) : nil
-        if let action = hoveredAction {
+        if hoveredAction != suppressedAction { suppressedAction = nil }
+        if let action = hoveredAction, action != suppressedAction, !NotesController.shared.isVisible {
             if !(input.isVisible && input.kind == action) {
                 if candidateAction != action {
                     candidateAction = action
@@ -333,7 +342,23 @@ final class SidebarController {
 
     /// Bildschirmbereich eines Knopfs (für Fenster, die daneben aufgehen).
     func anchor(for action: ActionButton) -> NSRect {
-        screenRect(forAction: action) ?? barFrame
+        if let rect = screenRect(forAction: action) { return rect }
+        // Querformat: festes Notizfeld statt Symbol
+        if action == .note, let rect = geometry.actionFrames["noteField"] {
+            let frame = panel.frame
+            return NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+        }
+        return barFrame
+    }
+
+    /// Nach einem Klick: Eingabeblase für diesen Knopf unterdrücken (sonst stiehlt sie dem
+    /// gerade geöffneten Fenster den Fokus und es schließt sich wieder).
+    func suppressHoverInput(_ action: ActionButton) {
+        suppressedAction = action
+        candidateAction = nil
+        if HoverInputController.shared.kind == action {
+            HoverInputController.shared.close(restoreFocus: false)
+        }
     }
 
     /// Eingabefeld für Google öffnen (z. B. aus dem Menüleisten-Symbol).
@@ -494,6 +519,7 @@ final class SidebarController {
     private func setRevealed(_ revealed: Bool) {
         guard state.isRevealed != revealed else { return }
         state.isRevealed = revealed
+        syncContent(store.config.settings)
         if !revealed { hideFlyout() }
         let target = windowFrame(for: store.config.settings)
         NSAnimationContext.runAnimationGroup { context in
@@ -595,6 +621,12 @@ final class SidebarController {
         }
     }
 
+    /// Inhalt und Fenstergröße immer aus derselben Bedingung ableiten (sonst bleibt ein leerer Balken stehen).
+    private func syncContent(_ settings: SidebarSettings) {
+        let visible = !(settings.autoHide && !state.isRevealed)
+        if state.contentVisible != visible { state.contentVisible = visible }
+    }
+
     private func applySettings(_ settings: SidebarSettings) {
         NSApp.appearance = settings.appearance.nsAppearance
         // Gerade eingeschaltet: Leiste kurz zeigen und dann sichtbar einfahren,
@@ -610,6 +642,7 @@ final class SidebarController {
             : .normal
         labelPanel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         if !settings.autoHide { state.isRevealed = false }
+        syncContent(settings)
         panel.setFrame(windowFrame(for: settings), display: true)
         if flyoutPanel.isVisible {
             DispatchQueue.main.async { [weak self] in self?.positionFlyout() }
