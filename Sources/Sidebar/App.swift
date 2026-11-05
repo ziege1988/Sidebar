@@ -309,7 +309,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         versionItem.isEnabled = false
         menu.addItem(versionItem)
         menu.addItem(.separator())
+        menu.addItem(menuItem("Sidebar neu starten") { [weak self] in self?.relaunch() })
         menu.addItem(menuItem("Sidebar beenden", key: "q") { NSApp.terminate(nil) })
+    }
+
+    /// Startet die App neu (falls einmal etwas hängt).
+    private func relaunch() {
+        let path = Bundle.main.bundlePath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 0.6; /usr/bin/open \"$1\"", "sidebar-restart", path]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 
     private func menuItem(_ title: String, key: String = "", action: @escaping @MainActor () -> Void) -> NSMenuItem {

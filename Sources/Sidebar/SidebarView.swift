@@ -283,9 +283,9 @@ struct SidebarView: View {
 
     /// Notiz-Symbol (hervorgehoben wie das Ablagefach)
     private var noteCell: some View {
-        let icon: CGFloat = 32
+        let icon: CGFloat = 36
         return NoteCell(store: store, iconSize: icon,
-                        cellSize: CGSize(width: vertical ? thickness : 60, height: vertical ? 58 : thickness),
+                        cellSize: CGSize(width: vertical ? thickness : 66, height: vertical ? 66 : thickness),
                         showLabel: vertical, actions: actions)
             .modifier(HoverScale(active: settings.magnification && state.hoveredCell == "action:note",
                                  scale: min(CGFloat(settings.magnificationStrength), max(1, (thickness - 4) / icon))))

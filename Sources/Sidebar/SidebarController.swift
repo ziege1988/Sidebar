@@ -74,6 +74,36 @@ final class SidebarController {
         return preview
     }()
 
+    private let updater: Updater
+    private let actions: SidebarActions
+    private var lastLayoutKey: String?
+
+    /// Inhalt der Leiste (neu) aufbauen.
+    private func installBarContent() {
+        let bar = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater,
+                                                              geometry: geometry, actions: actions))
+        bar.sizingOptions = []
+        panel.contentView = bar
+    }
+
+    /// Nach Änderungen am Aufbau (Uhr an/aus, Seite, Bildschirm, Breite …) die Leiste frisch laden –
+    /// wie ein Neustart, nur unsichtbar. Verhindert, dass Teile (z. B. die Uhr) fehlen.
+    private func reloadIfLayoutChanged(_ settings: SidebarSettings) {
+        let key = [String(settings.showClock), String(Int(settings.clockSize)), settings.edge.rawValue,
+                   String(settings.screenID ?? 0), String(Int(settings.collapsedThickness)),
+                   String(settings.showSearch), String(settings.showNotes), String(settings.showShelf),
+                   String(settings.autoHide)].joined(separator: "|")
+        defer { lastLayoutKey = key }
+        guard let lastLayoutKey, lastLayoutKey != key else { return }
+        geometry.groupFrames = [:]
+        geometry.favoriteFrames = [:]
+        geometry.actionFrames = [:]
+        state.hoveredCell = nil
+        state.hoverRect = nil
+        hideFlyout()
+        installBarContent()
+    }
+
     init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
         self.store = store
         panel = SidebarController.makePanel()
@@ -87,10 +117,9 @@ final class SidebarController {
         labelHost.sizingOptions = []
         labelPanel.contentView = labelHost
 
-        let bar = FirstMouseHostingView(rootView: SidebarView(store: store, state: state, updater: updater,
-                                                              geometry: geometry, actions: actions))
-        bar.sizingOptions = []
-        panel.contentView = bar
+        self.updater = updater
+        self.actions = actions
+        installBarContent()
 
         let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, geometry: geometry,
                                                                 actions: actions))
@@ -671,6 +700,7 @@ final class SidebarController {
         if !settings.autoHide { state.isRevealed = false }
         syncContent(settings)
         panel.setFrame(windowFrame(for: settings), display: true)
+        reloadIfLayoutChanged(settings)
         if flyoutPanel.isVisible {
             DispatchQueue.main.async { [weak self] in self?.positionFlyout() }
         }

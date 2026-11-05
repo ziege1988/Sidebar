@@ -100,6 +100,9 @@ struct NoteCell: View {
     var body: some View {
         let palette = Palette.resolve(theme, scheme)
         let count = store.config.notes.count
+        Button {
+            actions.triggerAction(.note)
+        } label: {
         VStack(spacing: 3) {
             ZStack {
                 RoundedRectangle(cornerRadius: iconSize * 0.32, style: .continuous)
@@ -133,13 +136,14 @@ struct NoteCell: View {
         }
         .frame(width: cellSize.width, height: cellSize.height)
         .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .background(
             GeometryReader { proxy in
                 Color.clear.preference(key: ActionFramesKey.self,
                                        value: [ActionButton.note.rawValue: proxy.frame(in: .named("bar"))])
             }
         )
-        .onTapGesture { actions.triggerAction(.note) }
         .help("Schnellnotiz: darüberfahren und lostippen · Klick zeigt alle Notizen")
     }
 }
@@ -149,11 +153,27 @@ struct NoteCell: View {
 final class NotesController {
     static let shared = NotesController()
     private var panel: KeyPanel?
-    private var resignObserver: NSObjectProtocol?
-
     var isVisible: Bool { panel?.isVisible == true }
 
+    private var deactivateObserver: NSObjectProtocol?
+
+    private init() {
+        // Schließen, wenn ein anderes Programm in den Vordergrund kommt (Klick daneben).
+        // Früher wurde beim Fokuswechsel geschlossen – das passierte beim Öffnen manchmal
+        // sofort wieder, weil macOS den Fokus kurz an ein anderes Sidebar-Fenster gab.
+        deactivateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.panel?.orderOut(nil) }
+        }
+    }
+
     func show(store: ConfigStore, anchor: NSRect, edge: ScreenEdge, theme: ColorTheme) {
+        if let panel, panel.isVisible {
+            NSApp.activate()
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
         let panel = self.panel ?? makePanel()
         self.panel = panel
         let host = NSHostingView(rootView: NotesView(store: store, theme: theme,
@@ -177,6 +197,8 @@ final class NotesController {
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         KeyboardFocus.begin()
         panel.makeKeyAndOrderFront(nil)
+        // nach der Aktivierung der App noch einmal nach vorne holen
+        DispatchQueue.main.async { panel.makeKeyAndOrderFront(nil) }
     }
 
     func close() {
@@ -194,13 +216,6 @@ final class NotesController {
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        resignObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.panel?.orderOut(nil)
-            }
-        }
         return panel
     }
 }
