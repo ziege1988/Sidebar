@@ -54,9 +54,9 @@ struct HoverBubble: View {
     var body: some View {
         GeometryReader { proxy in
             if let cell {
-                let flare: CGFloat = 16
-                let along = (edge.isVertical ? cell.height : cell.width) + 2 * flare
-                let cross = barThickness - 4
+                let flare: CGFloat = 13
+                let along = (edge.isVertical ? cell.height : cell.width) - 8 + 2 * flare
+                let cross = barThickness - 9
                 let size = edge.isVertical ? CGSize(width: cross, height: along) : CGSize(width: along, height: cross)
                 let center: CGPoint = {
                     switch edge {

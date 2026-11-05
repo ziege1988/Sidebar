@@ -77,6 +77,7 @@ struct SettingsView: View {
     @ObservedObject var updater: Updater
     @ObservedObject var router: SettingsRouter
     @State private var category: SettingsCategory = .links
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: 0) {
@@ -122,38 +123,15 @@ struct SettingsView: View {
             .padding(.bottom, 14)
 
             ForEach(SettingsCategory.allCases) { item in
-                Button {
+                SettingsSidebarRow(item: item, selected: category == item) {
                     category = item
-                } label: {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(LinearGradient(colors: [item.tint.opacity(0.85), item.tint],
-                                                     startPoint: .top, endPoint: .bottom))
-                            Image(systemName: item.symbol)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                        .frame(width: 24, height: 24)
-                        Text(item.title)
-                            .font(.system(size: 13))
-                            .foregroundStyle(category == item ? Color.white : Color.primary)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(category == item ? Color.accentColor : Color.clear)
-                    )
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 8)
             }
             Spacer()
         }
-        .background(.regularMaterial)
+        // gleicher Farbverlauf wie die Sidebar (helle Hälfte, damit Text gut lesbar bleibt)
+        .background(Palette.resolve(store.config.settings.colorTheme, scheme)
+            .panelFill(gradient: store.config.settings.gradient))
     }
 
     private var header: some View {
@@ -696,6 +674,53 @@ struct GroupDetail: View {
             }
         }
         .padding()
+    }
+}
+
+/// Eintrag in der linken Spalte der Einstellungen – ausgewählt mit derselben weißen
+/// Blase wie in der Sidebar (vom linken Rand mit geschwungenen Ausläufen).
+struct SettingsSidebarRow: View {
+    let item: SettingsCategory
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let strength: Double = selected ? 1 : (hovering ? 0.5 : 0)
+        Button(action: action) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(LinearGradient(colors: [item.tint.opacity(0.85), item.tint],
+                                             startPoint: .top, endPoint: .bottom))
+                    Image(systemName: item.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 24, height: 24)
+                Text(item.title)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(Color.primary)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 8)
+            .frame(height: 34)
+            .background(
+                EdgeTab(edge: .left, flare: 12)
+                    .fill(Color.white.opacity((scheme == .dark ? 0.16 : 0.42) * strength))
+                    .overlay(EdgeTab(edge: .left, flare: 12)
+                        .stroke(Color.white.opacity((scheme == .dark ? 0.22 : 0.6) * strength), lineWidth: 0.8))
+                    .shadow(color: .black.opacity(0.06 * strength), radius: 3, y: 1)
+                    .padding(.vertical, -12)
+                    .padding(.trailing, 12)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: strength)
     }
 }
 
