@@ -90,6 +90,12 @@ struct GeneralSettingsView: View {
                     }
                 }
                 Toggle("Farbverlauf (oben dunkler, unten heller)", isOn: $store.config.settings.gradient)
+                LabeledContent("Glas-Effekt: \(Int((store.config.settings.glassIntensity * 100).rounded())) %") {
+                    Slider(value: $store.config.settings.glassIntensity, in: 0...1, step: 0.05)
+                }
+                Text("0 % = deckend. Je höher, desto mehr scheint der Hintergrund unscharf durch – die Farbe der Sidebar bleibt immer erkennbar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("Hell: Pastellton der Farbwelt · Dunkel: Graphit mit Pastell-Akzent. „Automatisch“ wechselt mit dem macOS-Modus.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

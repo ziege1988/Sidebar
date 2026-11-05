@@ -105,10 +105,22 @@ struct SidebarView: View {
 
     var body: some View {
         let palette = Palette.resolve(settings.colorTheme, scheme)
+        let glass = settings.glassIntensity
+        // Unter der Uhr zeichnet die Leiste nichts – sonst doppelte Glasschicht/Kante
+        let clockSize = settings.showClock ? ClockLayout.panelSize(settings) : .zero
+        let cover = vertical ? clockSize.height : clockSize.width
+        let fill: LinearGradient = (settings.showClock && settings.gradient)
+            ? LinearGradient(colors: [palette.clockEndColor, palette.gradientBottom], startPoint: .top, endPoint: .bottom)
+            : palette.backgroundFill(gradient: settings.gradient)
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
         ZStack {
             if showContent {
-                Rectangle().fill(palette.backgroundFill(gradient: settings.gradient,
-                                                        clockEnd: settings.showClock ? state.clockGradientEnd : 0))
+                layout {
+                    if cover > 0 {
+                        Color.clear.frame(width: vertical ? nil : cover, height: vertical ? cover : nil)
+                    }
+                    GlassFill(fill: fill, intensity: glass)
+                }
                 barContent(palette)
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
@@ -116,6 +128,11 @@ struct SidebarView: View {
             }
         }
         .clipShape(shape)
+        .overlay {
+            if showContent {
+                GlassRim(shape: shape, intensity: glass)
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .coordinateSpace(name: "bar")
         .onPreferenceChange(GroupFramesKey.self) { frames in
@@ -571,8 +588,8 @@ struct FlyoutView: View {
     var body: some View {
         let palette = Palette.resolve(store.config.settings.colorTheme, scheme)
         ZStack {
-            VisualEffectBackground()
-            Rectangle().fill(palette.panelFill(gradient: store.config.settings.gradient)).opacity(0.97)
+            GlassFill(fill: palette.panelFill(gradient: store.config.settings.gradient),
+                      intensity: max(store.config.settings.glassIntensity, 0.05))
             if state.flyoutGroupID == LinkGroup.shelfID {
                 ShelfView(store: store, palette: palette)
             } else if let id = state.flyoutGroupID, let group = store.config.groups.first(where: { $0.id == id }) {
@@ -613,6 +630,8 @@ struct FlyoutView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(palette.border, lineWidth: 1))
+        .overlay(GlassRim(shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                          intensity: store.config.settings.glassIntensity))
         .environment(\.colorTheme, store.config.settings.colorTheme)
     }
 }
@@ -753,7 +772,7 @@ struct ItemContextMenu: View {
 struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .hudWindow
+        view.material = .sidebar // passt sich hell/dunkel an
         view.blendingMode = .behindWindow
         view.state = .active
         return view

@@ -236,6 +236,8 @@ struct SidebarSettings: Codable, Equatable {
     var colorTheme: ColorTheme = .sage
     /// Hintergrund als Verlauf: oben dunkler, unten heller
     var gradient: Bool = true
+    /// Glas-Effekt (0 = deckend … 1 = stark durchscheinend, Farbe bleibt erkennbar)
+    var glassIntensity: Double = 0.4
     var showClock: Bool = true
     /// Durchmesser der Uhr in Punkten
     var clockSize: Double = 128
@@ -270,6 +272,7 @@ extension SidebarSettings {
         magnificationStrength = try c.decodeIfPresent(Double.self, forKey: .magnificationStrength) ?? magnificationStrength
         colorTheme = try c.decodeIfPresent(ColorTheme.self, forKey: .colorTheme) ?? colorTheme
         gradient = try c.decodeIfPresent(Bool.self, forKey: .gradient) ?? gradient
+        glassIntensity = try c.decodeIfPresent(Double.self, forKey: .glassIntensity) ?? glassIntensity
         showClock = try c.decodeIfPresent(Bool.self, forKey: .showClock) ?? showClock
         clockSize = try c.decodeIfPresent(Double.self, forKey: .clockSize) ?? clockSize
         revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0

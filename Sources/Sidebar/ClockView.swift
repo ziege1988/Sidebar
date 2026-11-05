@@ -65,8 +65,12 @@ struct ClockPanelView: View {
         }
         .help(Date().formatted(date: .complete, time: .omitted) + " – Klick öffnet den Kalender")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(fill)
+        .background(GlassFill(fill: fill, intensity: settings.glassIntensity))
         .clipShape(shape)
+        .overlay(
+            GlassRim(shape: shape, intensity: settings.glassIntensity)
+                .mask(ClockJunctionMask(edge: settings.edge, thickness: CGFloat(settings.collapsedThickness)))
+        )
     }
 }
 
