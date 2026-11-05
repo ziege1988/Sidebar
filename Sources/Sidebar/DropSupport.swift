@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 enum DropPayload {
     /// Ein Link aus der Sidebar selbst (z. B. aus einem Ordner in die Favoriten)
     case internalItem(UUID)
+    /// Ein Ordner aus der Leiste (zum Umsortieren)
+    case internalGroup(UUID)
     /// Eine Webadresse (aus der Adressleiste, ein Link von einer Webseite, eine .webloc-Datei)
     case url(URL)
     /// Eine Bilddatei (wird als eigenes Icon verwendet)
@@ -15,6 +17,13 @@ enum DropPayload {
 enum DropSupport {
     static let types: [UTType] = [.fileURL, .url, .utf8PlainText, .plainText]
     static let internalPrefix = "sidebar-item:"
+    static let groupPrefix = "sidebar-group:"
+
+    static func provider(forGroup group: LinkGroup) -> NSItemProvider {
+        let provider = NSItemProvider(object: (groupPrefix + group.id.uuidString) as NSString)
+        provider.suggestedName = group.name
+        return provider
+    }
 
     /// Für Links aus der Sidebar: intern als ID, nach außen (Browser) als Webadresse.
     static func provider(for item: LinkItem) -> NSItemProvider {
@@ -76,9 +85,16 @@ enum DropSupport {
            let id = UUID(uuidString: String(trimmed.dropFirst(internalPrefix.count))) {
             return .internalItem(id)
         }
+        if trimmed.hasPrefix(groupPrefix),
+           let id = UUID(uuidString: String(trimmed.dropFirst(groupPrefix.count))) {
+            return .internalGroup(id)
+        }
         // Bei mehrzeiligem Text die erste Adresse verwenden
         let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
-        guard let url = LinkItem.normalizedURL(from: firstLine) else { return nil }
+        // Nur echte Adressen akzeptieren (mit Schema oder Domain mit Punkt), keinen beliebigen Text
+        guard !firstLine.contains(" "),
+              let url = LinkItem.normalizedURL(from: firstLine),
+              firstLine.contains("://") || (url.host ?? "").contains(".") else { return nil }
         return payload(forWebURL: url)
     }
 

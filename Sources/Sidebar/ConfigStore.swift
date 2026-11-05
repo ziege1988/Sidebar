@@ -212,50 +212,139 @@ final class ConfigStore: ObservableObject {
 
     // MARK: - Drag & Drop
 
-    /// Verarbeitet abgelegte Inhalte.
+    /// Verarbeitet abgelegte Inhalte – Hinzufügen, Verschieben und Umsortieren.
     /// - Parameters:
-    ///   - containerID: Gruppe oder `LinkGroup.favoritesID`
-    ///   - targetItem: Link, auf den gezogen wurde (für eigene Bilder)
+    ///   - containerID: Ordner oder `LinkGroup.favoritesID`
+    ///   - targetItem: Link, auf den gezogen wurde (Position bzw. eigenes Bild)
+    ///   - index: Einfügeposition (Lücke vor diesem Index), z. B. aus einer Liste in den Einstellungen
     @discardableResult
-    func handleDrop(_ payloads: [DropPayload], into containerID: UUID, targetItem: UUID? = nil) -> Bool {
+    func handleDrop(_ payloads: [DropPayload], into containerID: UUID,
+                    targetItem: UUID? = nil, at index: Int? = nil) -> Bool {
+        var cfg = config
+        guard Self.items(in: cfg, containerID) != nil else { return false }
         var changed = false
+        var pendingIcon: (UUID, URL)?
+
+        // Einfügeposition für neue Links: vor dem Ziel-Link bzw. am angegebenen Index
+        var insertAt: Int? = index
+        if insertAt == nil, let target = targetItem {
+            insertAt = Self.items(in: cfg, containerID)?.firstIndex { $0.id == target }
+        }
+
+        func insert(_ item: LinkItem) {
+            Self.mutateItems(&cfg, containerID) { items in
+                let position = min(max(insertAt ?? items.count, 0), items.count)
+                items.insert(item, at: position)
+            }
+            if let current = insertAt { insertAt = current + 1 }
+        }
+
         for payload in payloads {
             switch payload {
             case .image(let url):
-                guard let target = targetItem, let image = NSImage(contentsOf: url) else { continue }
-                setCustomIcon(itemID: target, image: image)
-                changed = true
+                if let target = targetItem { pendingIcon = (target, url) }
+
+            case .internalGroup:
+                continue // Ordner werden über moveGroup sortiert
 
             case .internalItem(let id):
-                guard let source = container(of: id), let original = item(id: id) else { continue }
-                if containerID == LinkGroup.favoritesID {
-                    changed = addToFavorites(itemID: id) || changed
-                } else if source == LinkGroup.favoritesID {
-                    // Favorit in einen Ordner ziehen → Kopie, Favorit bleibt erhalten
-                    var copy = original
-                    copy.id = UUID()
-                    updateGroup(containerID) { $0.items.append(copy) }
+                guard let source = Self.container(in: cfg, of: id),
+                      let original = Self.items(in: cfg, source)?.first(where: { $0.id == id }) else { continue }
+
+                if source == containerID {
+                    // Umsortieren innerhalb derselben Liste
+                    Self.mutateItems(&cfg, containerID) { items in
+                        guard let from = items.firstIndex(where: { $0.id == id }) else { return }
+                        let gap: Int
+                        if let index {
+                            gap = index
+                        } else if let target = targetItem, let to = items.firstIndex(where: { $0.id == target }) {
+                            gap = from < to ? to + 1 : to
+                        } else {
+                            gap = items.count
+                        }
+                        Self.move(&items, from: from, toGap: gap)
+                    }
                     changed = true
-                } else if source != containerID {
-                    upsert(original, into: containerID) // zwischen Ordnern verschieben
-                    changed = true
+                    continue
                 }
 
-            case .url(let url):
-                let newItem = LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString)
                 if containerID == LinkGroup.favoritesID {
-                    guard !favoritesFull else {
+                    // Schon als Favorit vorhanden → nur an die neue Stelle schieben
+                    if let existing = cfg.favorites.firstIndex(where: { $0.urlString == original.urlString }) {
+                        let gap = insertAt ?? cfg.favorites.count
+                        Self.move(&cfg.favorites, from: existing, toGap: gap)
+                        changed = true
+                        continue
+                    }
+                    guard cfg.favorites.count < SidebarConfig.maxFavorites else {
                         NSSound.beep()
                         continue
                     }
-                    config.favorites.append(newItem)
-                } else {
-                    updateGroup(containerID) { $0.items.append(newItem) }
                 }
+
+                var newItem = original
+                if containerID == LinkGroup.favoritesID || source == LinkGroup.favoritesID {
+                    newItem.id = UUID() // Favoriten sind Verknüpfungen: Original bleibt erhalten
+                } else {
+                    Self.mutateItems(&cfg, source) { $0.removeAll { $0.id == id } } // zwischen Ordnern verschieben
+                }
+                insert(newItem)
+                changed = true
+
+            case .url(let url):
+                if containerID == LinkGroup.favoritesID && cfg.favorites.count >= SidebarConfig.maxFavorites {
+                    NSSound.beep()
+                    continue
+                }
+                insert(LinkItem(name: LinkItem.suggestedName(for: url), urlString: url.absoluteString))
                 changed = true
             }
         }
+
+        if changed { config = cfg }
+        if let pending = pendingIcon, let image = NSImage(contentsOf: pending.1) {
+            setCustomIcon(itemID: pending.0, image: image)
+            changed = true
+        }
         return changed
+    }
+
+    /// Ordner in der Leiste per Drag & Drop umsortieren.
+    func moveGroup(_ id: UUID, onto target: UUID) {
+        guard id != target,
+              let from = config.groups.firstIndex(where: { $0.id == id }),
+              let to = config.groups.firstIndex(where: { $0.id == target }) else { return }
+        var groups = config.groups
+        Self.move(&groups, from: from, toGap: from < to ? to + 1 : to)
+        config.groups = groups
+    }
+
+    private static func items(in cfg: SidebarConfig, _ container: UUID) -> [LinkItem]? {
+        if container == LinkGroup.favoritesID { return cfg.favorites }
+        return cfg.groups.first(where: { $0.id == container })?.items
+    }
+
+    private static func container(in cfg: SidebarConfig, of id: UUID) -> UUID? {
+        if cfg.favorites.contains(where: { $0.id == id }) { return LinkGroup.favoritesID }
+        return cfg.groups.first(where: { group in group.items.contains { $0.id == id } })?.id
+    }
+
+    private static func mutateItems(_ cfg: inout SidebarConfig, _ container: UUID,
+                                    _ change: (inout [LinkItem]) -> Void) {
+        if container == LinkGroup.favoritesID {
+            change(&cfg.favorites)
+        } else if let gi = cfg.groups.firstIndex(where: { $0.id == container }) {
+            change(&cfg.groups[gi].items)
+        }
+    }
+
+    /// Verschiebt ein Element in die Lücke vor `gap` (Index bezogen auf die Liste vor dem Entfernen).
+    private static func move<T>(_ array: inout [T], from: Int, toGap gap: Int) {
+        guard array.indices.contains(from) else { return }
+        let element = array.remove(at: from)
+        let destination = from < gap ? gap - 1 : gap
+        array.insert(element, at: min(max(destination, 0), array.count))
     }
 
     // MARK: - Position

@@ -294,12 +294,16 @@ struct GroupCell: View {
             }
         )
         .onTapGesture { actions.toggleFlyout(group.id) }
-        .help("\(group.name) – \(group.items.count) Links")
+        .help("\(group.name) – \(group.items.count) Links · ziehen zum Umsortieren")
         .contextMenu {
             Button("Link hinzufügen …") { actions.addLink(group.id) }
             Button("Ordner bearbeiten …") { actions.openSettings() }
         }
+        .onDrag { DropSupport.provider(forGroup: group) }
         .linkDropTarget(isTargeted: $targeted) { payloads in
+            for case .internalGroup(let id) in payloads {
+                store.moveGroup(id, onto: group.id)
+            }
             store.handleDrop(payloads, into: group.id)
         }
     }

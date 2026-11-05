@@ -262,10 +262,20 @@ struct GroupsEditor: View {
         VStack(spacing: 0) {
             List(selection: $selection) {
                 Label("Favoriten (\(store.config.favorites.count)/\(SidebarConfig.maxFavorites))", systemImage: "star.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                     .tag(LinkGroup.favoritesID)
+                    .linkDropTarget { payloads in
+                        store.handleDrop(payloads, into: LinkGroup.favoritesID)
+                    }
                 ForEach(store.config.groups) { group in
                     Label(group.name.isEmpty ? "Ohne Namen" : group.name, systemImage: group.symbol)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                         .tag(group.id)
+                        .linkDropTarget { payloads in
+                            store.handleDrop(payloads, into: group.id)
+                        }
                 }
                 .onMove { from, to in
                     store.config.groups.move(fromOffsets: from, toOffset: to)
@@ -380,12 +390,19 @@ struct GroupDetail: View {
                     ItemRow(item: item,
                             onEdit: { onEdit(item) },
                             onDelete: { store.deleteItem(id: item.id) })
+                        .onDrag { DropSupport.provider(for: item) }
                 }
-                .onMove { from, to in
-                    store.updateGroup(groupID) { $0.items.move(fromOffsets: from, toOffset: to) }
+                .onInsert(of: DropSupport.types) { index, providers in
+                    DropSupport.load(providers) { payloads in
+                        store.handleDrop(payloads, into: groupID, at: index)
+                    }
                 }
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
+
+            LinkDropZone(text: "Links hierher ziehen – aus dem Browser oder aus einem anderen Ordner") { payloads in
+                store.handleDrop(payloads, into: groupID)
+            }
 
             HStack {
                 Button {
@@ -394,12 +411,41 @@ struct GroupDetail: View {
                     Label("Link hinzufügen", systemImage: "plus")
                 }
                 Spacer()
-                Text("Tipp: Adresse aus dem Browser direkt auf einen Ordner in der Sidebar ziehen.")
+                Text("Reihenfolge ändern: Links in der Liste ziehen. Auf „Favoriten“ links ziehen = Favorit.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding()
+    }
+}
+
+/// Gestrichelte Fläche zum Hineinziehen von Links.
+struct LinkDropZone: View {
+    let text: String
+    let perform: @MainActor ([DropPayload]) -> Void
+    @State private var targeted = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.doc")
+            Text(targeted ? "Loslassen zum Hinzufügen" : text)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(targeted ? Color.accentColor.opacity(0.15) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(targeted ? Color.accentColor : Color.secondary.opacity(0.4),
+                              style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+        )
+        .linkDropTarget(isTargeted: $targeted, perform: perform)
     }
 }
 
@@ -417,7 +463,7 @@ struct FavoritesDetail: View {
                 Text("\(store.config.favorites.count) von \(SidebarConfig.maxFavorites)")
                     .foregroundStyle(.secondary)
             }
-            Text("Die Favoriten stehen oben in der Sidebar für den Schnellzugriff – maximal \(SidebarConfig.maxFavorites). Links aus einem Ordner kannst du in der Sidebar direkt auf die Favoritenleiste ziehen.")
+            Text("Die Favoriten stehen oben in der Sidebar für den Schnellzugriff – maximal \(SidebarConfig.maxFavorites). Reihenfolge per Ziehen ändern. Links aus einem Ordner (hier in den Einstellungen oder direkt in der Sidebar) auf die Favoriten ziehen.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -426,12 +472,21 @@ struct FavoritesDetail: View {
                     ItemRow(item: item,
                             onEdit: { onEdit(item) },
                             onDelete: { store.removeFromFavorites(id: item.id) })
+                        .onDrag { DropSupport.provider(for: item) }
                 }
-                .onMove { from, to in
-                    store.config.favorites.move(fromOffsets: from, toOffset: to)
+                .onInsert(of: DropSupport.types) { index, providers in
+                    DropSupport.load(providers) { payloads in
+                        store.handleDrop(payloads, into: LinkGroup.favoritesID, at: index)
+                    }
                 }
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
+
+            if !store.favoritesFull {
+                LinkDropZone(text: "Links hierher ziehen, um sie zu Favoriten zu machen") { payloads in
+                    store.handleDrop(payloads, into: LinkGroup.favoritesID)
+                }
+            }
 
             HStack {
                 Button {

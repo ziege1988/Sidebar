@@ -22,6 +22,11 @@ klappt beim Darüberfahren mit der Maus auf. Links sind in Gruppen sortiert
   - Link aus einem Ordner auf die Favoritenleiste ziehen
   - Link in einen anderen Ordner ziehen
   - Bilddatei auf ein Icon ziehen = eigenes Icon
+  - **Reihenfolge per Ziehen:** Favoriten untereinander, Links im
+    Ordner-Fenster und Ordner in der Leiste
+  - **In den Einstellungen:** Links aus dem Browser an eine beliebige Stelle
+    einer Liste ziehen, auf einen Ordner oder auf „Favoriten“ in der linken
+    Spalte ziehen, Reihenfolge per Ziehen ändern
 - **Ein „+“-Feld pro Liste:** am Ende jedes Ordner-Fensters und bei den
   Favoriten (solange Platz ist). Hineinziehen oder klicken.
 - **Eigene Bilder als Icons:** Rechtsklick → „Eigenes Bild wählen …“ oder im
