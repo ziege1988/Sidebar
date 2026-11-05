@@ -324,6 +324,23 @@ final class SidebarController {
 
     private func updateHovered(_ value: String?) {
         if state.hoveredCell != value { state.hoveredCell = value }
+        let rect = rectForHovered(value)
+        if state.hoverRect != rect { state.hoverRect = rect }
+    }
+
+    /// Rahmen (Leisten-Koordinaten) des Elements unter der Maus.
+    private func rectForHovered(_ key: String?) -> CGRect? {
+        guard let key else { return nil }
+        if key.hasPrefix("fav:"), let id = UUID(uuidString: String(key.dropFirst(4))) {
+            return geometry.favoriteFrames[id]
+        }
+        if key.hasPrefix("group:"), let id = UUID(uuidString: String(key.dropFirst(6))) {
+            return geometry.groupFrames[id]
+        }
+        if key.hasPrefix("action:") {
+            return geometry.actionFrames[String(key.dropFirst(7))]
+        }
+        return nil
     }
 
     /// KI- bzw. Google-Knopf an einer Bildschirmposition.

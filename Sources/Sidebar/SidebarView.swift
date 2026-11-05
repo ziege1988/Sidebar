@@ -11,6 +11,8 @@ final class SidebarState: ObservableObject {
     @Published var contentVisible = true
     /// Element unter der Maus (für den Lupen-Effekt): "fav:<id>" bzw. "group:<id>"
     @Published var hoveredCell: String?
+    /// Rahmen des Elements unter der Maus (für die Blase vom Bildschirmrand)
+    @Published var hoverRect: CGRect?
     /// Wo der Verlauf am unteren Rand der Uhr steht (0 … 1), damit Uhr und Leiste nahtlos ineinander übergehen
     @Published var clockGradientEnd: Double = 0.2
 }
@@ -127,6 +129,9 @@ struct SidebarView: View {
                                   intensity: glass, mask: AnyShape(outline))
                             .clipShape(outline)
                     }
+                    // Weiße, leicht durchscheinende Blase vom Bildschirmrand um das Icon unter der Maus
+                    HoverBubble(edge: edge, cell: state.hoverRect, barThickness: thickness)
+                        .clipShape(outline)
                     content(palette, clockOn: clockOn, clockSize: clockSize)
                 }
                 // Glasrand nur auf den Seiten zum Bildschirminneren, nicht am Bildschirmrand
