@@ -161,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Klick auf KI/Google (ohne Text) bzw. ↩ im Eingabefeld (mit Text).
     private func runAction(_ action: ActionButton, text: String?) {
         let settings = store.config.settings
+        if text == nil { sidebar.suppressHoverInput(action) }
         switch action {
         case .note:
             if let text {

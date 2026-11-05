@@ -7,6 +7,8 @@ final class SidebarState: ObservableObject {
     @Published var flyoutGroupID: UUID?
     /// Bei „Automatisch ausblenden“: Leiste gerade sichtbar
     @Published var isRevealed = false
+    /// Inhalt (Uhr, Icons) anzeigen – wird nur vom Controller gesetzt, zusammen mit der Fenstergröße
+    @Published var contentVisible = true
     /// Element unter der Maus (für den Lupen-Effekt): "fav:<id>" bzw. "group:<id>"
     @Published var hoveredCell: String?
     /// Wo der Verlauf am unteren Rand der Uhr steht (0 … 1), damit Uhr und Leiste nahtlos ineinander übergehen
@@ -102,7 +104,7 @@ struct SidebarView: View {
     private var edge: ScreenEdge { settings.edge }
     private var vertical: Bool { edge.isVertical }
     private var thickness: CGFloat { CGFloat(settings.collapsedThickness) }
-    private var showContent: Bool { state.isRevealed || !settings.autoHide }
+    private var showContent: Bool { state.contentVisible }
     private var showFavoriteSlot: Bool { store.config.favorites.count < SidebarConfig.maxFavorites }
 
     var body: some View {
@@ -127,7 +129,11 @@ struct SidebarView: View {
                     }
                     content(palette, clockOn: clockOn, clockSize: clockSize)
                 }
-                .overlay(GlassRim(shape: outline, intensity: glass))
+                // Glasrand nur auf den Seiten zum Bildschirminneren, nicht am Bildschirmrand
+                .overlay(GlassRim(shape: SidebarOutline(edge: edge, barCross: thickness,
+                                                        clockCross: vertical ? clockSize.width : clockSize.height,
+                                                        clockAlong: clockAlong, closed: false),
+                                  intensity: glass, clip: AnyShape(outline)))
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
                 palette.accent.opacity(0.55)
