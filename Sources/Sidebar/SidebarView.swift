@@ -218,9 +218,9 @@ struct SidebarView: View {
                 // Quer: Notizfeld nur, wenn alle Ordner in voller Größe Platz haben (Ordner haben Vorrang)
                 let noteField: CGFloat = 220
                 let fitsNoteField = !vertical && settings.showNotes
-                    && length - BarMetrics.naturalLength(cells: cellCount, thickness: thickness) >= noteField + 16
+                    && length - BarMetrics.naturalLength(cells: cellCount, thickness: thickness) >= noteField + 24
                 let noteIconOnBar = !vertical && settings.showNotes && !fitsNoteField
-                let available = fitsNoteField ? length - noteField - 16 : (noteIconOnBar ? length - 64 : length)
+                let available = fitsNoteField ? length - noteField - 24 : (noteIconOnBar ? length - 64 : length)
                 let metrics = BarMetrics(available: available, cells: cellCount, thickness: thickness)
                 let row = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
                 row {
@@ -235,7 +235,9 @@ struct SidebarView: View {
                         InlineField(kind: .note, width: noteField, palette: palette,
                                     onSubmit: { text in actions.submitAction(.note, text) },
                                     onOpen: { actions.triggerAction(.note) })
-                            .padding(.horizontal, 8)
+                            // etwas mehr Luft zum Ablagefach
+                            .padding(.leading, 8)
+                            .padding(.trailing, 16)
                             .frame(maxHeight: .infinity)
                     } else if noteIconOnBar {
                         noteCell

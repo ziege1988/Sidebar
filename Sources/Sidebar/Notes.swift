@@ -49,24 +49,37 @@ struct InlineField: View {
                     KeyboardFocus.end()
                 }
             if let onOpen {
+                // Großer Knopf „alle Notizen“ (Klick wird zusätzlich direkt vom Fenster erkannt)
                 Button {
                     onOpen()
                 } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(palette.secondary)
+                    ZStack {
+                        Circle().fill(palette.accent)
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(palette.onAccent)
+                    }
+                    .frame(width: 24, height: 24)
+                    .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ActionFramesKey.self,
+                                               value: ["noteOpen": proxy.frame(in: .named("bar")).insetBy(dx: -4, dy: -4)])
+                    }
+                )
                 .help("Alle Notizen anzeigen")
             }
         }
-        .padding(.horizontal, 10)
-        .frame(width: width, height: 28)
+        .padding(.leading, 10)
+        .padding(.trailing, onOpen == nil ? 10 : 3)
+        .frame(width: width, height: 30)
         .background(
             GeometryReader { proxy in
                 // Position merken, damit das Notiz-Fenster direkt am Feld aufgeht
                 Color.clear.preference(key: ActionFramesKey.self,
-                                       value: kind == .note ? ["noteField": proxy.frame(in: .named("bar"))] : [:])
+                                       value: [(kind == .note ? "noteField" : "googleField"): proxy.frame(in: .named("bar"))])
             }
         )
         .background(Capsule().fill(palette.gradientBottom.opacity(0.85)))

@@ -77,6 +77,36 @@ final class SidebarController {
     private let updater: Updater
     private let actions: SidebarActions
     private var lastLayoutKey: String?
+    private var clickMonitor: Any?
+
+    /// Klicks auf den Notiz-Knopf direkt am Fenster abfangen – zuverlässiger als die SwiftUI-Knöpfe,
+    /// die einen Klick verlieren können, wenn sich die Leiste gerade neu zeichnet (Lupe, Blase).
+    /// Klicks in die festen Eingabefelder machen die Leiste sofort zum Tastaturfenster.
+    private func installClickMonitor() {
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self else { return event }
+                return self.handleClick(event)
+            }
+        }
+    }
+
+    private func handleClick(_ event: NSEvent) -> NSEvent? {
+        guard event.window === panel else { return event }
+        let p = event.locationInWindow
+        let local = CGPoint(x: p.x, y: panel.frame.height - p.y)
+        let frames = geometry.actionFrames
+        if frames[ActionButton.note.rawValue]?.contains(local) == true
+            || frames["noteOpen"]?.contains(local) == true {
+            actions.triggerAction(.note)
+            return nil
+        }
+        if frames["noteField"]?.contains(local) == true || frames["googleField"]?.contains(local) == true {
+            NSApp.activate()
+            panel.makeKey()
+        }
+        return event
+    }
 
     /// Inhalt der Leiste (neu) aufbauen.
     private func installBarContent() {
@@ -120,6 +150,7 @@ final class SidebarController {
         self.updater = updater
         self.actions = actions
         installBarContent()
+        installClickMonitor()
 
         let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, geometry: geometry,
                                                                 actions: actions))
