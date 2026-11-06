@@ -705,7 +705,18 @@ struct FlyoutView: View {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(palette.secondary)
                     }
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 12)
+                    .frame(maxHeight: .infinity)
+                    .background(
+                        // Ordnername dauerhaft im Weiß der Blasen hervorgehoben
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(scheme == .dark ? 0.16 : 0.42))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color.white.opacity(scheme == .dark ? 0.22 : 0.6), lineWidth: 0.8))
+                            .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
+                    )
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 5)
                     .frame(height: Self.headerHeight)
 
                     Rectangle().fill(palette.border).frame(height: 1)

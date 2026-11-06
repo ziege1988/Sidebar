@@ -55,8 +55,9 @@ struct HoverBubble: View {
         GeometryReader { proxy in
             if let cell {
                 let flare: CGFloat = 13
-                let along = (edge.isVertical ? cell.height : cell.width) - 8 + 2 * flare
-                let cross = barThickness - 9
+                // reicht quer fast bis an den Rand der Leiste, damit auch das vergrößerte Icon ganz in der Blase liegt
+                let along = (edge.isVertical ? cell.height : cell.width) - 4 + 2 * flare
+                let cross = barThickness - 3
                 let size = edge.isVertical ? CGSize(width: cross, height: along) : CGSize(width: along, height: cross)
                 let center: CGPoint = {
                     switch edge {
