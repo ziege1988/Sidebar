@@ -96,8 +96,13 @@ final class SidebarController {
         let p = event.locationInWindow
         let local = CGPoint(x: p.x, y: panel.frame.height - p.y)
         let frames = geometry.actionFrames
+        // Querformat: der ganze rechte Teil des Notizfelds (Knopf + Umgebung) öffnet die Notizen
+        let openZone = frames["noteField"].map { field in
+            CGRect(x: field.maxX - 46, y: field.minY - 8, width: 54, height: field.height + 16)
+        }
         if frames[ActionButton.note.rawValue]?.contains(local) == true
-            || frames["noteOpen"]?.contains(local) == true {
+            || frames["noteOpen"]?.contains(local) == true
+            || openZone?.contains(local) == true {
             actions.triggerAction(.note)
             return nil
         }

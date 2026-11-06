@@ -54,13 +54,13 @@ struct InlineField: View {
                     onOpen()
                 } label: {
                     ZStack {
-                        Circle().fill(palette.accent)
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 11, weight: .bold))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous).fill(palette.accent)
+                        Image(systemName: "note.text")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(palette.onAccent)
                     }
-                    .frame(width: 24, height: 24)
-                    .contentShape(Circle())
+                    .frame(width: 34, height: 30)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .background(
@@ -74,7 +74,7 @@ struct InlineField: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, onOpen == nil ? 10 : 3)
-        .frame(width: width, height: 30)
+        .frame(width: width, height: onOpen == nil ? 30 : 36)
         .background(
             GeometryReader { proxy in
                 // Position merken, damit das Notiz-Fenster direkt am Feld aufgeht
