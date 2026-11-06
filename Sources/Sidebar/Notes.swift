@@ -53,12 +53,10 @@ struct InlineField: View {
                 Button {
                     onOpen()
                 } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous).fill(palette.accent)
-                        Image(systemName: "note.text")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(palette.onAccent)
-                    }
+                    // dezent wie die übrigen Feld-Symbole – nur die Klickfläche ist groß
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(palette.secondary)
                     .frame(width: 34, height: 30)
                     .contentShape(Rectangle())
                 }
