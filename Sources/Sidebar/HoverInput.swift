@@ -61,6 +61,7 @@ final class HoverInputController {
     private let panel: KeyPanel
     private var previousApp: NSRunningApplication?
     private var resignObserver: NSObjectProtocol?
+    private var shownAt = Date.distantPast
     /// Wird mit Eingabe und Art aufgerufen (↩)
     var onSubmit: ((String, ActionButton) -> Void)?
 
@@ -83,8 +84,21 @@ final class HoverInputController {
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
-            // Woanders hingeklickt → schließen, ohne den Fokus umzulenken
-            MainActor.assumeIsolated { self?.close(restoreFocus: false) }
+            // Woanders hingeklickt → schließen, ohne den Fokus umzulenken.
+            // Direkt nach dem Öffnen gibt macOS den Fokus beim Aktivieren der App manchmal kurz
+            // an ein anderes Fenster – dann das Feld wieder nach vorne holen statt es zu schließen.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if Date().timeIntervalSince(self.shownAt) < 0.8 {
+                    DispatchQueue.main.async {
+                        guard self.isVisible else { return }
+                        self.panel.makeKeyAndOrderFront(nil)
+                        self.model.focusToken = UUID()
+                    }
+                } else {
+                    self.close(restoreFocus: false)
+                }
+            }
         }
     }
 
@@ -102,9 +116,9 @@ final class HoverInputController {
         let host = NSHostingView(rootView: view)
         host.sizingOptions = []
         panel.contentView = host
-        let size = NSSize(width: 360, height: 48)
+        let size = NSSize(width: 420, height: 60)
 
-        let gap: CGFloat = 8
+        let gap: CGFloat = 4
         var origin = NSPoint.zero
         switch edge {
         case .left: origin = NSPoint(x: anchor.maxX + gap, y: anchor.midY - size.height / 2)
@@ -124,9 +138,16 @@ final class HoverInputController {
            front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             previousApp = front
         }
+        shownAt = Date()
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         model.focusToken = UUID()
+        // nach der Aktivierung der App noch einmal Fokus setzen
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.panel.makeKeyAndOrderFront(nil)
+            self.model.focusToken = UUID()
+        }
     }
 
     func close(restoreFocus: Bool) {
@@ -162,13 +183,13 @@ struct HoverInputView: View {
             ZStack {
                 Circle().fill(palette.accent)
                 Image(systemName: model.kind.symbol)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(palette.onAccent)
             }
-            .frame(width: 26, height: 26)
+            .frame(width: 32, height: 32)
             TextField(model.kind.placeholder, text: $model.text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(.system(size: 17))
                 .foregroundStyle(palette.text)
                 .focused($focused)
                 .onSubmit(onSubmit)
@@ -179,14 +200,14 @@ struct HoverInputView: View {
                 .padding(.vertical, 2)
                 .background(RoundedRectangle(cornerRadius: 5).stroke(palette.border, lineWidth: 1))
         }
-        .padding(.leading, 11)
-        .padding(.trailing, 12)
-        .frame(width: 352, height: 40)
+        .padding(.leading, 12)
+        .padding(.trailing, 14)
+        .frame(width: 410, height: 50)
         .background(
             Capsule().fill(palette.gradientBottom)
         )
         .overlay(Capsule().stroke(palette.accent.opacity(0.35), lineWidth: 1))
-        .padding(4)
+        .padding(5)
         .onAppear { DispatchQueue.main.async { focused = true } }
         .onChange(of: model.focusToken) { _, _ in
             DispatchQueue.main.async { focused = true }

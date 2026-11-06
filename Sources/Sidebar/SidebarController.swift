@@ -325,7 +325,7 @@ final class SidebarController {
                 inputLeftAt = nil
             } else {
                 if inputLeftAt == nil { inputLeftAt = now }
-                if let left = inputLeftAt, now.timeIntervalSince(left) > 0.5 {
+                if let left = inputLeftAt, now.timeIntervalSince(left) > 0.8 {
                     input.close(restoreFocus: true)
                     inputLeftAt = nil
                 }
