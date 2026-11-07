@@ -81,6 +81,8 @@ struct LinkItem: Codable, Identifiable, Hashable {
     var customIcon: String?
     /// Im Hintergrund geladen halten, damit Benachrichtigungen ankommen (nur integriertes App-Fenster)
     var keepAlive: Bool?
+    /// Merker: Mitteilungen dieser Seite sind in Chrome erlaubt (nur zur Übersicht – Chrome selbst stellt das ein)
+    var chromeNotify: Bool?
 
     var url: URL? { LinkItem.normalizedURL(from: urlString) }
     var host: String? { url?.host }

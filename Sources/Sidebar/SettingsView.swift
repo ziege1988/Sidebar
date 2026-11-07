@@ -398,6 +398,31 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .onAppear { dockWatcher.refreshAccess() }
+                Section("Mitteilungen je Link") {
+                    let links = (store.config.favorites + store.config.groups.flatMap(\.items)).filter { !$0.isLocal }
+                    if links.isEmpty {
+                        Text("Noch keine Webseiten in der Sidebar.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(links) { link in
+                        NotifySourceRow(item: Binding(
+                            get: { store.item(id: link.id) ?? link },
+                            set: { updated in
+                                store.updateItem(id: link.id) { item in
+                                    item.keepAlive = updated.keepAlive
+                                    item.chromeNotify = updated.chromeNotify
+                                }
+                            }
+                        ), autoMessengers: store.config.settings.messengerBackground, compact: true)
+                    }
+                    Text("Sidebar = Zahlen, Aufleuchten und Einblendung über das unsichtbare integrierte Fenster (unabhängig von „Öffnen als“). Chrome = Chrome zeigt die Mitteilungen selbst. Beide = doppelt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Hinweis: Für Mitteilungen über die Sidebar einmal im integrierten Fenster anmelden (Rechtsklick aufs Icon → Öffnen als → Integriertes App-Fenster). Chrome selbst kann die Sidebar nicht umstellen – „Chrome“ ist dein Merker zur Übersicht.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Ruhemodus") {
                     Toggle("Ruhemodus jetzt an", isOn: $store.config.settings.quietMode)
                     Toggle("Automatisch zu festen Zeiten", isOn: $store.config.settings.quietScheduled)
@@ -1073,22 +1098,8 @@ struct ItemEditorSheet: View {
                             Text(mode.title).tag(OpenMode?.some(mode))
                         }
                     }
-                    Toggle("Benachrichtigungen (im Hintergrund aktiv halten)", isOn: Binding(
-                        get: { item.runsInBackground(autoMessengers: true) },
-                        set: { enabled in
-                            // Messenger laufen automatisch – ausdrücklich „aus“ merken
-                            item.keepAlive = enabled ? true : (item.isMessenger ? false : nil)
-                            // Chrome-App bleibt erhalten – das integrierte Fenster läuft dann zusätzlich unsichtbar mit
-                            if enabled && item.openMode != .chromiumApp { item.openMode = .appWindow }
-                        }
-                    ))
-                    if item.runsInBackground(autoMessengers: true) {
-                        Text(item.openMode == .chromiumApp
-                             ? "Geöffnet wird in der Chrome-App. Zusätzlich läuft die Seite unsichtbar im integrierten Fenster und liefert Zahlen und Mitteilungen. Dort einmal anmelden: Rechtsklick aufs Icon → Öffnen als → Integriertes App-Fenster. Tipp: In Chrome die Mitteilungen dieser Seite ausschalten, sonst kommen sie doppelt."
-                             : "Die Seite läuft unsichtbar im integrierten App-Fenster weiter. Neue Nachrichten erscheinen als Zähler am Icon und als macOS-Mitteilung. Einmal öffnen und anmelden ist nötig. Öffnen in der Chrome-App ist ebenfalls möglich – das integrierte Fenster läuft dann zusätzlich im Hintergrund.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    // Unabhängig von „Öffnen als“: woher die Mitteilungen kommen
+                    NotifySourceRow(item: $item)
                 }
             }
             .formStyle(.grouped)

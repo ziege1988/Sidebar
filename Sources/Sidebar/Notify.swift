@@ -39,6 +39,97 @@ extension LinkItem {
     }
 }
 
+// MARK: - Woher die Mitteilungen eines Links kommen
+
+enum NotifySource: String, CaseIterable, Identifiable {
+    case sidebar, chrome, both, off
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sidebar: return "Sidebar (integriertes Fenster im Hintergrund)"
+        case .chrome: return "Nur Chrome"
+        case .both: return "Sidebar und Chrome (kommen doppelt)"
+        case .off: return "Keine"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .sidebar: return "Sidebar"
+        case .chrome: return "Chrome"
+        case .both: return "Beide"
+        case .off: return "Keine"
+        }
+    }
+}
+
+extension LinkItem {
+    func notifySource(autoMessengers: Bool) -> NotifySource {
+        let sidebar = runsInBackground(autoMessengers: autoMessengers)
+        let chrome = chromeNotify == true
+        switch (sidebar, chrome) {
+        case (true, true): return .both
+        case (true, false): return .sidebar
+        case (false, true): return .chrome
+        case (false, false): return .off
+        }
+    }
+
+    mutating func setNotifySource(_ source: NotifySource) {
+        let sidebar = source == .sidebar || source == .both
+        // Messenger laufen automatisch – ausdrücklich „aus“ merken
+        keepAlive = sidebar ? true : (isMessenger ? false : nil)
+        chromeNotify = (source == .chrome || source == .both) ? true : nil
+    }
+}
+
+/// Auswahl „Mitteilungen über …“ mit kurzen Hinweisen – im Link-Editor und in den Einstellungen.
+struct NotifySourceRow: View {
+    @Binding var item: LinkItem
+    var autoMessengers = true
+    var compact = false
+
+    var body: some View {
+        let source = item.notifySource(autoMessengers: autoMessengers)
+        let binding = Binding<NotifySource>(get: { source }, set: { item.setNotifySource($0) })
+        if compact {
+            Picker(selection: binding) {
+                ForEach(NotifySource.allCases) { Text($0.shortTitle).tag($0) }
+            } label: {
+                HStack(spacing: 8) {
+                    FaviconView(item: item, size: 18)
+                    Text(item.displayName).lineLimit(1)
+                }
+            }
+        } else {
+            Picker("Mitteilungen über", selection: binding) {
+                ForEach(NotifySource.allCases) { Text($0.title).tag($0) }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                switch source {
+                case .sidebar:
+                    Text("Zahlen, Aufleuchten und Einblendung kommen von der Sidebar – egal, ob du integriert oder in der Chrome-App öffnest. In Chrome die Mitteilungen dieser Seite ausschalten, sonst kommen sie doppelt.")
+                case .both:
+                    Text("Mitteilungen kommen doppelt: von der Sidebar und von Chrome. Zum Abschalten in Chrome: Schloss-Symbol links in der Adresszeile → Mitteilungen.")
+                case .chrome:
+                    Text("Nur Chrome zeigt Mitteilungen (dort für diese Seite erlauben: Schloss-Symbol → Mitteilungen). Die Sidebar zeigt dann keine Zahlen und keine Einblendung.")
+                case .off:
+                    Text("Keine Mitteilungen über die Sidebar.")
+                }
+                Text("Hinweis: Für Mitteilungen über die Sidebar einmal im integrierten Fenster anmelden. Die Einstellung in Chrome kann die Sidebar nicht selbst ändern – „Chrome“ ist hier nur dein Merker zur Übersicht.")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if source == .sidebar || source == .both, let url = item.url, !url.isFileURL {
+                Button("Jetzt im integrierten Fenster anmelden …") {
+                    WebAppManager.shared.open(item: item, url: url)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Mitteilungs-Einstellungen (Ruhemodus, Aufleuchten, Vorschau)
 
 /// Spiegelt die Mitteilungs-Einstellungen für alle Ansichten und prüft den Ruhemodus.
