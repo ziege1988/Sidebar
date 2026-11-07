@@ -90,7 +90,7 @@ final class AlertState: ObservableObject {
 /// 2. über das Werkzeug `lsappinfo` (Ersatz, falls 1 nicht geht)
 /// 3. direkt aus dem Dock über die Bedienungshilfen (nur, wenn der Zugriff erlaubt wurde)
 /// Keiner dieser Wege ist offiziell von Apple dokumentiert.
-final class DockBadgeWatcher: ObservableObject {
+final class DockBadgeWatcher: ObservableObject, @unchecked Sendable {
     static let shared = DockBadgeWatcher()
 
     struct Status: Equatable {
