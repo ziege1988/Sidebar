@@ -171,6 +171,14 @@ struct GeneralSettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var backupMessage: String?
+    @ObservedObject private var dockWatcher = DockBadgeWatcher.shared
+
+    private func statusText(_ status: DockBadgeWatcher.Status) -> String {
+        guard status.running else { return "läuft gerade nicht" }
+        guard !status.sources.isEmpty else { return "läuft – Zahl nicht lesbar" }
+        let count = status.count > 0 ? "Zahl \(status.count)" : "keine neue Nachricht"
+        return "läuft – \(count) (über \(status.sources.joined(separator: ", ")))"
+    }
 
     var body: some View {
         Form {
@@ -310,9 +318,36 @@ struct GeneralSettingsView: View {
             if category == .notifications {
                 Section("Zahlen & Messenger") {
                     Toggle("Zahlen von Mac-Programmen übernehmen (wie im Dock)", isOn: $store.config.settings.dockBadges)
-                    Text("Für Programme in der Sidebar, z. B. WhatsApp, Mail, Nachrichten, Slack oder Outlook: die rote Zahl aus dem Dock erscheint auch am Icon in der Sidebar (sobald das Programm läuft).")
+                    Text("Für Programme in der Sidebar, z. B. WhatsApp, Mail, Nachrichten, Slack oder Outlook: die rote Zahl aus dem Dock erscheint auch am Icon in der Sidebar (sobald das Programm läuft). Dazu das Programm aus dem Ordner „Programme“ in die Sidebar ziehen.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if store.config.settings.dockBadges {
+                        let statuses = dockWatcher.statuses.values.sorted { $0.name < $1.name }
+                        if statuses.isEmpty {
+                            Text("Noch kein Programm in der Sidebar – z. B. WhatsApp aus „Programme“ hineinziehen.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        ForEach(statuses, id: \.name) { status in
+                            LabeledContent(status.name) {
+                                Text(statusText(status))
+                                    .font(.caption)
+                                    .foregroundStyle(status.running && status.sources.isEmpty ? .orange : .secondary)
+                            }
+                        }
+                        if dockWatcher.accessibilityTrusted {
+                            Label("Zugriff aufs Dock erlaubt", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        } else {
+                            Button("Zahlen zuverlässiger lesen: Zugriff aufs Dock erlauben …") {
+                                dockWatcher.requestAccessibility()
+                            }
+                            Text("Öffnet Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen. Dort „Sidebar“ einschalten. Hinweis: Nach einem Update der Sidebar muss der Schalter dort ggf. einmal aus- und wieder eingeschaltet werden.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Toggle("Messenger automatisch im Hintergrund laden", isOn: $store.config.settings.messengerBackground)
                     Text("WhatsApp Web, Instagram, Messenger, Telegram, Slack, Teams, Discord … laufen unsichtbar mit, damit Zahlen und Mitteilungen ankommen. Einmal über die Sidebar öffnen und anmelden (bei WhatsApp: QR-Code mit dem Handy scannen) – danach bleibt die Anmeldung gespeichert. Pro Link abschaltbar.")
                         .font(.caption)

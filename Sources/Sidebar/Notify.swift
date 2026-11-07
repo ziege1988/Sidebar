@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Combine
 import QuickLookThumbnailing
 import SwiftUI
@@ -83,10 +84,25 @@ final class AlertState: ObservableObject {
 // MARK: - Zähler von Mac-Programmen (wie im Dock)
 
 /// Liest die roten Dock-Zahlen von Programmen (WhatsApp, Mail, Nachrichten, Slack …).
-/// Nutzt das macOS-Werkzeug `lsappinfo` – ohne Sonderrechte. Das ist kein offizieller Weg von Apple,
-/// funktioniert aber seit vielen macOS-Versionen.
-final class DockBadgeWatcher {
+/// Drei Wege, die Ergebnisse werden zusammengeführt (höchste Zahl gewinnt):
+/// 1. direkt bei macOS (LaunchServices – derselbe Weg wie das Werkzeug `lsappinfo`), ohne Sonderrechte
+/// 2. über das Werkzeug `lsappinfo` (Ersatz, falls 1 nicht geht)
+/// 3. direkt aus dem Dock über die Bedienungshilfen (nur, wenn der Zugriff erlaubt wurde)
+/// Keiner dieser Wege ist offiziell von Apple dokumentiert.
+final class DockBadgeWatcher: ObservableObject {
     static let shared = DockBadgeWatcher()
+
+    struct Status: Equatable {
+        var name: String
+        var running: Bool
+        var count: Int
+        var sources: [String]
+    }
+
+    /// Zustand je Programm (für die Anzeige in den Einstellungen)
+    @Published private(set) var statuses: [String: Status] = [:]
+    @Published private(set) var accessibilityTrusted = AXIsProcessTrusted()
+
     private var bundleIDs: [String] = []
     private var timer: Timer?
     private let queue = DispatchQueue(label: "sidebar.dockbadges", qos: .utility)
@@ -97,64 +113,135 @@ final class DockBadgeWatcher {
         let ids = enabled ? Array(Set(items.compactMap(\.appBundleID))).sorted() : []
         let removed = Set(bundleIDs).subtracting(ids)
         bundleIDs = ids
-        for id in removed { BadgeStore.shared.setApp(0, bundleID: id) }
+        for id in removed {
+            BadgeStore.shared.setApp(0, bundleID: id)
+            statuses[id] = nil
+        }
         if ids.isEmpty {
             timer?.invalidate()
             timer = nil
             return
         }
         if timer == nil {
-            let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.poll() }
+            let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in self?.poll() }
             RunLoop.main.add(timer, forMode: .common)
             self.timer = timer
         }
         poll()
     }
 
-    private func poll() {
+    /// Fragt nach dem Zugriff über die Bedienungshilfen (macOS zeigt dazu einen Hinweis).
+    func requestAccessibility() {
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        accessibilityTrusted = AXIsProcessTrustedWithOptions(options)
+    }
+
+    func poll() {
         guard !running else { return }
         running = true
         let ids = bundleIDs
-        // Nur laufende Programme abfragen (andere haben keine Zahl)
-        var targets: [(String, String, pid_t)] = []
+        var targets: [(id: String, name: String, pid: pid_t, url: URL?)] = []
+        var names: [String: String] = [:]
         for id in ids {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
-                targets.append((id, app.localizedName ?? id, app.processIdentifier))
+                let name = app.localizedName ?? id
+                targets.append((id, name, app.processIdentifier, app.bundleURL))
+                names[id] = name
             }
         }
-        let notRunning = Set(ids).subtracting(targets.map(\.0))
+        let trusted = AXIsProcessTrusted()
         queue.async { [weak self] in
-            var results: [String: Int] = [:]
-            for (id, name, pid) in targets {
-                results[id] = Self.statusCount(name: name, pid: pid)
-            }
-            for id in notRunning { results[id] = 0 }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    for (id, count) in results { BadgeStore.shared.setApp(count, bundleID: id) }
+            var results: [String: Status] = [:]
+            let dockLabels = trusted ? Self.dockLabels() : []
+            for target in targets {
+                var counts: [Int] = []
+                var sources: [String] = []
+                if let label = Self.launchServicesLabel(pid: target.pid) {
+                    counts.append(Self.count(from: label))
+                    sources.append("macOS")
                 }
-                self?.running = false
+                if let label = Self.lsappinfoLabel(name: target.name, pid: target.pid) {
+                    counts.append(Self.count(from: label))
+                    sources.append("lsappinfo")
+                }
+                let clean = Self.cleanName(target.name)
+                if let dock = dockLabels.first(where: { entry in
+                    (target.url != nil && entry.url?.standardizedFileURL.path == target.url?.standardizedFileURL.path)
+                        || Self.cleanName(entry.title) == clean
+                }) {
+                    counts.append(Self.count(from: dock.label))
+                    sources.append("Dock")
+                }
+                results[target.id] = Status(name: target.name, running: true,
+                                            count: counts.max() ?? 0, sources: sources)
+            }
+            for id in ids where results[id] == nil {
+                results[id] = Status(name: names[id] ?? id, running: false, count: 0, sources: [])
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                for (id, status) in results { BadgeStore.shared.setApp(status.count, bundleID: id) }
+                if self.statuses != results { self.statuses = results }
+                if self.accessibilityTrusted != trusted { self.accessibilityTrusted = trusted }
+                self.running = false
             }
         }
     }
 
-    private static func statusCount(name: String, pid: pid_t) -> Int {
-        var output = run(["info", "-only", "StatusLabel", name])
-        if !output.contains("StatusLabel") {
-            output = run(["info", "-only", "StatusLabel", "pid=\(pid)"])
-        }
-        return parse(output)
+    /// Unsichtbare Zeichen (z. B. vor „‎WhatsApp“) entfernen
+    static func cleanName(_ name: String) -> String {
+        name.unicodeScalars.filter { !CharacterSet(charactersIn: "\u{200E}\u{200F}\u{202A}\u{202C}").contains($0) }
+            .map(String.init).joined().trimmingCharacters(in: .whitespaces).lowercased()
     }
 
-    static func parse(_ output: String) -> Int {
+    static func count(from label: String) -> Int {
+        let trimmed = label.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return 0 }
+        // Kein Zahlenwert (z. B. „•“ oder „!“) → als 1 anzeigen
+        return Int(trimmed.filter(\.isNumber)) ?? 1
+    }
+
+    // MARK: 1. LaunchServices
+
+    private typealias ASNCreate = @convention(c) (CFAllocator?, pid_t) -> Unmanaged<CFTypeRef>?
+    private typealias CopyInfoItem = @convention(c) (Int32, CFTypeRef, CFString) -> Unmanaged<CFTypeRef>?
+
+    private static let launchServices: (ASNCreate, CopyInfoItem)? = {
+        guard let handle = dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_LAZY),
+              let create = dlsym(handle, "_LSASNCreateWithPid"),
+              let copy = dlsym(handle, "_LSCopyApplicationInformationItem") else { return nil }
+        return (unsafeBitCast(create, to: ASNCreate.self), unsafeBitCast(copy, to: CopyInfoItem.self))
+    }()
+
+    /// `nil` = nicht lesbar, "" = keine Zahl
+    private static func launchServicesLabel(pid: pid_t) -> String? {
+        guard let (create, copy) = launchServices,
+              let asn = create(kCFAllocatorDefault, pid)?.takeRetainedValue() else { return nil }
+        // -2 = aktuelle Anmeldung (kLSDefaultSessionID)
+        guard let value = copy(-2, asn, "StatusLabel" as CFString)?.takeRetainedValue() else { return "" }
+        if let dict = value as? [String: Any] {
+            return (dict["label"] as? String) ?? ""
+        }
+        return (value as? String) ?? ""
+    }
+
+    // MARK: 2. lsappinfo
+
+    private static func lsappinfoLabel(name: String, pid: pid_t) -> String? {
+        for arguments in [["info", "-only", "StatusLabel", name],
+                          ["-all", "info", "-only", "StatusLabel", name]] {
+            let output = run(arguments)
+            guard output.contains("StatusLabel") else { continue }
+            return parseLabel(output) ?? ""
+        }
+        return nil
+    }
+
+    static func parseLabel(_ output: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: #""label"\s*=\s*"([^"]*)""#),
               let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
-              let range = Range(match.range(at: 1), in: output) else { return 0 }
-        let label = output[range].trimmingCharacters(in: .whitespaces)
-        if label.isEmpty { return 0 }
-        let digits = label.filter(\.isNumber)
-        // Kein Zahlenwert (z. B. „•“ oder „!“) → als 1 anzeigen
-        return Int(digits) ?? 1
+              let range = Range(match.range(at: 1), in: output) else { return nil }
+        return String(output[range])
     }
 
     private static func run(_ arguments: [String]) -> String {
@@ -172,6 +259,39 @@ final class DockBadgeWatcher {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    // MARK: 3. Dock (Bedienungshilfen)
+
+    private struct DockEntry {
+        var title: String
+        var url: URL?
+        var label: String
+    }
+
+    private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value
+    }
+
+    private static func dockLabels() -> [DockEntry] {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first
+        else { return [] }
+        let app = AXUIElementCreateApplication(dock.processIdentifier)
+        guard let children = attribute(app, kAXChildrenAttribute) as? [AXUIElement] else { return [] }
+        var entries: [DockEntry] = []
+        for list in children {
+            guard (attribute(list, kAXRoleAttribute) as? String) == "AXList",
+                  let items = attribute(list, kAXChildrenAttribute) as? [AXUIElement] else { continue }
+            for item in items {
+                guard let label = attribute(item, "AXStatusLabel") as? String else { continue }
+                let title = (attribute(item, kAXTitleAttribute) as? String) ?? ""
+                let url = attribute(item, kAXURLAttribute) as? URL
+                entries.append(DockEntry(title: title, url: url, label: label))
+            }
+        }
+        return entries
     }
 }
 
