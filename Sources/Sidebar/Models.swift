@@ -262,6 +262,25 @@ struct SidebarSettings: Codable, Equatable {
     var aiProvider: AIProvider = .chatgpt
     var showShelf: Bool = true
     var showNotes: Bool = true
+
+    // Mitteilungen
+    /// Rote Zahlen von Mac-Programmen (wie im Dock) an deren Icons zeigen
+    var dockBadges: Bool = true
+    /// Messenger (WhatsApp Web, Instagram, Telegram …) automatisch im Hintergrund laden
+    var messengerBackground: Bool = true
+    /// Icon leuchtet kurz auf, wenn etwas Neues kommt
+    var badgePulse: Bool = true
+    /// Absender und erste Zeile der letzten Nachricht beim Darüberfahren zeigen
+    var messagePreview: Bool = true
+    /// Ruhemodus: keine Zahlen, Töne, Banner, kein Aufleuchten
+    var quietMode: Bool = false
+    var quietScheduled: Bool = false
+    /// Ruhezeit von … bis … (volle Stunden)
+    var quietFrom: Int = 22
+    var quietTo: Int = 7
+    /// Mini-Vorschau der Seite nach längerem Verweilen auf einem Link
+    var linkPreview: Bool = true
+    var linkPreviewDelay: Double = 4
 }
 
 extension SidebarSettings {
@@ -295,6 +314,16 @@ extension SidebarSettings {
         aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider) ?? aiProvider
         showShelf = try c.decodeIfPresent(Bool.self, forKey: .showShelf) ?? showShelf
         showNotes = try c.decodeIfPresent(Bool.self, forKey: .showNotes) ?? showNotes
+        dockBadges = try c.decodeIfPresent(Bool.self, forKey: .dockBadges) ?? dockBadges
+        messengerBackground = try c.decodeIfPresent(Bool.self, forKey: .messengerBackground) ?? messengerBackground
+        badgePulse = try c.decodeIfPresent(Bool.self, forKey: .badgePulse) ?? badgePulse
+        messagePreview = try c.decodeIfPresent(Bool.self, forKey: .messagePreview) ?? messagePreview
+        quietMode = try c.decodeIfPresent(Bool.self, forKey: .quietMode) ?? quietMode
+        quietScheduled = try c.decodeIfPresent(Bool.self, forKey: .quietScheduled) ?? quietScheduled
+        quietFrom = try c.decodeIfPresent(Int.self, forKey: .quietFrom) ?? quietFrom
+        quietTo = try c.decodeIfPresent(Int.self, forKey: .quietTo) ?? quietTo
+        linkPreview = try c.decodeIfPresent(Bool.self, forKey: .linkPreview) ?? linkPreview
+        linkPreviewDelay = try c.decodeIfPresent(Double.self, forKey: .linkPreviewDelay) ?? linkPreviewDelay
     }
 }
 

@@ -102,15 +102,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        // Web-Apps mit „Im Hintergrund aktiv“ unsichtbar geladen halten
+        // Web-Apps mit „Im Hintergrund aktiv“ (und Messenger) unsichtbar geladen halten
         store.$config
             .map { config in
-                (config.favorites + config.groups.flatMap(\.items)).filter { $0.keepAlive == true }
+                (config.favorites + config.groups.flatMap(\.items)).filter {
+                    $0.runsInBackground(autoMessengers: config.settings.messengerBackground)
+                }
             }
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { items in
                 WebAppManager.shared.syncBackgroundApps(items)
+            }
+            .store(in: &cancellables)
+
+        // Mitteilungs-Einstellungen (Ruhemodus, Aufleuchten, Vorschau) und Dock-Zahlen von Programmen
+        store.$config
+            .receive(on: RunLoop.main)
+            .sink { config in
+                MainActor.assumeIsolated {
+                    AlertState.shared.apply(config.settings)
+                    DockBadgeWatcher.shared.update(items: config.favorites + config.groups.flatMap(\.items),
+                                                   enabled: config.settings.dockBadges)
+                }
             }
             .store(in: &cancellables)
 
@@ -234,6 +248,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(menuItem("Schnellnotizen …") { [weak self] in self?.runAction(.note, text: nil) })
         menu.addItem(menuItem("Einstellungen …", key: ",") { [weak self] in self?.showSettings() })
         menu.addItem(.separator())
+
+        let quiet = menuItem("Ruhemodus (keine Zahlen, Töne, Banner)") { [weak self] in
+            self?.store.config.settings.quietMode.toggle()
+        }
+        quiet.state = settings.quietMode ? .on : .off
+        menu.addItem(quiet)
 
         let visible = sidebar.isVisible
         menu.addItem(menuItem(visible ? "Sidebar ausblenden" : "Sidebar einblenden") { [weak self] in

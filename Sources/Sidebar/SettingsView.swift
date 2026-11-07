@@ -19,7 +19,7 @@ final class SettingsRouter: ObservableObject {
 
 /// Bereiche der Einstellungen (links in der Seitenleiste).
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case links, appearance, bar, clock, tools, opening, system
+    case links, appearance, bar, clock, tools, notifications, opening, system
     var id: String { rawValue }
 
     var title: String {
@@ -29,6 +29,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .bar: return "Leiste & Position"
         case .clock: return "Uhr"
         case .tools: return "KI, Ablage & Notizen"
+        case .notifications: return "Mitteilungen"
         case .opening: return "Links öffnen"
         case .system: return "Updates & System"
         }
@@ -41,6 +42,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .bar: return "sidebar.left"
         case .clock: return "clock.fill"
         case .tools: return "sparkles"
+        case .notifications: return "bell.badge.fill"
         case .opening: return "safari.fill"
         case .system: return "gearshape.fill"
         }
@@ -54,6 +56,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .bar: return Color(hex: 0x6F8F67)
         case .clock: return Color(hex: 0xC5A04A)
         case .tools: return Color(hex: 0x7A6BA8)
+        case .notifications: return Color(hex: 0xD0645A)
         case .opening: return Color(hex: 0x4E9384)
         case .system: return Color(hex: 0x7C8088)
         }
@@ -66,6 +69,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .bar: return "Bildschirm, Seite, Größe, Lupe und Ausblenden."
         case .clock: return "Analoge Uhr oben an der Sidebar."
         case .tools: return "KI- und Google-Suche, Ablagefach und Schnellnotizen."
+        case .notifications: return "Rote Zahlen, WhatsApp & Co., Ruhemodus und Mini-Vorschau."
         case .opening: return "Wie Links standardmäßig geöffnet werden."
         case .system: return "Version, Updates, Autostart und Konfiguration."
         }
@@ -298,6 +302,47 @@ struct GeneralSettingsView: View {
                     Text(store.config.settings.alwaysOnTop
                          ? "Die Sidebar liegt immer über allen Fenstern."
                          : "Fenster anderer Programme können die Sidebar verdecken. Fährst du mit der Maus auf einen sichtbaren Teil der Sidebar, kommt sie nach vorne.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if category == .notifications {
+                Section("Zahlen & Messenger") {
+                    Toggle("Zahlen von Mac-Programmen übernehmen (wie im Dock)", isOn: $store.config.settings.dockBadges)
+                    Text("Für Programme in der Sidebar, z. B. WhatsApp, Mail, Nachrichten, Slack oder Outlook: die rote Zahl aus dem Dock erscheint auch am Icon in der Sidebar (sobald das Programm läuft).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle("Messenger automatisch im Hintergrund laden", isOn: $store.config.settings.messengerBackground)
+                    Text("WhatsApp Web, Instagram, Messenger, Telegram, Slack, Teams, Discord … laufen unsichtbar mit, damit Zahlen und Mitteilungen ankommen. Einmal über die Sidebar öffnen und anmelden (bei WhatsApp: QR-Code mit dem Handy scannen) – danach bleibt die Anmeldung gespeichert. Pro Link abschaltbar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle("Icon leuchtet bei neuen Nachrichten kurz auf", isOn: $store.config.settings.badgePulse)
+                    Toggle("Letzte Nachricht beim Darüberfahren zeigen", isOn: $store.config.settings.messagePreview)
+                }
+                Section("Ruhemodus") {
+                    Toggle("Ruhemodus jetzt an", isOn: $store.config.settings.quietMode)
+                    Toggle("Automatisch zu festen Zeiten", isOn: $store.config.settings.quietScheduled)
+                    if store.config.settings.quietScheduled {
+                        Picker("Von", selection: $store.config.settings.quietFrom) {
+                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00 Uhr", $0)).tag($0) }
+                        }
+                        Picker("Bis", selection: $store.config.settings.quietTo) {
+                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00 Uhr", $0)).tag($0) }
+                        }
+                    }
+                    Text("Im Ruhemodus gibt es keine roten Zahlen, keine Töne, keine Banner und kein Aufleuchten. Danach erscheinen die Zahlen wieder. Schnell umschalten über das Menüleisten-Symbol.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Mini-Vorschau") {
+                    Toggle("Vorschau der Seite nach längerem Verweilen", isOn: $store.config.settings.linkPreview)
+                    if store.config.settings.linkPreview {
+                        LabeledContent("Verweilen: \(String(format: "%.1f", store.config.settings.linkPreviewDelay)) s") {
+                            Slider(value: $store.config.settings.linkPreviewDelay, in: 1.5...6, step: 0.5)
+                        }
+                    }
+                    Text("Bleibt die Maus länger auf einem Favoriten oder einem Link im Ordner, erscheint daneben ein kleines Bild der Seite (bei Dateien eine Vorschau). Seiten, die im App-Fenster laufen, zeigen den aktuellen Stand – andere werden einmal unsichtbar geladen und 30 Minuten zwischengespeichert.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -946,13 +991,14 @@ struct ItemEditorSheet: View {
                         }
                     }
                     Toggle("Benachrichtigungen (im Hintergrund aktiv halten)", isOn: Binding(
-                        get: { item.keepAlive == true },
+                        get: { item.runsInBackground(autoMessengers: true) },
                         set: { enabled in
-                            item.keepAlive = enabled ? true : nil
+                            // Messenger laufen automatisch – ausdrücklich „aus“ merken
+                            item.keepAlive = enabled ? true : (item.isMessenger ? false : nil)
                             if enabled { item.openMode = .appWindow }
                         }
                     ))
-                    if item.keepAlive == true {
+                    if item.runsInBackground(autoMessengers: true) {
                         Text("Die Seite läuft unsichtbar im integrierten App-Fenster weiter. Neue Nachrichten erscheinen als Zähler am Icon und als macOS-Mitteilung. Einmal öffnen und anmelden ist nötig.")
                             .font(.caption)
                             .foregroundStyle(.secondary)

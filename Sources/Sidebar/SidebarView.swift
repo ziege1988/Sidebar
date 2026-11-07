@@ -533,6 +533,7 @@ struct FavoriteCell: View {
                     BadgeView(count: badges.count(for: item))
                         .offset(x: 6, y: -5)
                 }
+                .badgePulse(badges.count(for: item))
                 .frame(width: cellSize.width, height: cellSize.height)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -587,6 +588,7 @@ struct GroupCell: View {
                 BadgeView(count: badges.count(for: group))
                     .offset(x: 6, y: -5)
             }
+            .badgePulse(badges.count(for: group))
             if showLabel {
                 Text(group.name)
                     .font(.system(size: 9, weight: .medium))
@@ -769,6 +771,7 @@ struct FlyoutRow: View {
                 FaviconView(item: item, size: 24)
                     // leichter Lupen-Effekt auf dem Icon
                     .scaleEffect(active ? 1.18 : 1)
+                    .badgePulse(badges.count(for: item))
                 Text(item.displayName)
                     .font(.system(size: 13, weight: active ? .medium : .regular))
                     .foregroundStyle(palette.text)

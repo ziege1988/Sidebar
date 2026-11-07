@@ -93,6 +93,9 @@ final class WebAppManager {
         }
     }
 
+    /// Geladene Seite eines Links (für die Mini-Vorschau)
+    func webView(for id: UUID) -> WKWebView? { controllers[id]?.webView }
+
     private func controller(for item: LinkItem, url: URL) -> WebAppController {
         if let existing = controllers[item.id] { return existing }
         let controller = WebAppController(item: item, url: url)
@@ -249,6 +252,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         DockPresence.present(window)
         // Gesehen: nur noch den Zähler aus dem Seitentitel anzeigen
         BadgeStore.shared.set(titleCount, for: item)
+        BadgeStore.shared.clearMessage(for: item)
     }
 
     /// Mitteilung aus der Webseite (über window.Notification)
@@ -256,8 +260,15 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         guard let dict = body as? [String: Any] else { return }
         let title = (dict["title"] as? String) ?? ""
         let text = (dict["body"] as? String) ?? ""
-        SystemNotifier.shared.post(title: title.isEmpty ? appName : "\(appName): \(title)",
-                                   body: text, itemID: item.id)
+        let seen = window.isKeyWindow && NSApp.isActive
+        if !seen {
+            BadgeStore.shared.setMessage(title: title.isEmpty ? appName : title, body: text, for: item)
+        }
+        // Ruhemodus: kein Banner, kein Ton
+        if !AlertState.shared.quiet {
+            SystemNotifier.shared.post(title: title.isEmpty ? appName : "\(appName): \(title)",
+                                       body: text, itemID: item.id)
+        }
         // Seiten ohne Zähler im Titel: selbst mitzählen, solange das Fenster nicht vorne ist
         if titleCount == 0 && !(window.isKeyWindow && NSApp.isActive) {
             BadgeStore.shared.increment(for: item)
@@ -312,6 +323,8 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
 
     // Fenster mit „Im Hintergrund aktiv“ nur ausblenden statt schließen
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Bild für die Mini-Vorschau festhalten, solange die Seite noch sichtbar ist
+        if sender === window { PreviewStore.shared.snapshot(of: webView, for: item.id) }
         guard sender === window, keepAlive else { return true }
         window.orderOut(nil)
         Task { @MainActor in DockPresence.update() }

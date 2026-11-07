@@ -49,6 +49,9 @@ final class SidebarController {
     private var candidateActionSince = Date.distantPast
     private var inputLeftAt: Date?
     private var lastAutoHide: Bool?
+    /// Mini-Vorschau: Link unter der Maus und seit wann
+    private var previewCandidate: UUID?
+    private var previewSince = Date.distantPast
 
     /// Breite des sichtbaren Streifens bei „Automatisch ausblenden“
     private static let hiddenThickness: CGFloat = 6
@@ -242,6 +245,8 @@ final class SidebarController {
     }
 
     func hideFlyout() {
+        LinkPreviewController.shared.hide()
+        previewCandidate = nil
         state.flyoutGroupID = nil
         flyoutPanel.orderOut(nil)
         flyoutLeftAt = nil
@@ -263,6 +268,7 @@ final class SidebarController {
         guard isVisible, !isDragging else {
             updateHovered(nil)
             updateLabel(nil)
+            updatePreview(nil, now: Date())
             return
         }
         let settings = store.config.settings
@@ -335,7 +341,10 @@ final class SidebarController {
 
         // Favorit unter der Maus: nur den Namen zeigen, kein Ordner-Fenster
         let hoveredFavorite = (inBar && barUsable) ? favoriteAt(mouse) : nil
-        updateLabel(hoveredFavorite)
+        // Mini-Vorschau nach längerem Verweilen (Favorit in der Leiste oder Link im Ordner)
+        updatePreview(hoveredFavorite ?? row, now: now)
+        // Während die Vorschau zu sehen ist, steht der Name schon darin
+        updateLabel(LinkPreviewController.shared.isVisible ? nil : hoveredFavorite)
 
         // KI/Google unter der Maus → Eingabefeld daneben, sofort lostippen
         let hoveredAction = (inBar && barUsable) ? actionAt(mouse) : nil
@@ -471,6 +480,38 @@ final class SidebarController {
         let frame = panel.frame
         let local = CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
         return geometry.favoriteFrames.first(where: { $0.value.contains(local) })?.key
+    }
+
+    /// Mini-Vorschau zeigen, sobald die Maus lange genug auf demselben Link bleibt.
+    private func updatePreview(_ id: UUID?, now: Date) {
+        let settings = store.config.settings
+        let preview = LinkPreviewController.shared
+        guard settings.linkPreview, let id else {
+            previewCandidate = nil
+            preview.hide()
+            return
+        }
+        if previewCandidate != id {
+            previewCandidate = id
+            previewSince = now
+            preview.hide()
+            return
+        }
+        guard preview.itemID != id,
+              now.timeIntervalSince(previewSince) >= settings.linkPreviewDelay,
+              let item = store.item(id: id), PreviewStore.supports(item) else { return }
+
+        if let rect = geometry.favoriteFrames[id], store.config.favorites.contains(where: { $0.id == id }) {
+            // Favorit: neben der Leiste
+            let bar = stripFrame(for: settings, forceVisible: true)
+            let anchor = NSRect(x: bar.minX + rect.minX, y: bar.maxY - rect.maxY, width: rect.width, height: rect.height)
+            preview.show(item, beside: bar, anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
+        } else if flyoutPanel.isVisible, let rect = geometry.flyoutRowFrames[id] {
+            // Link im Ordner: neben dem Ordner-Fenster
+            let frame = flyoutPanel.frame
+            let anchor = NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+            preview.show(item, beside: frame, anchor: anchor, edge: settings.edge, theme: settings.colorTheme)
+        }
     }
 
     /// Namens-Etikett neben dem Favoriten ein-/ausblenden.

@@ -21,7 +21,9 @@ enum LinkOpener {
             }
             return
         }
-        switch mode ?? item.openMode ?? settings.defaultOpenMode {
+        // Im Hintergrund laufende Seiten (z. B. WhatsApp Web) im App-Fenster öffnen – dort ist man angemeldet
+        let background = item.runsInBackground(autoMessengers: settings.messengerBackground)
+        switch mode ?? item.openMode ?? (background ? .appWindow : settings.defaultOpenMode) {
         case .defaultBrowser:
             NSWorkspace.shared.open(url)
         case .appWindow:
