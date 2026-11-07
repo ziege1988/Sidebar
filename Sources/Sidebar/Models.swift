@@ -280,6 +280,12 @@ struct SidebarSettings: Codable, Equatable {
     /// Ruhezeit von … bis … (volle Stunden)
     var quietFrom: Int = 22
     var quietTo: Int = 7
+    /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
+    var mailEnabled: Bool = false
+    var mailClientID: String = ""
+    var mailTenantID: String = ""
+    /// Icon, an dem Zahl und Einblendung der Mails erscheinen
+    var mailItemID: UUID?
     /// Neue Nachricht kurz neben dem Icon einblenden
     var messageToast: Bool = true
     var messageToastDuration: Double = 4
@@ -327,6 +333,10 @@ extension SidebarSettings {
         quietScheduled = try c.decodeIfPresent(Bool.self, forKey: .quietScheduled) ?? quietScheduled
         quietFrom = try c.decodeIfPresent(Int.self, forKey: .quietFrom) ?? quietFrom
         quietTo = try c.decodeIfPresent(Int.self, forKey: .quietTo) ?? quietTo
+        mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
+        mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
+        mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID
+        mailItemID = try c.decodeIfPresent(UUID.self, forKey: .mailItemID)
         messageToast = try c.decodeIfPresent(Bool.self, forKey: .messageToast) ?? messageToast
         messageToastDuration = try c.decodeIfPresent(Double.self, forKey: .messageToastDuration) ?? messageToastDuration
         linkPreview = try c.decodeIfPresent(Bool.self, forKey: .linkPreview) ?? linkPreview

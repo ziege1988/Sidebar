@@ -398,6 +398,7 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .onAppear { dockWatcher.refreshAccess() }
+                MailSettingsSection(store: store)
                 Section("Mitteilungen je Link") {
                     let links = (store.config.favorites + store.config.groups.flatMap(\.items)).filter { !$0.isLocal }
                     if links.isEmpty {

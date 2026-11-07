@@ -810,7 +810,10 @@ struct LinkPreviewView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.white.opacity(scheme == .dark ? 0.08 : 0.5))
-                if let image = previews.images[item.id] {
+                if MailWatcher.shared.itemID == item.id {
+                    // Postfach: die neuesten ungelesenen Mails statt eines Bildes
+                    MailPreviewList(palette: palette)
+                } else if let image = previews.images[item.id] {
                     Image(nsImage: image)
                         .resizable()
                         .interpolation(.high)

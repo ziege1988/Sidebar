@@ -501,9 +501,13 @@ final class SidebarController {
         guard isVisible, settings.messageToast, !AlertState.shared.quiet else { return }
         let bar = stripFrame(for: settings, forceVisible: !settings.autoHide || state.isRevealed)
         var local: CGRect?
-        if let item = store.config.favorites.first(where: { BadgeStore.key(for: $0) == toast.key }) {
+        func matches(_ item: LinkItem) -> Bool {
+            if let id = toast.itemID { return item.id == id }
+            return toast.key != nil && BadgeStore.key(for: item) == toast.key
+        }
+        if let item = store.config.favorites.first(where: matches) {
             local = geometry.favoriteFrames[item.id]
-        } else if let group = store.config.groups.first(where: { $0.items.contains { BadgeStore.key(for: $0) == toast.key } }) {
+        } else if let group = store.config.groups.first(where: { $0.items.contains(where: matches) }) {
             local = geometry.groupFrames[group.id]
         }
         guard let rect = local else { return }
@@ -541,7 +545,8 @@ final class SidebarController {
         }
         guard preview.itemID != id,
               now.timeIntervalSince(previewSince) >= settings.linkPreviewDelay,
-              let item = store.item(id: id), PreviewStore.supports(item) else { return }
+              let item = store.item(id: id),
+              PreviewStore.supports(item) || MailWatcher.shared.itemID == item.id else { return }
 
         if let rect = geometry.favoriteFrames[id], store.config.favorites.contains(where: { $0.id == id }) {
             // Favorit: neben der Leiste

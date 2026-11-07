@@ -9,6 +9,21 @@ final class BadgeStore: ObservableObject {
     static let shared = BadgeStore()
 
     @Published private(set) var counts: [String: Int] = [:]
+    /// Zusätzliche Zahlen je Icon (z. B. ungelesene E-Mails aus dem Postfach)
+    @Published private(set) var extra: [UUID: Int] = [:]
+
+    func setExtra(_ count: Int, itemID: UUID) {
+        if count <= 0 {
+            if extra[itemID] != nil { extra[itemID] = nil }
+        } else if extra[itemID] != count {
+            extra[itemID] = count
+        }
+    }
+
+    /// Einblendung neben einem bestimmten Icon (z. B. neue E-Mail)
+    func showToast(title: String, body: String, itemID: UUID) {
+        toast = Toast(key: nil, itemID: itemID, title: title, body: body)
+    }
     /// Letzte Nachricht je Seite (Absender + erste Zeile) für die Vorschau
     @Published private(set) var messages: [String: LastMessage] = [:]
 
@@ -53,12 +68,13 @@ final class BadgeStore: ObservableObject {
     /// Neue Nachricht merken und kurz neben dem Icon einblenden.
     func setMessage(title: String, body: String, key: String) {
         messages[key] = LastMessage(title: title, body: body, date: Date())
-        toast = Toast(key: key, title: title, body: body)
+        toast = Toast(key: key, itemID: nil, title: title, body: body)
     }
 
     struct Toast: Equatable {
         var id = UUID()
-        var key: String
+        var key: String?
+        var itemID: UUID?
         var title: String
         var body: String
     }
@@ -72,14 +88,24 @@ final class BadgeStore: ObservableObject {
     }
 
     func count(for item: LinkItem) -> Int {
-        guard let key = Self.key(for: item) else { return 0 }
-        return counts[key] ?? 0
+        let base = Self.key(for: item).flatMap { counts[$0] } ?? 0
+        return max(base, extra[item.id] ?? 0)
     }
 
     func count(for group: LinkGroup) -> Int {
         // Jede Seite nur einmal zählen
-        let keys = Set(group.items.compactMap(Self.key(for:)))
-        return keys.reduce(0) { $0 + (counts[$1] ?? 0) }
+        var total = 0
+        var keys: Set<String> = []
+        for item in group.items {
+            let base: Int
+            if let key = Self.key(for: item) {
+                base = keys.insert(key).inserted ? (counts[key] ?? 0) : 0
+            } else {
+                base = 0
+            }
+            total += max(base, extra[item.id] ?? 0)
+        }
+        return total
     }
 
     func set(_ count: Int, for item: LinkItem) {

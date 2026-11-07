@@ -123,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .sink { config in
                 MainActor.assumeIsolated {
                     AlertState.shared.apply(config.settings)
+                    MailWatcher.shared.apply(config.settings)
                     DockBadgeWatcher.shared.update(items: config.favorites + config.groups.flatMap(\.items),
                                                    enabled: config.settings.dockBadges)
                 }
