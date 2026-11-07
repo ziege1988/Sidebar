@@ -42,8 +42,19 @@ if [[ -f Resources/Icon/AppIcon.png ]]; then
   rm -rf "$ICONSET"
 fi
 
-echo "▸ Signiere (ad-hoc) …"
-codesign --force --sign - "$APP"
+# Feste Signatur (eigenes Zertifikat, siehe build.yml): macOS merkt sich Freigaben
+# wie „Bedienungshilfen“ dann über Updates hinweg. Ohne Zertifikat: ad-hoc.
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+  echo "▸ Signiere mit „$SIGN_IDENTITY“ …"
+  if ! codesign --force --sign "$SIGN_IDENTITY" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} "$APP"; then
+    echo "::warning::Signieren mit Zertifikat fehlgeschlagen – signiere ad-hoc"
+    codesign --force --sign - "$APP"
+  fi
+else
+  echo "▸ Signiere (ad-hoc) …"
+  codesign --force --sign - "$APP"
+fi
+codesign -d -r- "$APP" 2>&1 | sed 's/^/  /' || true
 
 if [[ "${1:-}" == "--install" ]]; then
   echo "▸ Installiere nach /Applications …"
