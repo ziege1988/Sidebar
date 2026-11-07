@@ -288,6 +288,7 @@ final class SidebarController {
         let now = Date()
         // Kontextmenü offen oder Drag aus der Sidebar heraus → nichts schließen
         let tracking = RunLoop.current.currentMode == .eventTracking
+        updateClickThrough(mouse: mouse, settings: settings, tracking: tracking)
 
         let input = HoverInputController.shared
         let inInput = input.isVisible
@@ -511,6 +512,16 @@ final class SidebarController {
         MessageToastController.shared.show(title: toast.title, message: toast.body, beside: bar, anchor: anchor,
                                            edge: settings.edge, theme: settings.colorTheme,
                                            duration: settings.messageToastDuration)
+    }
+
+    /// Das Fenster der Leiste ist so breit wie die Uhr – neben der Leiste (unter der Uhr) ist es aber
+    /// durchsichtig. Dort Klicks an den Schreibtisch bzw. die Fenster dahinter durchlassen.
+    private func updateClickThrough(mouse: NSPoint, settings: SidebarSettings, tracking: Bool) {
+        guard !tracking else { return }
+        let inStrip = stripFrame(for: settings).insetBy(dx: -2, dy: -2).contains(mouse)
+        let inClock = clockRect(for: settings)?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
+        let ignore = !(inStrip || inClock)
+        if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }
 
     /// Mini-Vorschau zeigen, sobald die Maus lange genug auf demselben Link bleibt.
