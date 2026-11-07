@@ -23,6 +23,8 @@ enum LinkOpener {
         }
         // Im Hintergrund laufende Seiten (z. B. WhatsApp Web) im App-Fenster öffnen – dort ist man angemeldet
         let background = item.runsInBackground(autoMessengers: settings.messengerBackground)
+        // Geöffnet = gesehen: Zähler und letzte Nachricht zurücksetzen – egal, wo die Seite aufgeht
+        WebAppManager.shared.markSeen(item)
         switch mode ?? item.openMode ?? (background ? .appWindow : settings.defaultOpenMode) {
         case .defaultBrowser:
             NSWorkspace.shared.open(url)

@@ -98,7 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SystemNotifier.shared.onOpen = { [weak self] id in
             MainActor.assumeIsolated {
                 guard let self, let item = self.store.item(id: id) else { return }
-                LinkOpener.open(item, mode: .appWindow, settings: self.store.config.settings)
+                // so öffnen, wie es am Link eingestellt ist (z. B. Chrome-App)
+                LinkOpener.open(item, mode: nil, settings: self.store.config.settings)
             }
         }
 

@@ -93,6 +93,17 @@ final class WebAppManager {
         }
     }
 
+    /// Link wurde geöffnet (auch in Chrome/Browser): selbst gezählte Nachrichten zurücksetzen.
+    /// Zahlen aus dem Seitentitel (z. B. „(3) WhatsApp“) bleiben – sie gleichen sich selbst ab.
+    func markSeen(_ item: LinkItem) {
+        if let controller = controllers[item.id] {
+            controller.markSeen()
+        } else {
+            BadgeStore.shared.set(0, for: item)
+            BadgeStore.shared.clearMessage(for: item)
+        }
+    }
+
     /// Geladene Seite eines Links (für die Mini-Vorschau)
     func webView(for id: UUID) -> WKWebView? { controllers[id]?.webView }
 
@@ -251,6 +262,11 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         if window.isMiniaturized { window.deminiaturize(nil) }
         DockPresence.present(window)
         // Gesehen: nur noch den Zähler aus dem Seitentitel anzeigen
+        BadgeStore.shared.set(titleCount, for: item)
+        BadgeStore.shared.clearMessage(for: item)
+    }
+
+    func markSeen() {
         BadgeStore.shared.set(titleCount, for: item)
         BadgeStore.shared.clearMessage(for: item)
     }

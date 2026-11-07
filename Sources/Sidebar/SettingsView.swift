@@ -1078,11 +1078,14 @@ struct ItemEditorSheet: View {
                         set: { enabled in
                             // Messenger laufen automatisch – ausdrücklich „aus“ merken
                             item.keepAlive = enabled ? true : (item.isMessenger ? false : nil)
-                            if enabled { item.openMode = .appWindow }
+                            // Chrome-App bleibt erhalten – das integrierte Fenster läuft dann zusätzlich unsichtbar mit
+                            if enabled && item.openMode != .chromiumApp { item.openMode = .appWindow }
                         }
                     ))
                     if item.runsInBackground(autoMessengers: true) {
-                        Text("Die Seite läuft unsichtbar im integrierten App-Fenster weiter. Neue Nachrichten erscheinen als Zähler am Icon und als macOS-Mitteilung. Einmal öffnen und anmelden ist nötig.")
+                        Text(item.openMode == .chromiumApp
+                             ? "Geöffnet wird in der Chrome-App. Zusätzlich läuft die Seite unsichtbar im integrierten Fenster und liefert Zahlen und Mitteilungen. Dort einmal anmelden: Rechtsklick aufs Icon → Öffnen als → Integriertes App-Fenster. Tipp: In Chrome die Mitteilungen dieser Seite ausschalten, sonst kommen sie doppelt."
+                             : "Die Seite läuft unsichtbar im integrierten App-Fenster weiter. Neue Nachrichten erscheinen als Zähler am Icon und als macOS-Mitteilung. Einmal öffnen und anmelden ist nötig. Öffnen in der Chrome-App ist ebenfalls möglich – das integrierte Fenster läuft dann zusätzlich im Hintergrund.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
