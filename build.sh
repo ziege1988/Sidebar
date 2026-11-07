@@ -45,7 +45,7 @@ fi
 # Feste Signatur (eigenes Zertifikat, siehe build.yml): macOS merkt sich Freigaben
 # wie „Bedienungshilfen“ dann über Updates hinweg. Ohne Zertifikat: ad-hoc.
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
-  echo "▸ Signiere mit „$SIGN_IDENTITY“ …"
+  echo "▸ Signiere mit festem Zertifikat (${SIGN_IDENTITY}) …"
   if ! codesign --force --sign "$SIGN_IDENTITY" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} "$APP"; then
     echo "::warning::Signieren mit Zertifikat fehlgeschlagen – signiere ad-hoc"
     codesign --force --sign - "$APP"
