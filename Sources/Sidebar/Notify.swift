@@ -176,6 +176,18 @@ final class DockBadgeWatcher: ObservableObject {
         accessTimer = timer
     }
 
+    /// Alte Freigabe löschen (z. B. von einer früheren Version, die nicht mehr passt) und neu anfragen.
+    func resetAndRequestAccessibility() {
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", "Accessibility", bundleID]
+            try? process.run()
+            process.waitUntilExit()
+        }
+        requestAccessibility()
+    }
+
     /// Prüft, ob der Zugriff erlaubt ist und tatsächlich funktioniert.
     func refreshAccess() {
         let state: AccessState

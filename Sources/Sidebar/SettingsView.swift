@@ -346,7 +346,7 @@ struct GeneralSettingsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            Text("So geht's: Systemeinstellungen → Datenschutz & Sicherheit → rechts nach unten scrollen bis „Bedienungshilfen“. Steht „Sidebar“ dort nicht in der Liste: unten auf „+“ klicken und die Sidebar aus dem Ordner „Programme“ auswählen (oder aus dem Finder in die Liste ziehen), dann einschalten.")
+                            Text("So geht's: In der geöffneten Liste „Sidebar“ einschalten. Ist der Schalter schon an und hier steht trotzdem „Warte auf Freigabe“, gehört der Eintrag noch zu einer älteren Version der Sidebar: dann unten auf „Freigabe zurücksetzen“ klicken und den neu erscheinenden Eintrag einschalten. Fehlt „Sidebar“ in der Liste: unten auf „+“ klicken und die Sidebar aus „Programme“ auswählen.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             HStack {
@@ -355,6 +355,14 @@ struct GeneralSettingsView: View {
                                 }
                                 Button("Sidebar im Finder zeigen") {
                                     NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                                }
+                            }
+                            HStack {
+                                Button("Freigabe zurücksetzen und neu anfragen") {
+                                    dockWatcher.resetAndRequestAccessibility()
+                                }
+                                Button("Sidebar neu starten") {
+                                    AppRelaunch.run()
                                 }
                             }
                         case .needsRestart:
