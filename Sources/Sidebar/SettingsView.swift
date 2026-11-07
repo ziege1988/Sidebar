@@ -354,6 +354,15 @@ struct GeneralSettingsView: View {
                         .foregroundStyle(.secondary)
                     Toggle("Icon leuchtet bei neuen Nachrichten kurz auf", isOn: $store.config.settings.badgePulse)
                     Toggle("Letzte Nachricht beim Darüberfahren zeigen", isOn: $store.config.settings.messagePreview)
+                    Toggle("Neue Nachricht kurz neben dem Icon einblenden", isOn: $store.config.settings.messageToast)
+                    if store.config.settings.messageToast {
+                        LabeledContent("Anzeigedauer: \(String(format: "%.0f", store.config.settings.messageToastDuration)) s") {
+                            Slider(value: $store.config.settings.messageToastDuration, in: 2...10, step: 1)
+                        }
+                        Text("Zeigt Absender und Text neben dem Favoriten (bzw. neben dem Ordner, in dem der Link liegt). Bei Programmen wie der WhatsApp-Desktop-App wird der Text aus dem macOS-Banner gelesen – dafür muss der Zugriff aufs Dock erlaubt sein und WhatsApp Banner mit Vorschau zeigen. Sonst erscheint „Neue Nachricht“.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section("Ruhemodus") {
                     Toggle("Ruhemodus jetzt an", isOn: $store.config.settings.quietMode)

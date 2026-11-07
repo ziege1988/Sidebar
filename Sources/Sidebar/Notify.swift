@@ -180,7 +180,13 @@ final class DockBadgeWatcher: ObservableObject {
             }
             DispatchQueue.main.async {
                 guard let self else { return }
-                for (id, status) in results { BadgeStore.shared.setApp(status.count, bundleID: id) }
+                for (id, status) in results {
+                    // Zahl gestiegen → Text der Mitteilung aus dem macOS-Banner holen
+                    if let old = self.statuses[id], old.running, status.count > old.count {
+                        self.fetchBanner(bundleID: id, appName: status.name)
+                    }
+                    BadgeStore.shared.setApp(status.count, bundleID: id)
+                }
                 if self.statuses != results { self.statuses = results }
                 if self.accessibilityTrusted != trusted { self.accessibilityTrusted = trusted }
                 self.running = false
@@ -259,6 +265,93 @@ final class DockBadgeWatcher: ObservableObject {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    // MARK: Text der Mitteilung (aus dem Banner oben rechts)
+
+    /// Liest Absender und Text aus dem gerade sichtbaren macOS-Banner des Programms.
+    /// Braucht den Zugriff über die Bedienungshilfen. Ohne Text: „Neue Nachricht“.
+    private func fetchBanner(bundleID: String, appName: String) {
+        let key = BadgeStore.appKey(bundleID)
+        guard AXIsProcessTrusted() else {
+            BadgeStore.shared.setMessage(title: Self.cleanDisplayName(appName), body: "", key: key)
+            return
+        }
+        func attempt(_ delays: [Double]) {
+            guard let delay = delays.first else {
+                DispatchQueue.main.async {
+                    BadgeStore.shared.setMessage(title: Self.cleanDisplayName(appName), body: "", key: key)
+                }
+                return
+            }
+            queue.asyncAfter(deadline: .now() + delay) {
+                if let (title, body) = Self.bannerText(appName: appName) {
+                    DispatchQueue.main.async { BadgeStore.shared.setMessage(title: title, body: body, key: key) }
+                } else {
+                    attempt(Array(delays.dropFirst()))
+                }
+            }
+        }
+        attempt([0.2, 0.6, 1.0])
+    }
+
+    static func cleanDisplayName(_ name: String) -> String {
+        name.unicodeScalars.filter { !CharacterSet(charactersIn: "\u{200E}\u{200F}\u{202A}\u{202C}").contains($0) }
+            .map(String.init).joined().trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func bannerText(appName: String) -> (String, String)? {
+        guard let center = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.notificationcenterui").first else { return nil }
+        let root = AXUIElementCreateApplication(center.processIdentifier)
+        let app = cleanName(appName)
+        var best: [String]?
+
+        func texts(in element: AXUIElement, depth: Int) -> [String] {
+            guard depth < 8 else { return [] }
+            var result: [String] = []
+            let role = attribute(element, kAXRoleAttribute) as? String
+            if role == "AXStaticText", let value = attribute(element, kAXValueAttribute) as? String, !value.isEmpty {
+                result.append(value)
+            }
+            for child in (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                result += texts(in: child, depth: depth + 1)
+            }
+            return result
+        }
+
+        func walk(_ element: AXUIElement, depth: Int) {
+            guard depth < 14 else { return }
+            let role = attribute(element, kAXRoleAttribute) as? String
+            if role == "AXGroup" || role == "AXButton" {
+                var found = texts(in: element, depth: 0)
+                if let description = attribute(element, kAXDescriptionAttribute) as? String, !description.isEmpty {
+                    found.append(contentsOf: description.components(separatedBy: ", "))
+                }
+                if found.contains(where: { cleanName($0) == app }), found.count >= 2,
+                   best == nil || found.count < best!.count {
+                    best = found
+                }
+            }
+            for child in (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                walk(child, depth: depth + 1)
+            }
+        }
+        walk(root, depth: 0)
+
+        guard let found = best else { return nil }
+        // Programmname und Zeitangaben („jetzt“, „vor 1 Min.“, „12:30“) weglassen, doppelte Zeilen entfernen
+        let time = try? NSRegularExpression(pattern: #"^(jetzt|now|gerade eben|vor .*|\d+\s?(min|std|h|m)\.?.*|\d{1,2}:\d{2}.*)$"#,
+                                            options: [.caseInsensitive])
+        var lines: [String] = []
+        for line in found {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, cleanName(trimmed) != app, !lines.contains(trimmed) else { continue }
+            if let time, time.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) != nil { continue }
+            lines.append(trimmed)
+        }
+        guard let title = lines.first else { return nil }
+        return (title, lines.dropFirst().joined(separator: " "))
     }
 
     // MARK: 3. Dock (Bedienungshilfen)
@@ -673,5 +766,127 @@ final class LinkPreviewController {
         guard itemID != nil || panel.isVisible else { return }
         itemID = nil
         panel.orderOut(nil)
+    }
+}
+
+// MARK: - Nachricht kurz neben dem Icon
+
+struct MessageToastView: View {
+    let title: String
+    let message: String
+    let theme: ColorTheme
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let palette = Palette.resolve(theme, scheme)
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(Color(hex: 0xFF3B30))
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(palette.text)
+                    .lineLimit(1)
+                Text(message.isEmpty ? "Neue Nachricht" : message)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 240, alignment: .leading)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(palette.surface)
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(palette.panelFill(gradient: true))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .stroke(Color.white.opacity(scheme == .dark ? 0.22 : 0.7), lineWidth: 0.8))
+        .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+        .padding(6)
+        .fixedSize()
+    }
+}
+
+/// Blendet eine neue Nachricht für ein paar Sekunden neben dem Icon ein.
+@MainActor
+final class MessageToastController {
+    static let shared = MessageToastController()
+    private let panel: NSPanel
+    private let measure = NSHostingController(rootView: MessageToastView(title: "", message: "", theme: .sage))
+    private var hideWork: DispatchWorkItem?
+
+    private init() {
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.isReleasedWhenClosed = false
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    }
+
+    func show(title: String, message: String, beside bar: NSRect, anchor: NSRect, edge: ScreenEdge,
+              theme: ColorTheme, duration: Double) {
+        let view = MessageToastView(title: title, message: message, theme: theme)
+        measure.rootView = view
+        let measured = measure.sizeThatFits(in: CGSize(width: 400, height: 300))
+        let size = NSSize(width: ceil(measured.width), height: ceil(measured.height))
+        guard size.width > 0, size.height > 0 else { return }
+        let host = NSHostingView(rootView: view)
+        host.sizingOptions = []
+        panel.contentView = host
+
+        let gap: CGFloat = 2
+        var origin = NSPoint.zero
+        switch edge {
+        case .left: origin = NSPoint(x: bar.maxX + gap, y: anchor.midY - size.height / 2)
+        case .right: origin = NSPoint(x: bar.minX - gap - size.width, y: anchor.midY - size.height / 2)
+        case .top: origin = NSPoint(x: anchor.midX - size.width / 2, y: bar.minY - gap - size.height)
+        case .bottom: origin = NSPoint(x: anchor.midX - size.width / 2, y: bar.maxY + gap)
+        }
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchor) }) ?? NSScreen.main {
+            let area = screen.visibleFrame.insetBy(dx: 4, dy: 4)
+            origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
+            origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        if !panel.isVisible { panel.alphaValue = 0 }
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            self.panel.animator().alphaValue = 1
+        }
+
+        hideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.hide() }
+        }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    func hide() {
+        hideWork?.cancel()
+        hideWork = nil
+        guard panel.isVisible else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.35
+            self.panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.hideWork == nil else { return }
+                self.panel.orderOut(nil)
+            }
+        })
     }
 }

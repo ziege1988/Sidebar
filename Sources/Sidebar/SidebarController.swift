@@ -166,6 +166,16 @@ final class SidebarController {
         flyoutPanel.contentView = flyout
 
 
+        // Neue Nachricht → kurz neben dem Icon einblenden
+        BadgeStore.shared.$toast
+            .compactMap { $0 }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] toast in
+                MainActor.assumeIsolated { self?.showToast(toast) }
+            }
+            .store(in: &cancellables)
+
         // Einstellungen geändert (Seite, Bildschirm, Breite, Farben …)
         store.$config
             .map(\.settings)
@@ -480,6 +490,25 @@ final class SidebarController {
         let frame = panel.frame
         let local = CGPoint(x: point.x - frame.minX, y: frame.maxY - point.y)
         return geometry.favoriteFrames.first(where: { $0.value.contains(local) })?.key
+    }
+
+    /// Nachricht neben dem Favoriten (bzw. dem Ordner, in dem der Link liegt) einblenden.
+    private func showToast(_ toast: BadgeStore.Toast) {
+        let settings = store.config.settings
+        guard isVisible, settings.messageToast, !AlertState.shared.quiet else { return }
+        let bar = stripFrame(for: settings, forceVisible: !settings.autoHide || state.isRevealed)
+        var local: CGRect?
+        if let item = store.config.favorites.first(where: { BadgeStore.key(for: $0) == toast.key }) {
+            local = geometry.favoriteFrames[item.id]
+        } else if let group = store.config.groups.first(where: { $0.items.contains { BadgeStore.key(for: $0) == toast.key } }) {
+            local = geometry.groupFrames[group.id]
+        }
+        guard let rect = local else { return }
+        let frame = panel.frame
+        let anchor = NSRect(x: frame.minX + rect.minX, y: frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+        MessageToastController.shared.show(title: toast.title, message: toast.body, beside: bar, anchor: anchor,
+                                           edge: settings.edge, theme: settings.colorTheme,
+                                           duration: settings.messageToastDuration)
     }
 
     /// Mini-Vorschau zeigen, sobald die Maus lange genug auf demselben Link bleibt.

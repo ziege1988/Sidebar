@@ -278,6 +278,9 @@ struct SidebarSettings: Codable, Equatable {
     /// Ruhezeit von … bis … (volle Stunden)
     var quietFrom: Int = 22
     var quietTo: Int = 7
+    /// Neue Nachricht kurz neben dem Icon einblenden
+    var messageToast: Bool = true
+    var messageToastDuration: Double = 4
     /// Mini-Vorschau der Seite nach längerem Verweilen auf einem Link
     var linkPreview: Bool = true
     var linkPreviewDelay: Double = 4
@@ -322,6 +325,8 @@ extension SidebarSettings {
         quietScheduled = try c.decodeIfPresent(Bool.self, forKey: .quietScheduled) ?? quietScheduled
         quietFrom = try c.decodeIfPresent(Int.self, forKey: .quietFrom) ?? quietFrom
         quietTo = try c.decodeIfPresent(Int.self, forKey: .quietTo) ?? quietTo
+        messageToast = try c.decodeIfPresent(Bool.self, forKey: .messageToast) ?? messageToast
+        messageToastDuration = try c.decodeIfPresent(Double.self, forKey: .messageToastDuration) ?? messageToastDuration
         linkPreview = try c.decodeIfPresent(Bool.self, forKey: .linkPreview) ?? linkPreview
         linkPreviewDelay = try c.decodeIfPresent(Double.self, forKey: .linkPreviewDelay) ?? linkPreviewDelay
     }

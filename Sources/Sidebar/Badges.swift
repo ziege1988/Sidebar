@@ -47,8 +47,24 @@ final class BadgeStore: ObservableObject {
 
     func setMessage(title: String, body: String, for item: LinkItem) {
         guard let key = Self.key(for: item) else { return }
-        messages[key] = LastMessage(title: title, body: body, date: Date())
+        setMessage(title: title, body: body, key: key)
     }
+
+    /// Neue Nachricht merken und kurz neben dem Icon einblenden.
+    func setMessage(title: String, body: String, key: String) {
+        messages[key] = LastMessage(title: title, body: body, date: Date())
+        toast = Toast(key: key, title: title, body: body)
+    }
+
+    struct Toast: Equatable {
+        var id = UUID()
+        var key: String
+        var title: String
+        var body: String
+    }
+
+    /// Zuletzt eingetroffene Nachricht (für die kurze Einblendung neben dem Icon)
+    @Published private(set) var toast: Toast?
 
     func clearMessage(for item: LinkItem) {
         guard let key = Self.key(for: item), messages[key] != nil else { return }
