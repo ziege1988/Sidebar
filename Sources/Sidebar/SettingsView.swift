@@ -335,15 +335,32 @@ struct GeneralSettingsView: View {
                                     .foregroundStyle(status.running && status.sources.isEmpty ? .orange : .secondary)
                             }
                         }
-                        if dockWatcher.accessibilityTrusted {
-                            Label("Zugriff aufs Dock erlaubt", systemImage: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        } else {
-                            Button("Zahlen zuverlässiger lesen: Zugriff aufs Dock erlauben …") {
+                        // Nur sichtbar, solange der Zugriff fehlt oder noch nicht greift
+                        switch dockWatcher.accessState {
+                        case .active:
+                            EmptyView()
+                        case .waiting:
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Warte auf Freigabe … In den Systemeinstellungen unter Bedienungshilfen „Sidebar“ einschalten.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("Systemeinstellungen erneut öffnen …") {
                                 dockWatcher.requestAccessibility()
                             }
-                            Text("Öffnet Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen. Dort „Sidebar“ einschalten. Hinweis: Nach einem Update der Sidebar muss der Schalter dort ggf. einmal aus- und wieder eingeschaltet werden.")
+                        case .needsRestart:
+                            Text("Der Zugriff ist erlaubt, greift aber erst nach einem Neustart der Sidebar.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Button("Sidebar jetzt neu starten") {
+                                AppRelaunch.run()
+                            }
+                        case .off:
+                            Button("Zahlen und Nachrichtentext zuverlässiger lesen: Zugriff aufs Dock erlauben …") {
+                                dockWatcher.requestAccessibility()
+                            }
+                            Text("Öffnet Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen. Dort „Sidebar“ einschalten. Nach einem Update der Sidebar kann es nötig sein, den Schalter dort einmal aus- und wieder einzuschalten – dann erscheint dieser Hinweis wieder.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -364,6 +381,7 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .onAppear { dockWatcher.refreshAccess() }
                 Section("Ruhemodus") {
                     Toggle("Ruhemodus jetzt an", isOn: $store.config.settings.quietMode)
                     Toggle("Automatisch zu festen Zeiten", isOn: $store.config.settings.quietScheduled)

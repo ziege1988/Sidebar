@@ -101,7 +101,30 @@ final class DockBadgeWatcher: ObservableObject {
 
     /// Zustand je Programm (für die Anzeige in den Einstellungen)
     @Published private(set) var statuses: [String: Status] = [:]
-    @Published private(set) var accessibilityTrusted = AXIsProcessTrusted()
+    /// Zugriff aufs Dock (Bedienungshilfen)
+    enum AccessState: Equatable {
+        /// nicht erlaubt (oder abgelehnt)
+        case off
+        /// Systemeinstellungen geöffnet, Freigabe steht noch aus
+        case waiting
+        /// erlaubt und funktioniert
+        case active
+        /// erlaubt, greift aber erst nach einem Neustart der Sidebar
+        case needsRestart
+    }
+
+    @Published private(set) var accessState: AccessState = .off
+    private var requestedAt: Date?
+    private var accessTimer: Timer?
+    private var activeObserver: NSObjectProtocol?
+
+    private init() {
+        refreshAccess()
+        // Zurück aus den Systemeinstellungen → sofort neu prüfen
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.refreshAccess() }
+    }
 
     private var bundleIDs: [String] = []
     private var timer: Timer?
@@ -133,7 +156,45 @@ final class DockBadgeWatcher: ObservableObject {
     /// Fragt nach dem Zugriff über die Bedienungshilfen (macOS zeigt dazu einen Hinweis).
     func requestAccessibility() {
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        accessibilityTrusted = AXIsProcessTrustedWithOptions(options)
+        _ = AXIsProcessTrustedWithOptions(options)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+        requestedAt = Date()
+        refreshAccess()
+        // jede Sekunde nachsehen, ob der Schalter umgelegt wurde (höchstens 3 Minuten)
+        accessTimer?.invalidate()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            self.refreshAccess()
+            if self.accessState == .active || Date().timeIntervalSince(self.requestedAt ?? .distantPast) > 180 {
+                timer.invalidate()
+                self.accessTimer = nil
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        accessTimer = timer
+    }
+
+    /// Prüft, ob der Zugriff erlaubt ist und tatsächlich funktioniert.
+    func refreshAccess() {
+        let state: AccessState
+        if AXIsProcessTrusted() {
+            state = Self.dockReachable() ? .active : .needsRestart
+        } else if let requestedAt, Date().timeIntervalSince(requestedAt) < 180 {
+            state = .waiting
+        } else {
+            state = .off
+        }
+        if accessState != state { accessState = state }
+    }
+
+    private static func dockReachable() -> Bool {
+        guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first
+        else { return false }
+        var value: CFTypeRef?
+        let app = AXUIElementCreateApplication(dock.processIdentifier)
+        return AXUIElementCopyAttributeValue(app, kAXChildrenAttribute as CFString, &value) == .success
     }
 
     func poll() {
@@ -188,7 +249,7 @@ final class DockBadgeWatcher: ObservableObject {
                     BadgeStore.shared.setApp(status.count, bundleID: id)
                 }
                 if self.statuses != results { self.statuses = results }
-                if self.accessibilityTrusted != trusted { self.accessibilityTrusted = trusted }
+                self.refreshAccess()
                 self.running = false
             }
         }
@@ -888,5 +949,18 @@ final class MessageToastController {
                 self.panel.orderOut(nil)
             }
         })
+    }
+}
+
+/// Startet die Sidebar neu (z. B. damit eine neue Freigabe greift).
+@MainActor
+enum AppRelaunch {
+    static func run() {
+        let path = Bundle.main.bundlePath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 0.6; /usr/bin/open \"$1\"", "sidebar-restart", path]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 }
