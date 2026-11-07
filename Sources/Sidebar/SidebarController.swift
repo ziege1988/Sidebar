@@ -87,16 +87,18 @@ final class SidebarController {
     /// Klicks in die festen Eingabefelder machen die Leiste sofort zum Tastaturfenster.
     private func installClickMonitor() {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                guard let self else { return event }
-                return self.handleClick(event)
+            let windowNumber = event.windowNumber
+            let point = event.locationInWindow
+            let consumed = MainActor.assumeIsolated {
+                self?.handleClick(windowNumber: windowNumber, at: point) ?? false
             }
+            return consumed ? nil : event
         }
     }
 
-    private func handleClick(_ event: NSEvent) -> NSEvent? {
-        guard event.window === panel else { return event }
-        let p = event.locationInWindow
+    /// - Returns: `true`, wenn der Klick hier verarbeitet wurde (nicht weiterreichen)
+    private func handleClick(windowNumber: Int, at p: CGPoint) -> Bool {
+        guard windowNumber == panel.windowNumber else { return false }
         let local = CGPoint(x: p.x, y: panel.frame.height - p.y)
         let frames = geometry.actionFrames
         // Querformat: der ganze rechte Teil des Notizfelds (Knopf + Umgebung) öffnet die Notizen
@@ -107,13 +109,13 @@ final class SidebarController {
             || frames["noteOpen"]?.contains(local) == true
             || openZone?.contains(local) == true {
             actions.triggerAction(.note)
-            return nil
+            return true
         }
         if frames["noteField"]?.contains(local) == true || frames["googleField"]?.contains(local) == true {
             NSApp.activate()
             panel.makeKey()
         }
-        return event
+        return false
     }
 
     /// Inhalt der Leiste (neu) aufbauen.
