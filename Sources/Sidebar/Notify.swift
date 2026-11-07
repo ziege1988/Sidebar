@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Combine
 import QuickLookThumbnailing
+import Security
 import SwiftUI
 import WebKit
 
@@ -975,4 +976,20 @@ enum AppRelaunch {
         try? process.run()
         NSApp.terminate(nil)
     }
+}
+
+/// Wie die laufende Sidebar unterschrieben ist.
+enum AppSignature {
+    /// `true` = mit eigenem Zertifikat (fest), `false` = ad-hoc
+    static let isFixed: Bool = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return false }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return false }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any],
+              let certificates = dict[kSecCodeInfoCertificates as String] as? [Any] else { return false }
+        return !certificates.isEmpty
+    }()
 }

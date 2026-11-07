@@ -488,6 +488,11 @@ struct GeneralSettingsView: View {
                             NSWorkspace.shared.activateFileViewerSelecting([store.fileURL])
                         }
                     }
+                    LabeledContent("Signatur") {
+                        Text(AppSignature.isFixed ? "fest – Freigaben bleiben bei Updates erhalten" : "einfach (ad-hoc)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
