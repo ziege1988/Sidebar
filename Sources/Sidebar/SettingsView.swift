@@ -346,8 +346,16 @@ struct GeneralSettingsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            Button("Systemeinstellungen erneut öffnen …") {
-                                dockWatcher.requestAccessibility()
+                            Text("So geht's: Systemeinstellungen → Datenschutz & Sicherheit → rechts nach unten scrollen bis „Bedienungshilfen“. Steht „Sidebar“ dort nicht in der Liste: unten auf „+“ klicken und die Sidebar aus dem Ordner „Programme“ auswählen (oder aus dem Finder in die Liste ziehen), dann einschalten.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            HStack {
+                                Button("Systemeinstellungen erneut öffnen …") {
+                                    dockWatcher.requestAccessibility()
+                                }
+                                Button("Sidebar im Finder zeigen") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                                }
                             }
                         case .needsRestart:
                             Text("Der Zugriff ist erlaubt, greift aber erst nach einem Neustart der Sidebar.")
