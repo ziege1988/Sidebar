@@ -36,11 +36,21 @@ jobs:
           fi
           KEYCHAIN="$RUNNER_TEMP/sidebar-signing.keychain-db"
           KPASS="$(uuidgen)"
-          echo "$SIGNING_CERT_P12" | base64 --decode > "$RUNNER_TEMP/sidebar.p12"
+          # Leerzeichen/Zeilenumbrüche aus dem Einfügen entfernen
+          CLEAN="$(printf '%s' "$SIGNING_CERT_P12" | tr -d ' \r\n\t')"
+          echo "Länge des hinterlegten Werts: ${#CLEAN} Zeichen"
+          if ! printf '%s' "$CLEAN" | base64 --decode > "$RUNNER_TEMP/sidebar.p12" 2>/dev/null; then
+            echo "::warning::Hinterlegter Wert ist kein gültiges base64 – ad-hoc-Signatur"
+            exit 0
+          fi
           security create-keychain -p "$KPASS" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KPASS" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/sidebar.p12" -k "$KEYCHAIN" -P sidebar -T /usr/bin/codesign
+          if ! security import "$RUNNER_TEMP/sidebar.p12" -k "$KEYCHAIN" -P sidebar -T /usr/bin/codesign; then
+            echo "::warning::Zertifikat konnte nicht importiert werden – ad-hoc-Signatur"
+            rm -f "$RUNNER_TEMP/sidebar.p12"
+            exit 0
+          fi
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPASS" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/sidebar.p12"
