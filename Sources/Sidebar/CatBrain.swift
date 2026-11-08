@@ -151,9 +151,19 @@ final class CatBrain: ObservableObject {
     /// Pfote kommt aus dem Fenster und kratzt bzw. winkt abfällig.
     func performGesture(_ gesture: CatGesture) {
         guard let location = locate?() else { return }
-        gesturePose = gesture == .flick ? .angry : .grumpy
+        // Während der Geste zeichnet das Gesten-Fenster den ganzen Rüdiger (er beugt sich heraus) –
+        // im eigenen Fenster bleibt so lange nur der Hintergrund.
+        gesturePose = .absent
         gestureEnd = Date().addingTimeInterval(gesture.duration)
-        CatGestureController.shared.perform(gesture, at: location)
+        let dark: Bool
+        switch settings.appearance {
+        case .dark: dark = true
+        case .light: dark = false
+        case .system: dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+        let accent = Palette.resolve(settings.colorTheme, dark ? .dark : .light).accent
+        CatGestureController.shared.perform(gesture, at: location, dark: dark, accent: accent,
+                                            pose: gesture == .flick ? .angry : .grumpy)
     }
 
     /// Beim Beenden: abfälliger Spruch mit Geste. `false`, wenn Rüdiger gerade nicht da ist.

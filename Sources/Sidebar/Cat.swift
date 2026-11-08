@@ -71,18 +71,22 @@ enum CatPainter {
         Path(ellipseIn: CGRect(x: cx - rx, y: cy - ry, width: 2 * rx, height: 2 * ry))
     }
 
-    static func draw(in context: inout GraphicsContext, size: CGSize, pose: CatPose, dark: Bool,
-                     accent: Color, time t: Double) {
-        let scale = min(size.width, size.height) / 100
-        context.scaleBy(x: scale, y: scale)
-
-        // Hintergrund: weiches, helles Rund (dunkel: Graphit)
+    /// Hintergrund: weiches, helles Rund (dunkel: Graphit) – im 100er-Feld
+    static func drawBackground(_ context: inout GraphicsContext, dark: Bool, accent: Color) {
         let bg = Path(ellipseIn: CGRect(x: 0, y: 0, width: 100, height: 100))
         context.fill(bg, with: .radialGradient(
             Gradient(colors: dark
                      ? [Color(red: 0.31, green: 0.33, blue: 0.31), Color(red: 0.17, green: 0.18, blue: 0.19)]
                      : [Color(red: 0.97, green: 0.96, blue: 0.92), accent.opacity(0.45)]),
             center: CGPoint(x: 50, y: 38), startRadius: 4, endRadius: 70))
+    }
+
+    static func draw(in context: inout GraphicsContext, size: CGSize, pose: CatPose, dark: Bool,
+                     accent: Color, time t: Double) {
+        let scale = min(size.width, size.height) / 100
+        context.scaleBy(x: scale, y: scale)
+
+        drawBackground(&context, dark: dark, accent: accent)
 
         switch pose {
         case .absent:
@@ -209,7 +213,7 @@ enum CatPainter {
     }
 
     // Oberkörper mit Gesicht
-    private static func drawBust(_ context: inout GraphicsContext, pose: CatPose, dark: Bool, t: Double) {
+    static func drawBust(_ context: inout GraphicsContext, pose: CatPose, dark: Bool, t: Double) {
         let breath = 1 + 0.018 * sin(t * 2.2)
         let angry = pose == .angry
         var c = context

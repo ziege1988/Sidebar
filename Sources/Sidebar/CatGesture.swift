@@ -1,25 +1,26 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Rüdigers Gesten: Pfote kommt aus dem Fenster heraus
+// MARK: - Rüdigers Gesten: er beugt sich aus seinem Fenster und kratzt mit seiner Pfote
+//
+// Während der Geste zeichnet ein eigenes, durchsichtiges Fenster über der Sidebar den ganzen Rüdiger:
+// der Körper bleibt im runden Fenster, Kopf, Ohren und Vorderbein ragen über den Rand hinaus (3D).
+// Alles ist im selben 100er-Maßstab wie Rüdiger gezeichnet – die Pfote passt also zur Katze.
 
 enum CatGesture {
-    /// kratzt zweimal über den Bildschirm (Kratzspuren bleiben kurz stehen)
+    /// beugt sich vor und kratzt zweimal über den Bildschirm (Spuren verblassen)
     case scratch
-    /// abfällige Handbewegung (beim Beenden)
+    /// beugt sich vor und wedelt dich abfällig weg (beim Beenden)
     case flick
 
-    /// Dauer der Bewegung (ohne Ausblenden der Kratzspuren)
     var duration: Double {
         switch self {
-        case .scratch: return 2.3
-        case .flick: return 1.7
+        case .scratch: return 2.9
+        case .flick: return 2.1
         }
     }
 }
 
-/// Eigenes, durchsichtiges Fenster über der Sidebar, damit die Pfote aus Rüdigers Fenster
-/// herausragen kann (3D-Effekt). Klicks gehen hindurch.
 @MainActor
 final class CatGestureController {
     static let shared = CatGestureController()
@@ -38,9 +39,9 @@ final class CatGestureController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
     }
 
-    func perform(_ gesture: CatGesture, at location: CatLocation) {
+    func perform(_ gesture: CatGesture, at location: CatLocation, dark: Bool, accent: Color, pose: CatPose) {
         let diameter = location.cat.width
-        let side = diameter * 4.4
+        let side = diameter * 4.2
         let frame = NSRect(x: location.cat.midX - side / 2, y: location.cat.midY - side / 2, width: side, height: side)
         // Richtung: vom Bildschirmrand weg, schräg ins Bild (lokal, y nach unten)
         let s = CGFloat(0.5.squareRoot())
@@ -50,7 +51,8 @@ final class CatGestureController {
         case .bottom: direction = CGVector(dx: s, dy: -s)
         case .right: direction = CGVector(dx: -s, dy: s)
         }
-        let view = CatGestureView(gesture: gesture, start: Date(), radius: diameter / 2, direction: direction)
+        let view = CatGestureView(gesture: gesture, start: Date(), diameter: diameter, direction: direction,
+                                  dark: dark, accent: accent, pose: pose)
         let host = NSHostingView(rootView: view)
         host.sizingOptions = []
         panel.contentView = host
@@ -65,7 +67,7 @@ final class CatGestureController {
             }
         }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + gesture.duration + (gesture == .scratch ? 2.6 : 0.1),
+        DispatchQueue.main.asyncAfter(deadline: .now() + gesture.duration + (gesture == .scratch ? 2.6 : 0.05),
                                       execute: work)
     }
 }
@@ -73,302 +75,303 @@ final class CatGestureController {
 struct CatGestureView: View {
     let gesture: CatGesture
     let start: Date
-    let radius: CGFloat
+    let diameter: CGFloat
     let direction: CGVector
+    let dark: Bool
+    let accent: Color
+    let pose: CatPose
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+        // ohne Mindestabstand: zeichnet mit der Bildwiederholrate des Bildschirms (flüssig)
+        TimelineView(.animation) { timeline in
             Canvas { context, size in
                 let t = timeline.date.timeIntervalSince(start)
-                CatGesturePainter.draw(in: &context, size: size, gesture: gesture, t: t,
-                                       radius: radius, direction: direction)
+                CatGesturePainter.draw(in: &context, size: size, gesture: gesture, t: t, diameter: diameter,
+                                       direction: direction, dark: dark, accent: accent, pose: pose,
+                                       clock: timeline.date.timeIntervalSinceReferenceDate)
             }
         }
         .allowsHitTesting(false)
     }
 }
 
-/// Zeichnet eine echte Katzenpfote, die sich von innen gegen die Scheibe drückt und kratzt.
 enum CatGesturePainter {
-    /// Zustand der Pfote zu einem Zeitpunkt
-    struct PawState {
-        /// Abstand der Pfotenmitte von Rüdigers Mitte (entlang der Richtung)
-        var along: CGFloat
-        /// seitlicher Versatz
+    /// Zustand zu einem Zeitpunkt – alles in Rüdigers 100er-Einheiten
+    struct Frame {
+        /// wie weit er sich vorbeugt (0 … 1)
+        var lean: Double
+        /// Pfote: Abstand von der Schulter entlang der Richtung
+        var reach: CGFloat
+        /// seitlicher Versatz der Pfote
         var across: CGFloat
-        /// Größe (näher an der Scheibe = größer)
-        var scale: CGFloat
-        /// Krallen 0 … 1
         var claws: CGFloat
-        /// Neigung in Grad
+        /// Neigung der Pfote (Grad)
         var tilt: Double
-        /// Deckkraft
-        var alpha: Double
-        /// gegen die Scheibe gedrückt (für den Abdruck)
         var pressed: Bool
     }
 
     private static func clamp(_ x: Double) -> Double { min(max(x, 0), 1) }
+    private static func smooth(_ x: Double) -> Double { let v = clamp(x); return v * v * v * (v * (v * 6 - 15) + 10) }
     private static func easeOut(_ x: Double) -> Double { let v = clamp(x); return 1 - pow(1 - v, 3) }
-    private static func easeInOut(_ x: Double) -> Double { let v = clamp(x); return v * v * (3 - 2 * v) }
     private static func easeOutBack(_ x: Double) -> Double {
-        let v = clamp(x), c1 = 1.4, c3 = c1 + 1
+        let v = clamp(x), c1 = 1.5, c3 = c1 + 1
         return 1 + c3 * pow(v - 1, 3) + c1 * pow(v - 1, 2)
     }
     private static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: Double) -> CGFloat { a + (b - a) * CGFloat(t) }
 
-    /// Zwei Kratzer: ausfahren, andrücken, Krallen raus, durchziehen, absetzen, nochmal, zurück.
-    static let drags: [(start: Double, end: Double)] = [(0.6, 1.05), (1.3, 1.75)]
+    // Maße in Rüdiger-Einheiten (Kopf ist 60 breit)
+    static let paw: CGFloat = 10.5        // Pfotengröße
+    static let far: CGFloat = 56          // so weit reicht der Arm
+    static let pull: CGFloat = 20         // so weit zieht er die Krallen durch
+    static let shift: CGFloat = 11        // Versatz für den zweiten Kratzer
+    static let drags: [(start: Double, end: Double)] = [(0.95, 1.4), (1.62, 2.07)]
 
-    static func state(_ gesture: CatGesture, t: Double, r: CGFloat) -> PawState {
-        let rim = r * 0.75
-        let far = r * 2.5
-        let pull = r * 1.25
-        let shift = r * 0.5
+    static func frame(_ gesture: CatGesture, t: Double) -> Frame {
         switch gesture {
         case .scratch:
+            // vorbeugen … halten … zurück
+            let lean = t < 0.5 ? smooth(t / 0.5) : (t < 2.35 ? 1 : 1 - smooth((t - 2.35) / 0.5))
             switch t {
-            case ..<0.45:
-                let p = t / 0.45
-                return PawState(along: lerp(rim, far, easeOutBack(p)), across: 0, scale: lerp(0.62, 1, easeOut(p)),
-                                claws: 0, tilt: -8 * (1 - p), alpha: clamp(p * 4), pressed: false)
-            case ..<0.6:
-                let p = (t - 0.45) / 0.15
-                return PawState(along: far, across: 0, scale: 1 + 0.12 * CGFloat(easeOut(p)),
-                                claws: CGFloat(easeOut(p)), tilt: 0, alpha: 1, pressed: true)
-            case ..<1.05:
-                let p = (t - 0.6) / 0.45
-                return PawState(along: far - pull * CGFloat(easeInOut(p)), across: r * 0.08 * CGFloat(sin(.pi * p)),
-                                scale: 1.12, claws: 1, tilt: 5 * sin(.pi * p), alpha: 1, pressed: true)
-            case ..<1.3:
-                let p = (t - 1.05) / 0.25
-                return PawState(along: lerp(far - pull, far, easeInOut(p)), across: shift * CGFloat(easeInOut(p)),
-                                scale: 1 - 0.07 * CGFloat(sin(.pi * p)), claws: 1 - 0.5 * CGFloat(sin(.pi * p)),
-                                tilt: -4 * sin(.pi * p), alpha: 1, pressed: false)
-            case ..<1.75:
-                let p = (t - 1.3) / 0.45
-                return PawState(along: far - pull * CGFloat(easeInOut(p)), across: shift + r * 0.06 * CGFloat(sin(.pi * p)),
-                                scale: 1.12, claws: 1, tilt: 6 * sin(.pi * p), alpha: 1, pressed: true)
-            case ..<2.3:
-                let p = (t - 1.75) / 0.55
-                return PawState(along: lerp(far - pull, rim, easeInOut(p)), across: lerp(shift, 0, easeInOut(p)),
-                                scale: lerp(1.12, 0.55, easeInOut(p)), claws: CGFloat(1 - easeOut(p * 2.5)),
-                                tilt: -6 * p, alpha: 1 - clamp((p - 0.75) / 0.25), pressed: false)
+            case ..<0.3:
+                return Frame(lean: lean, reach: 0, across: 0, claws: 0, tilt: 0, pressed: false)
+            case ..<0.78:
+                let p = (t - 0.3) / 0.48
+                return Frame(lean: lean, reach: far * CGFloat(easeOutBack(p)), across: 0, claws: 0, tilt: -10 * (1 - p), pressed: false)
+            case ..<0.95:
+                let p = (t - 0.78) / 0.17
+                return Frame(lean: lean, reach: far, across: 0, claws: CGFloat(easeOut(p)), tilt: 0, pressed: true)
+            case ..<1.4:
+                let p = smooth((t - 0.95) / 0.45)
+                return Frame(lean: lean, reach: far - pull * CGFloat(p), across: 2 * CGFloat(sin(.pi * p)),
+                             claws: 1, tilt: 6 * sin(.pi * p), pressed: true)
+            case ..<1.62:
+                let p = smooth((t - 1.4) / 0.22)
+                return Frame(lean: lean, reach: lerp(far - pull, far, p), across: shift * CGFloat(p),
+                             claws: 1 - 0.5 * CGFloat(sin(.pi * p)), tilt: -5 * sin(.pi * p), pressed: false)
+            case ..<2.07:
+                let p = smooth((t - 1.62) / 0.45)
+                return Frame(lean: lean, reach: far - pull * CGFloat(p), across: shift + 2 * CGFloat(sin(.pi * p)),
+                             claws: 1, tilt: 7 * sin(.pi * p), pressed: true)
+            case ..<2.55:
+                let p = smooth((t - 2.07) / 0.48)
+                return Frame(lean: lean, reach: lerp(far - pull, 0, p), across: lerp(shift, 0, p),
+                             claws: CGFloat(1 - easeOut(p * 3)), tilt: 0, pressed: false)
             default:
-                return PawState(along: rim, across: 0, scale: 0.6, claws: 0, tilt: 0, alpha: 0, pressed: false)
+                return Frame(lean: lean, reach: 0, across: 0, claws: 0, tilt: 0, pressed: false)
             }
         case .flick:
+            let lean = 0.75 * (t < 0.4 ? smooth(t / 0.4) : (t < 1.65 ? 1 : 1 - smooth((t - 1.65) / 0.45)))
             switch t {
-            case ..<0.4:
-                let p = t / 0.4
-                return PawState(along: lerp(rim, far * 0.9, easeOutBack(p)), across: 0, scale: lerp(0.62, 1, easeOut(p)),
-                                claws: 0, tilt: 0, alpha: clamp(p * 4), pressed: false)
-            case ..<1.15:
+            case ..<0.25:
+                return Frame(lean: lean, reach: 0, across: 0, claws: 0, tilt: 0, pressed: false)
+            case ..<0.6:
+                let p = (t - 0.25) / 0.35
+                return Frame(lean: lean, reach: far * 0.8 * CGFloat(easeOutBack(p)), across: 0, claws: 0, tilt: 0, pressed: false)
+            case ..<1.35:
                 // abfälliges Wegwedeln: zweimal hin und her, immer schwächer
-                let p = (t - 0.4) / 0.75
+                let p = (t - 0.6) / 0.75
                 let wave = sin(p * .pi * 4) * (1 - p * 0.5)
-                return PawState(along: far * 0.9, across: r * 0.45 * CGFloat(wave), scale: 1, claws: 0,
-                                tilt: 22 * wave, alpha: 1, pressed: false)
-            case ..<1.7:
-                let p = (t - 1.15) / 0.55
-                return PawState(along: lerp(far * 0.9, rim, easeInOut(p)), across: 0, scale: lerp(1, 0.62, easeInOut(p)),
-                                claws: 0, tilt: 0, alpha: 1 - clamp((p - 0.75) / 0.25), pressed: false)
+                return Frame(lean: lean, reach: far * 0.8, across: 16 * CGFloat(wave), claws: 0, tilt: 28 * wave, pressed: false)
+            case ..<1.75:
+                let p = smooth((t - 1.35) / 0.4)
+                return Frame(lean: lean, reach: lerp(far * 0.8, 0, p), across: 0, claws: 0, tilt: 0, pressed: false)
             default:
-                return PawState(along: rim, across: 0, scale: 0.6, claws: 0, tilt: 0, alpha: 0, pressed: false)
+                return Frame(lean: lean, reach: 0, across: 0, claws: 0, tilt: 0, pressed: false)
             }
         }
     }
 
-    // Lage der Zehen in Pfoten-Koordinaten (u = nach vorn, v = seitlich), in Einheiten der Pfotengröße
+    /// Rüdiger-Einheiten → Fenster-Koordinaten, inkl. Vorbeugen (größer, leicht geneigt, Richtung Bildschirm)
+    static func transform(size: CGSize, diameter: CGFloat, direction d: CGVector, lean: Double) -> CGAffineTransform {
+        let unit = diameter / 100
+        let l = CGFloat(lean)
+        var m = CGAffineTransform(translationX: size.width / 2 - diameter / 2, y: size.height / 2 - diameter / 2)
+        m = m.scaledBy(x: unit, y: unit)
+        m = m.translatedBy(x: d.dx * 9 * l, y: d.dy * 9 * l)
+        m = m.translatedBy(x: 50, y: 100)
+        m = m.rotated(by: (d.dx >= 0 ? -1 : 1) * 0.1 * l)
+        m = m.scaledBy(x: 1 + 0.3 * l, y: 1 + 0.3 * l)
+        m = m.translatedBy(x: -50, y: -100)
+        return m
+    }
+
+    // Zehen in Pfoten-Koordinaten (u = nach vorn, v = seitlich), in Pfotengrößen
     static let toes: [(u: CGFloat, v: CGFloat)] = [(0.52, -0.66), (0.80, -0.24), (0.80, 0.24), (0.52, 0.66)]
 
-    /// Kleines, festes Rauschen (für Fell und raue Kratzer)
-    private static func noise(_ x: Double) -> CGFloat {
-        let v = sin(x * 12.9898) * 43758.5453
-        return CGFloat(v - floor(v)) * 2 - 1
+    /// Schulter, an der das Vorderbein ansetzt (auf der Seite zur Richtung)
+    static func shoulder(_ d: CGVector) -> CGPoint { CGPoint(x: 50 + (d.dx >= 0 ? 16 : -16), y: 82) }
+
+    /// Punkt an der Pfote (Rüdiger-Einheiten)
+    static func pawPoint(_ f: Frame, _ d: CGVector, u: CGFloat, v: CGFloat, scale: CGFloat) -> CGPoint {
+        let perp = CGVector(dx: -d.dy, dy: d.dx)
+        let a = CGFloat(f.tilt * .pi / 180)
+        let ru = (u * cos(a) - v * sin(a)) * scale
+        let rv = (u * sin(a) + v * cos(a)) * scale
+        let s = shoulder(d)
+        let along = f.reach + ru, across = f.across + rv
+        return CGPoint(x: s.x + d.dx * along + perp.dx * across, y: s.y + d.dy * along + perp.dy * across)
     }
 
     static func draw(in context: inout GraphicsContext, size: CGSize, gesture: CatGesture, t: Double,
-                     radius r: CGFloat, direction d: CGVector) {
+                     diameter: CGFloat, direction d: CGVector, dark: Bool, accent: Color, pose: CatPose, clock: Double) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let perp = CGVector(dx: -d.dy, dy: d.dx)
-        let pawSize = r * 0.62
+        let f = frame(gesture, t: t)
+        let m = transform(size: size, diameter: diameter, direction: d, lean: f.lean)
+        let unit = diameter / 100
+        let perpScreen = CGVector(dx: -d.dy, dy: d.dx)
 
-        // Weltpunkt aus Pfotenlage + lokaler Verschiebung (gedreht um die Neigung)
-        func world(_ s: PawState, _ u: CGFloat, _ v: CGFloat) -> CGPoint {
-            let a = CGFloat(s.tilt * .pi / 180)
-            let ru = u * cos(a) - v * sin(a)
-            let rv = u * sin(a) + v * cos(a)
-            let along = s.along + ru, across = s.across + rv
-            return CGPoint(x: center.x + d.dx * along + perp.dx * across,
-                           y: center.y + d.dy * along + perp.dy * across)
-        }
-
-        // Kratzspuren: entstehen genau unter den Krallenspitzen und verblassen danach
+        // 1. Kratzspuren auf der „Scheibe“ – entstehen unter den Krallenspitzen
         if gesture == .scratch {
-            let fade = t < 2.3 ? 1 : max(0, 1 - (t - 2.3) / 2.4)
+            let fade = t < 2.6 ? 1 : max(0, 1 - (t - 2.6) / 2.4)
             if fade > 0 {
                 for (index, drag) in drags.enumerated() where t > drag.start {
                     let end = min(t, drag.end)
                     var times: [Double] = []
                     var time = drag.start
-                    while time <= end { times.append(time); time += 0.012 }
+                    while time < end { times.append(time); time += 0.01 }
                     times.append(end)
                     guard times.count > 2 else { continue }
                     for (claw, toe) in toes.enumerated() {
-                        // die äußeren Krallen hinterlassen kürzere, schwächere Spuren
-                        let strength: CGFloat = claw == 0 || claw == 3 ? 0.65 : 1
-                        var points: [CGPoint] = []
-                        for (i, time) in times.enumerated() {
-                            let s = state(.scratch, t: time, r: r)
-                            let p = s.scale * pawSize
-                            let tip = world(s, toe.u * p + 0.62 * p, toe.v * p)
-                            let jitter = noise(Double(i) * 0.37 + Double(claw) * 7.1 + Double(index) * 13.3) * 0.7
-                            points.append(CGPoint(x: tip.x + perp.dx * jitter, y: tip.y + perp.dy * jitter))
+                        let strength: CGFloat = claw == 0 || claw == 3 ? 0.7 : 1
+                        let points: [CGPoint] = times.enumerated().map { i, time in
+                            let fr = frame(.scratch, t: time)
+                            let tip = pawPoint(fr, d, u: toe.u + 0.77, v: toe.v + 0.08, scale: paw * 1.06)
+                                .applying(transform(size: size, diameter: diameter, direction: d, lean: fr.lean))
+                            let jitter = noise(Double(i) * 0.41 + Double(claw) * 7.1 + Double(index) * 13.3) * 0.5
+                            return CGPoint(x: tip.x + perpScreen.dx * jitter, y: tip.y + perpScreen.dy * jitter)
                         }
-                        let count = points.count
-                        let total = Double(times.count - 1)
-                        for i in 1..<count {
+                        let total = Double(points.count - 1)
+                        for i in 1..<points.count {
                             let q = Double(i) / max(total, 1)
-                            // dünn anfangen, in der Mitte am tiefsten, dünn ausfransen
-                            let width = (1 + 3.6 * CGFloat(sin(.pi * min(q * 1.05, 1)))) * strength
-                            var seg = Path()
-                            seg.move(to: points[i - 1])
-                            seg.addLine(to: points[i])
-                            context.stroke(seg, with: .color(.black.opacity(0.42 * fade)),
-                                           style: StrokeStyle(lineWidth: width + 1.2, lineCap: .round))
-                            var light = Path()
-                            light.move(to: CGPoint(x: points[i - 1].x + perp.dx * 0.8, y: points[i - 1].y + perp.dy * 0.8))
-                            light.addLine(to: CGPoint(x: points[i].x + perp.dx * 0.8, y: points[i].y + perp.dy * 0.8))
-                            context.stroke(light, with: .color(.white.opacity(0.92 * fade)),
-                                           style: StrokeStyle(lineWidth: max(0.6, width * 0.5), lineCap: .round))
-                        }
-                        // kleine Splitter am Anfang der Spur
-                        if let first = points.first {
-                            for k in 0..<3 {
-                                let n1 = noise(Double(claw * 5 + k) + Double(index) * 3.3)
-                                let n2 = noise(Double(claw * 7 + k) * 1.7 + Double(index))
-                                let dot = CGPoint(x: first.x + n1 * 4 + d.dx * 2, y: first.y + n2 * 4 + d.dy * 2)
-                                context.fill(Path(ellipseIn: CGRect(x: dot.x - 0.7, y: dot.y - 0.7, width: 1.4, height: 1.4)),
-                                             with: .color(.white.opacity(0.8 * fade)))
-                            }
+                            let width = (0.7 + 2.4 * CGFloat(sin(.pi * min(q * 1.05, 1)))) * strength * max(unit, 0.8)
+                            var groove = Path()
+                            groove.move(to: points[i - 1])
+                            groove.addLine(to: points[i])
+                            context.stroke(groove, with: .color(.black.opacity(0.4 * fade)),
+                                           style: StrokeStyle(lineWidth: width + 1, lineCap: .round))
+                            var edge = Path()
+                            edge.move(to: CGPoint(x: points[i - 1].x + perpScreen.dx * 0.7, y: points[i - 1].y + perpScreen.dy * 0.7))
+                            edge.addLine(to: CGPoint(x: points[i].x + perpScreen.dx * 0.7, y: points[i].y + perpScreen.dy * 0.7))
+                            context.stroke(edge, with: .color(.white.opacity(0.9 * fade)),
+                                           style: StrokeStyle(lineWidth: max(0.5, width * 0.45), lineCap: .round))
                         }
                     }
                 }
             }
         }
 
-        let s = state(gesture, t: t, r: r)
-        guard s.alpha > 0.01 else { return }
-        let p = s.scale * pawSize
+        // 2. Rüdiger im Fenster: Hintergrund fest, Körper beugt sich vor (im runden Fenster beschnitten)
+        let window = Path(ellipseIn: CGRect(x: center.x - diameter / 2 + 1.5, y: center.y - diameter / 2 + 1.5,
+                                            width: diameter - 3, height: diameter - 3))
+        var inside = context
+        inside.clip(to: window)
+        var bg = inside
+        bg.translateBy(x: center.x - diameter / 2, y: center.y - diameter / 2)
+        bg.scaleBy(x: unit, y: unit)
+        CatPainter.drawBackground(&bg, dark: dark, accent: accent)
+        var body = inside
+        body.concatenate(m)
+        CatPainter.drawBust(&body, pose: pose, dark: dark, t: clock)
 
-        // Abdruck auf der Scheibe (leicht beschlagen), solange die Pfote drückt
-        if s.pressed {
-            var fog = context
-            fog.addFilter(.blur(radius: 4))
-            let pad = world(s, 0, 0)
-            fog.fill(Path(ellipseIn: CGRect(x: pad.x - p * 1.05, y: pad.y - p * 1.05, width: p * 2.1, height: p * 2.1)),
-                     with: .color(.white.opacity(0.22)))
+        // 3. Kopf und Ohren ragen über den Fensterrand hinaus (3D)
+        var head = context
+        head.concatenate(m)
+        head.clip(to: Path(CGRect(x: -100, y: -100, width: 300, height: 171)))
+        head.addFilter(.shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 1.5))
+        CatPainter.drawBust(&head, pose: pose, dark: dark, t: clock)
+
+        // 4. Vorderbein mit Pfote – über allem
+        guard f.reach > 1 else { return }
+        var arm = context
+        arm.concatenate(m)
+        arm.addFilter(.shadow(color: .black.opacity(0.3), radius: 4, x: 1.5, y: 3))
+        drawLeg(&arm, f, d)
+    }
+
+    /// Vorderbein, Pfote, Ballen und Krallen – in Rüdiger-Einheiten
+    private static func drawLeg(_ c: inout GraphicsContext, _ f: Frame, _ d: CGVector) {
+        let fur = CatPainter.fur
+        let scale = paw * (f.pressed ? 1.06 : 1)
+        let base = shoulder(d)
+        let wrist = pawPoint(f, d, u: -0.45, v: 0, scale: scale)
+        let vec = CGVector(dx: wrist.x - base.x, dy: wrist.y - base.y)
+        let length = max(sqrt(vec.dx * vec.dx + vec.dy * vec.dy), 0.1)
+        let ld = CGVector(dx: vec.dx / length, dy: vec.dy / length)
+        let lp = CGVector(dx: -ld.dy, dy: ld.dx)
+
+        // Bein: an der Schulter kräftig, zum Handgelenk schmaler, weiche Fellkante
+        let w0: CGFloat = 8.5, w1: CGFloat = scale * 0.62
+        var left: [CGPoint] = [], right: [CGPoint] = []
+        let steps = 24
+        for i in 0...steps {
+            let q = CGFloat(i) / CGFloat(steps)
+            let w = w0 + (w1 - w0) * q
+            let bulge = sin(q * .pi) * 1.4
+            let fluffL = CGFloat(sin(Double(q) * .pi * 5 + 1.2)) * 0.45
+            let fluffR = CGFloat(sin(Double(q) * .pi * 4 + 0.3)) * 0.45
+            let p = CGPoint(x: base.x + ld.dx * length * q, y: base.y + ld.dy * length * q)
+            left.append(CGPoint(x: p.x + lp.dx * (w + bulge + fluffL), y: p.y + lp.dy * (w + bulge + fluffL)))
+            right.append(CGPoint(x: p.x - lp.dx * (w + bulge * 0.5 + fluffR), y: p.y - lp.dy * (w + bulge * 0.5 + fluffR)))
+        }
+        var leg = Path()
+        leg.addLines(left + right.reversed())
+        leg.closeSubpath()
+        c.fill(leg, with: .linearGradient(Gradient(colors: [CatPainter.furLight, fur, Color(white: 0.04)]),
+                                          startPoint: CGPoint(x: base.x + lp.dx * w0, y: base.y + lp.dy * w0),
+                                          endPoint: CGPoint(x: base.x - lp.dx * w0, y: base.y - lp.dy * w0)))
+
+        // Pfote (Fäustling) mit vier Zehen
+        var palm = Path()
+        palm.addLines((0..<36).map { i -> CGPoint in
+            let a = Double(i) / 36 * 2 * .pi
+            return pawPoint(f, d, u: CGFloat(cos(a)) * 0.7, v: CGFloat(sin(a)) * 0.8, scale: scale)
+        })
+        palm.closeSubpath()
+        c.fill(palm, with: .color(fur))
+        for toe in toes {
+            let p = pawPoint(f, d, u: toe.u, v: toe.v, scale: scale)
+            c.fill(Path(ellipseIn: CGRect(x: p.x - scale * 0.31, y: p.y - scale * 0.31, width: scale * 0.62, height: scale * 0.62)),
+                   with: .color(fur))
         }
 
-        context.drawLayer { layer in
-            layer.opacity = s.alpha
-            layer.addFilter(.shadow(color: .black.opacity(0.35), radius: 5, x: 2, y: 4))
-
-            // Vorderbein: vom Fensterrand zur Pfote, sich verjüngend, mit Fellkante
-            let base = CGPoint(x: center.x + d.dx * r * 0.82, y: center.y + d.dy * r * 0.82)
-            let wrist = world(s, -0.5 * p, 0)
-            let legDir = CGVector(dx: wrist.x - base.x, dy: wrist.y - base.y)
-            let legLength = max(sqrt(legDir.dx * legDir.dx + legDir.dy * legDir.dy), 1)
-            let ld = CGVector(dx: legDir.dx / legLength, dy: legDir.dy / legLength)
-            let lp = CGVector(dx: -ld.dy, dy: ld.dx)
-            let w0 = r * 0.42, w1 = p * 0.66
-            var leg = Path()
-            var left: [CGPoint] = [], right: [CGPoint] = []
-            let steps = 40
-            for i in 0...steps {
-                let q = CGFloat(i) / CGFloat(steps)
-                let w = w0 + (w1 - w0) * q
-                let bulge = sin(q * .pi) * w * 0.12        // leicht gewölbter Muskel
-                // weiche Fellwölbungen statt Zacken
-                let fur = CGFloat(sin(Double(q) * .pi * 7 + 1.3) * 1.7 + sin(Double(q) * .pi * 13) * 0.6)
-                let fur2 = CGFloat(sin(Double(q) * .pi * 6 + 0.4) * 1.7 + sin(Double(q) * .pi * 11 + 2) * 0.6)
-                let c = CGPoint(x: base.x + ld.dx * legLength * q, y: base.y + ld.dy * legLength * q)
-                left.append(CGPoint(x: c.x + lp.dx * (w + bulge + fur), y: c.y + lp.dy * (w + bulge + fur)))
-                right.append(CGPoint(x: c.x - lp.dx * (w + bulge * 0.6 + fur2), y: c.y - lp.dy * (w + bulge * 0.6 + fur2)))
-            }
-            leg.addLines(left + right.reversed())
-            leg.closeSubpath()
-            let shadeA = CGPoint(x: base.x + lp.dx * w0, y: base.y + lp.dy * w0)
-            let shadeB = CGPoint(x: base.x - lp.dx * w0, y: base.y - lp.dy * w0)
-            layer.fill(leg, with: .linearGradient(Gradient(colors: [Color(white: 0.2), Color(white: 0.06), Color(white: 0.03)]),
-                                                  startPoint: shadeA, endPoint: shadeB))
-            // Glanzlinie im Fell
-            var sheen = Path()
-            sheen.move(to: CGPoint(x: base.x + lp.dx * w0 * 0.55, y: base.y + lp.dy * w0 * 0.55))
-            sheen.addLine(to: CGPoint(x: wrist.x + lp.dx * w1 * 0.55, y: wrist.y + lp.dy * w1 * 0.55))
-            layer.stroke(sheen, with: .color(.white.opacity(0.13)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-
-            // Pfote: runde „Fäustling“-Form mit Fellrand
-            var palm = Path()
-            let rimSteps = 30
-            let palmPoints = (0..<rimSteps).map { i -> CGPoint in
-                let a = Double(i) / Double(rimSteps) * 2 * .pi
-                let fur = 1 + noise(Double(i) * 2.3 + 1) * 0.06
-                return world(s, CGFloat(cos(a)) * p * 0.68 * fur, CGFloat(sin(a)) * p * 0.78 * fur)
-            }
-            palm.addLines(palmPoints)
-            palm.closeSubpath()
-            layer.fill(palm, with: .color(Color(white: 0.07)))
-            for toe in toes {
-                let c = world(s, toe.u * p, toe.v * p)
-                layer.fill(Path(ellipseIn: CGRect(x: c.x - p * 0.3, y: c.y - p * 0.3, width: p * 0.6, height: p * 0.6)),
-                           with: .color(Color(white: 0.07)))
-            }
-
-            // Ballen (rosa, leicht glänzend – gegen die Scheibe gedrückt etwas größer)
-            let squash: CGFloat = s.pressed ? 1.08 : 1
-            let padColor = Gradient(colors: [Color(red: 0.98, green: 0.72, blue: 0.78), Color(red: 0.86, green: 0.50, blue: 0.60)])
-            let mainCenter = world(s, -0.12 * p, 0)
-            var main = Path()
-            main.addEllipse(in: CGRect(x: mainCenter.x - p * 0.36 * squash, y: mainCenter.y - p * 0.36 * squash,
-                                       width: p * 0.72 * squash, height: p * 0.72 * squash))
-            for side in [-1.0, 1.0] {
-                let lobe = world(s, -0.28 * p, CGFloat(side) * 0.22 * p)
-                main.addEllipse(in: CGRect(x: lobe.x - p * 0.2 * squash, y: lobe.y - p * 0.2 * squash,
-                                           width: p * 0.4 * squash, height: p * 0.4 * squash))
-            }
-            layer.fill(main, with: .radialGradient(padColor, center: mainCenter, startRadius: 0, endRadius: p * 0.5))
-            layer.fill(Path(ellipseIn: CGRect(x: mainCenter.x - p * 0.12, y: mainCenter.y - p * 0.16, width: p * 0.14, height: p * 0.09)),
-                       with: .color(.white.opacity(0.55)))
-            for toe in toes {
-                let c = world(s, toe.u * p + 0.04 * p, toe.v * p)
-                let bean = Path(ellipseIn: CGRect(x: c.x - p * 0.17 * squash, y: c.y - p * 0.15 * squash,
-                                                  width: p * 0.34 * squash, height: p * 0.30 * squash))
-                layer.fill(bean, with: .radialGradient(padColor, center: c, startRadius: 0, endRadius: p * 0.2))
-                layer.fill(Path(ellipseIn: CGRect(x: c.x - p * 0.06, y: c.y - p * 0.08, width: p * 0.07, height: p * 0.05)),
-                           with: .color(.white.opacity(0.6)))
-            }
-
-            // Krallen: gebogen, halb durchsichtig, fahren aus den Zehen
-            if s.claws > 0.02 {
-                for toe in toes {
-                    let length = p * 0.6 * s.claws
-                    let rootU = toe.u * p + 0.22 * p
-                    let root1 = world(s, rootU, toe.v * p - p * 0.06)
-                    let root2 = world(s, rootU, toe.v * p + p * 0.06)
-                    let tip = world(s, rootU + length, toe.v * p + length * 0.18)
-                    let ctrl = world(s, rootU + length * 0.6, toe.v * p - length * 0.12)
-                    var claw = Path()
-                    claw.move(to: root1)
-                    claw.addQuadCurve(to: tip, control: ctrl)
-                    claw.addQuadCurve(to: root2, control: world(s, rootU + length * 0.45, toe.v * p + length * 0.1))
-                    claw.closeSubpath()
-                    layer.fill(claw, with: .linearGradient(Gradient(colors: [Color(white: 0.97), Color(white: 0.78)]),
-                                                           startPoint: root1, endPoint: tip))
-                    layer.stroke(claw, with: .color(.black.opacity(0.35)), lineWidth: 0.6)
-                }
-            }
+        // rosa Ballen – zur Scheibe gedrückt
+        let pad = Gradient(colors: [Color(red: 0.99, green: 0.74, blue: 0.80), Color(red: 0.86, green: 0.5, blue: 0.6)])
+        let main = pawPoint(f, d, u: -0.1, v: 0, scale: scale)
+        var mainPad = Path(ellipseIn: CGRect(x: main.x - scale * 0.36, y: main.y - scale * 0.33, width: scale * 0.72, height: scale * 0.66))
+        for side in [-1.0, 1.0] {
+            let lobe = pawPoint(f, d, u: -0.3, v: CGFloat(side) * 0.2, scale: scale)
+            mainPad.addEllipse(in: CGRect(x: lobe.x - scale * 0.19, y: lobe.y - scale * 0.19, width: scale * 0.38, height: scale * 0.38))
         }
+        c.fill(mainPad, with: .radialGradient(pad, center: main, startRadius: 0, endRadius: scale * 0.5))
+        for toe in toes {
+            let p = pawPoint(f, d, u: toe.u + 0.04, v: toe.v, scale: scale)
+            c.fill(Path(ellipseIn: CGRect(x: p.x - scale * 0.16, y: p.y - scale * 0.14, width: scale * 0.32, height: scale * 0.28)),
+                   with: .radialGradient(pad, center: p, startRadius: 0, endRadius: scale * 0.2))
+            c.fill(Path(ellipseIn: CGRect(x: p.x - scale * 0.07, y: p.y - scale * 0.08, width: scale * 0.07, height: scale * 0.05)),
+                   with: .color(.white.opacity(0.6)))
+        }
+
+        // Krallen: gebogen, fahren aus den Zehen
+        guard f.claws > 0.02 else { return }
+        for toe in toes {
+            let length = 0.55 * f.claws
+            let root1 = pawPoint(f, d, u: toe.u + 0.22, v: toe.v - 0.07, scale: scale)
+            let root2 = pawPoint(f, d, u: toe.u + 0.22, v: toe.v + 0.07, scale: scale)
+            let tip = pawPoint(f, d, u: toe.u + 0.22 + length, v: toe.v + length * 0.15, scale: scale)
+            let c1 = pawPoint(f, d, u: toe.u + 0.22 + length * 0.6, v: toe.v - length * 0.1, scale: scale)
+            let c2 = pawPoint(f, d, u: toe.u + 0.22 + length * 0.45, v: toe.v + length * 0.12, scale: scale)
+            var claw = Path()
+            claw.move(to: root1)
+            claw.addQuadCurve(to: tip, control: c1)
+            claw.addQuadCurve(to: root2, control: c2)
+            claw.closeSubpath()
+            c.fill(claw, with: .linearGradient(Gradient(colors: [Color(white: 0.98), Color(white: 0.8)]),
+                                               startPoint: root1, endPoint: tip))
+        }
+    }
+
+    private static func noise(_ x: Double) -> CGFloat {
+        let v = sin(x * 12.9898) * 43758.5453
+        return CGFloat(v - floor(v)) * 2 - 1
     }
 }
