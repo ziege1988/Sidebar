@@ -40,7 +40,7 @@ final class CatGestureController {
 
     func perform(_ gesture: CatGesture, at location: CatLocation) {
         let diameter = location.cat.width
-        let side = diameter * 4
+        let side = diameter * 4.4
         let frame = NSRect(x: location.cat.midX - side / 2, y: location.cat.midY - side / 2, width: side, height: side)
         // Richtung: vom Bildschirmrand weg, schräg ins Bild (lokal, y nach unten)
         let s = CGFloat(0.5.squareRoot())
@@ -122,9 +122,9 @@ enum CatGesturePainter {
 
     static func state(_ gesture: CatGesture, t: Double, r: CGFloat) -> PawState {
         let rim = r * 0.75
-        let far = r * 2.15
-        let pull = r * 0.75
-        let shift = r * 0.34
+        let far = r * 2.5
+        let pull = r * 1.25
+        let shift = r * 0.5
         switch gesture {
         case .scratch:
             switch t {
@@ -134,12 +134,12 @@ enum CatGesturePainter {
                                 claws: 0, tilt: -8 * (1 - p), alpha: clamp(p * 4), pressed: false)
             case ..<0.6:
                 let p = (t - 0.45) / 0.15
-                return PawState(along: far, across: 0, scale: 1 + 0.06 * CGFloat(sin(.pi * p)),
+                return PawState(along: far, across: 0, scale: 1 + 0.12 * CGFloat(easeOut(p)),
                                 claws: CGFloat(easeOut(p)), tilt: 0, alpha: 1, pressed: true)
             case ..<1.05:
                 let p = (t - 0.6) / 0.45
                 return PawState(along: far - pull * CGFloat(easeInOut(p)), across: r * 0.08 * CGFloat(sin(.pi * p)),
-                                scale: 1.04, claws: 1, tilt: 5 * sin(.pi * p), alpha: 1, pressed: true)
+                                scale: 1.12, claws: 1, tilt: 5 * sin(.pi * p), alpha: 1, pressed: true)
             case ..<1.3:
                 let p = (t - 1.05) / 0.25
                 return PawState(along: lerp(far - pull, far, easeInOut(p)), across: shift * CGFloat(easeInOut(p)),
@@ -148,11 +148,11 @@ enum CatGesturePainter {
             case ..<1.75:
                 let p = (t - 1.3) / 0.45
                 return PawState(along: far - pull * CGFloat(easeInOut(p)), across: shift + r * 0.06 * CGFloat(sin(.pi * p)),
-                                scale: 1.04, claws: 1, tilt: 6 * sin(.pi * p), alpha: 1, pressed: true)
+                                scale: 1.12, claws: 1, tilt: 6 * sin(.pi * p), alpha: 1, pressed: true)
             case ..<2.3:
                 let p = (t - 1.75) / 0.55
                 return PawState(along: lerp(far - pull, rim, easeInOut(p)), across: lerp(shift, 0, easeInOut(p)),
-                                scale: lerp(1, 0.62, easeInOut(p)), claws: CGFloat(1 - easeOut(p * 2.5)),
+                                scale: lerp(1.12, 0.55, easeInOut(p)), claws: CGFloat(1 - easeOut(p * 2.5)),
                                 tilt: -6 * p, alpha: 1 - clamp((p - 0.75) / 0.25), pressed: false)
             default:
                 return PawState(along: rim, across: 0, scale: 0.6, claws: 0, tilt: 0, alpha: 0, pressed: false)
@@ -192,7 +192,7 @@ enum CatGesturePainter {
                      radius r: CGFloat, direction d: CGVector) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let perp = CGVector(dx: -d.dy, dy: d.dx)
-        let pawSize = r * 0.4
+        let pawSize = r * 0.62
 
         // Weltpunkt aus Pfotenlage + lokaler Verschiebung (gedreht um die Neigung)
         func world(_ s: PawState, _ u: CGFloat, _ v: CGFloat) -> CGPoint {
@@ -231,7 +231,7 @@ enum CatGesturePainter {
                         for i in 1..<count {
                             let q = Double(i) / max(total, 1)
                             // dünn anfangen, in der Mitte am tiefsten, dünn ausfransen
-                            let width = (0.8 + 2.6 * CGFloat(sin(.pi * min(q * 1.05, 1)))) * strength
+                            let width = (1 + 3.6 * CGFloat(sin(.pi * min(q * 1.05, 1)))) * strength
                             var seg = Path()
                             seg.move(to: points[i - 1])
                             seg.addLine(to: points[i])
@@ -282,16 +282,17 @@ enum CatGesturePainter {
             let legLength = max(sqrt(legDir.dx * legDir.dx + legDir.dy * legDir.dy), 1)
             let ld = CGVector(dx: legDir.dx / legLength, dy: legDir.dy / legLength)
             let lp = CGVector(dx: -ld.dy, dy: ld.dx)
-            let w0 = r * 0.30, w1 = p * 0.62
+            let w0 = r * 0.42, w1 = p * 0.66
             var leg = Path()
             var left: [CGPoint] = [], right: [CGPoint] = []
-            let steps = 9
+            let steps = 40
             for i in 0...steps {
                 let q = CGFloat(i) / CGFloat(steps)
                 let w = w0 + (w1 - w0) * q
                 let bulge = sin(q * .pi) * w * 0.12        // leicht gewölbter Muskel
-                let fur = noise(Double(i) * 3.1) * 1.1
-                let fur2 = noise(Double(i) * 5.7 + 2) * 1.1
+                // weiche Fellwölbungen statt Zacken
+                let fur = CGFloat(sin(Double(q) * .pi * 7 + 1.3) * 1.7 + sin(Double(q) * .pi * 13) * 0.6)
+                let fur2 = CGFloat(sin(Double(q) * .pi * 6 + 0.4) * 1.7 + sin(Double(q) * .pi * 11 + 2) * 0.6)
                 let c = CGPoint(x: base.x + ld.dx * legLength * q, y: base.y + ld.dy * legLength * q)
                 left.append(CGPoint(x: c.x + lp.dx * (w + bulge + fur), y: c.y + lp.dy * (w + bulge + fur)))
                 right.append(CGPoint(x: c.x - lp.dx * (w + bulge * 0.6 + fur2), y: c.y - lp.dy * (w + bulge * 0.6 + fur2)))
@@ -313,7 +314,7 @@ enum CatGesturePainter {
             let rimSteps = 30
             let palmPoints = (0..<rimSteps).map { i -> CGPoint in
                 let a = Double(i) / Double(rimSteps) * 2 * .pi
-                let fur = 1 + noise(Double(i) * 2.3 + 1) * 0.05
+                let fur = 1 + noise(Double(i) * 2.3 + 1) * 0.06
                 return world(s, CGFloat(cos(a)) * p * 0.68 * fur, CGFloat(sin(a)) * p * 0.78 * fur)
             }
             palm.addLines(palmPoints)
@@ -352,7 +353,7 @@ enum CatGesturePainter {
             // Krallen: gebogen, halb durchsichtig, fahren aus den Zehen
             if s.claws > 0.02 {
                 for toe in toes {
-                    let length = p * 0.55 * s.claws
+                    let length = p * 0.6 * s.claws
                     let rootU = toe.u * p + 0.22 * p
                     let root1 = world(s, rootU, toe.v * p - p * 0.06)
                     let root2 = world(s, rootU, toe.v * p + p * 0.06)
