@@ -1,160 +1,213 @@
-// Rüdigers Sprite-Animationen.
-// Er streckt den Kopf aus seinem Fenster, hebt die Pfote seitlich neben dem Kopf an die „Scheibe“
-// (den Bildschirm) und kratzt von oben nach unten. Der Arm hängt dabei immer an seinem Körper.
-// Koordinaten in Rüdiger-Einheiten: das runde Fenster ist 100 × 100 (Mitte 50/50).
-// Das Bild deckt 220 × 220 Einheiten ab (viewBox -60 … 160).
+// Rüdigers Bewegungen. Jede Sequenz liefert für eine Zeit t die Pose für rig.js.
+// Schleifen (loop: true) laufen im runden Fenster, Gesten (wide: true) ragen aus der Blase heraus.
 
 const clamp = x => Math.min(Math.max(x, 0), 1);
 const smooth = x => { const v = clamp(x); return v * v * v * (v * (v * 6 - 15) + 10); };
 const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
-const easeOutBack = x => { const v = clamp(x), c1 = 1.3, c3 = c1 + 1; return 1 + c3 * Math.pow(v - 1, 3) + c1 * Math.pow(v - 1, 2); };
+const easeIn = x => Math.pow(clamp(x), 3);
+const easeOutBack = x => { const v = clamp(x), c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(v - 1, 3) + c1 * Math.pow(v - 1, 2); };
 const lerp = (a, b, t) => a + (b - a) * t;
-const lerpPt = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+const bump = (t, a, b) => (t < a || t > b) ? 0 : Math.sin(Math.PI * (t - a) / (b - a));   // 0 → 1 → 0
+const TAU = Math.PI * 2;
 
-// Zehen (Mitte der Zehenballen) relativ zur Pfotenmitte – Pfote aufrecht, Ballen zum Betrachter
-const TOES = [[-9.2, -7.6], [-3.3, -11.4], [3.3, -11.4], [9.2, -7.6]];
+function base() {
+  return { sc: 0.88, dx: 0, dy: 10, rot: 0, headDy: 0, headTilt: 0, earL: 0, earR: 0, look: [0, 0], lid: 0.06, low: 0, slant: 0, mouth: 'smile', pupil: 'normal' };
+}
 
+// ---------- Effekte ----------
+function zzz(t) {
+  let s = '';
+  for (let i = 0; i < 3; i++) {
+    const p = (t / 2.4 + i / 3) % 1;
+    s += `<text x="${(66 + p * 18).toFixed(2)}" y="${(40 - p * 26).toFixed(2)}" font-size="${(7 + p * 7).toFixed(2)}" font-weight="900" font-family="Chalkboard SE, Comic Sans MS, sans-serif" fill="#ffffff" stroke="#151518" stroke-width=".6" opacity="${(1 - p).toFixed(2)}">Z</text>`;
+  }
+  return s;
+}
+function hearts(t) {
+  let s = '';
+  for (let i = 0; i < 2; i++) {
+    const p = (t / 2.4 + i * 0.5) % 1;
+    s += heart(i ? 18 : 82, 34 - p * 22, 7 + p * 3, 1 - p);
+  }
+  return s;
+}
+function steam(t) {
+  let s = '';
+  for (let i = 0; i < 2; i++) {
+    const p = (t / 0.8 + i * 0.5) % 1;
+    for (const x of [16, 84]) s += `<circle cx="${(x + (x < 50 ? -3 : 3) * p).toFixed(2)}" cy="${(28 - p * 12).toFixed(2)}" r="${(2 + p * 3).toFixed(2)}" fill="#ffffff" opacity="${((1 - p) * 0.75).toFixed(2)}"/>`;
+  }
+  return s;
+}
+function sigh(p) {
+  if (p <= 0 || p >= 1) return '';
+  let s = '';
+  for (let i = 0; i < 3; i++) s += `<circle cx="${(58 + p * 16 + i * 3).toFixed(2)}" cy="${(72 - i * 2 - p * 3).toFixed(2)}" r="${(1.2 + i * 0.5 + p).toFixed(2)}" fill="#ffffff" opacity="${((1 - p) * 0.7).toFixed(2)}"/>`;
+  return s;
+}
+
+// Kratzspuren (in Bildkoordinaten, rechts neben der Blase), Fortschritt 0…1, Deckkraft
+function scratchMarks(progress, alpha, debrisT) {
+  if (progress <= 0 || alpha <= 0) return '';
+  let s = `<g opacity="${alpha.toFixed(3)}">`;
+  [0, 9, 18].forEach((o, i) => {
+    const local = clamp(progress * 1.4 - i * 0.2);
+    if (local <= 0) return;
+    const x0 = 104 + o, y0 = 8 + o * 0.3, x1 = 122 + o, y1 = 66 - o * 0.2;
+    const pts = [];
+    const n = 22;
+    for (let k = 0; k <= n * local; k++) {
+      const q = k / n, j = Math.sin(k * 2.7 + i * 5) * 0.6;
+      pts.push([lerp(x0, x1, q) + j * 0.5, lerp(y0, y1, q) + Math.sin(q * Math.PI) * 3 + j]);
+    }
+    if (pts.length < 2) return;
+    const d = 'M' + pts.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' L');
+    s += `<path d="${d}" stroke="rgba(0,0,0,.5)" stroke-width="${7 - i * 0.6}" fill="none" stroke-linecap="round"/>`;
+    s += `<path d="${d}" stroke="#f1f0ea" stroke-width="${4.4 - i * 0.4}" fill="none" stroke-linecap="round"/>`;
+    s += `<path d="${d}" stroke="rgba(255,255,255,.9)" stroke-width="1.2" fill="none" stroke-linecap="round" transform="translate(-0.8 -0.6)"/>`;
+    s += `<path d="${d}" stroke="rgba(120,120,120,.6)" stroke-width=".6" fill="none" stroke-dasharray="1.2 2.2"/>`;
+  });
+  // Splitter fliegen weg und bleiben teils liegen
+  const chips = [[118, 26, 9, -6], [126, 40, 12, 2], [112, 50, 7, 8], [131, 18, 10, -9], [121, 60, 6, 10], [135, 34, 14, -2]];
+  chips.forEach(([x, y, vx, vy], i) => {
+    const p = clamp(debrisT);
+    const fly = i < 3 ? easeOut(p) : easeOut(p) * 1.6;
+    const cx = x + vx * fly, cy = y + vy * fly + 6 * p * p;
+    const op = i < 3 ? 1 : 1 - p;
+    if (op <= 0.02) return;
+    s += `<path d="M${cx.toFixed(2)},${cy.toFixed(2)} l${1.8 + (i % 2)},${0.6} l${-0.7},${1.7} Z" fill="#efeee8" stroke="rgba(0,0,0,.35)" stroke-width=".3" opacity="${op.toFixed(2)}"/>`;
+  });
+  return s + '</g>';
+}
+function swish(p) {
+  if (p <= 0 || p >= 1) return '';
+  const o = (1 - p) * 0.8;
+  return `<g stroke="#ffffff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="${o.toFixed(2)}">
+    <path d="M90,14 Q104,20 112,38"/><path d="M84,22 Q97,28 104,44"/><path d="M96,8 Q110,14 119,30"/></g>`;
+}
+
+// ---------- Sequenzen ----------
 const SEQUENCES = {
-  scratch: { duration: 2.8, face: 'grumpy', drags: [[0.85, 1.3], [1.5, 1.95]] },
-  flick: { duration: 2.0, face: 'angry', drags: [] },
+  idle: { duration: 4.8, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.sc = 0.88 * (1 + 0.012 * Math.sin(TAU * t / 2.4));
+    p.look = [1.8 * Math.sin(TAU * t / 4.8), 0];
+    const blink = Math.max(bump(t, 1.6, 1.78), bump(t, 4.0, 4.16));
+    p.lid = Math.max(0.06, blink);
+    p.earR = 9 * bump(t, 3.0, 3.12) - 5 * bump(t, 3.12, 3.26);
+    return p;
+  }},
+  sleep: { duration: 4.8, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.dy = 16; p.headDy = 4; p.headTilt = -7; p.closed = 'sleep'; p.earL = 8; p.earR = 8;
+    p.sc = 0.88 * (1 + 0.02 * Math.sin(TAU * t / 2.4));
+    p.fx = zzz(t);
+    return p;
+  }},
+  ask: { duration: 1.6, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.pupil = 'round'; p.lid = 0; p.look = [0, -1.2]; p.earL = -4; p.earR = -4;
+    p.headTilt = 5 * Math.sin(TAU * t / 1.6);
+    p.rimL = false;
+    p.wave = { x: 22 + 2 * Math.sin(TAU * t / 0.8), y: 62, rot: -8 + 20 * Math.sin(TAU * t / 0.8) };
+    return p;
+  }},
+  purr: { duration: 2.4, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.closed = 'happy'; p.headTilt = 6 * Math.sin(TAU * t / 2.4); p.sc = 0.88 * (1 + 0.015 * Math.sin(TAU * t / 0.6));
+    p.fx = hearts(t);
+    return p;
+  }},
+  annoyed: { duration: 6, fps: 25, loop: true, pose(t) {
+    // genervt: gerader, schwerer Blick zur Seite, Ohren seitlich – dann rollt er mit den Augen und seufzt
+    const p = base();
+    p.brows = 'annoyed'; p.earL = 18; p.earR = 18; p.mouth = 'side'; p.slant = 1.6; p.low = 0.16;
+    p.lid = 0.44; p.look = [3.6, 0.6];
+    if (t >= 1.4 && t < 2.6) {                         // Augenrollen: rechts → oben → links
+      const q = smooth((t - 1.4) / 1.2), th = Math.PI * q;
+      p.look = [4 * Math.cos(th), -5.8 * Math.sin(th) + 0.6 * (1 - Math.sin(th))];
+      p.lid = lerp(0.44, 0.18, bump(t, 1.4, 2.6) > 0 ? Math.min(1, bump(t, 1.4, 2.6) * 1.6) : 0);
+      p.low = 0.05;
+      p.headTilt = -6 * bump(t, 1.4, 2.6);
+      p.browRaise = 2 * bump(t, 1.4, 2.6);
+    } else if (t >= 2.6 && t < 3.2) {                  // Lider fallen, Seitenblick links
+      const q = smooth((t - 2.6) / 0.6);
+      p.look = [lerp(-4, -3.6, q), lerp(0.6, 0.6, q)];
+      p.lid = lerp(0.3, 0.48, q);
+    } else if (t >= 3.2 && t < 5.2) {                  // Seufzer, dann starrt er
+      p.look = [-3.6, 0.6]; p.lid = 0.48;
+      p.headDy = 1.4 * bump(t, 3.2, 3.9);
+      p.fx = sigh((t - 3.2) / 0.9);
+    } else if (t >= 5.2) {                             // Blick langsam zurück nach rechts
+      const q = smooth((t - 5.2) / 0.8);
+      p.look = [lerp(-3.6, 3.6, q), 0.6]; p.lid = lerp(0.48, 0.44, q);
+    }
+    return p;
+  }},
+  angry: { duration: 1.6, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.brows = 'angry'; p.earL = 34; p.earR = 34; p.slant = 4.2; p.lid = 0.34; p.pupil = 'slit'; p.angryEyes = true; p.mouth = 'hiss';
+    p.headTilt = 1.6 * Math.sin(TAU * t * 3);
+    p.fx = steam(t);
+    return p;
+  }},
+  intro: { duration: 3.6, fps: 30, loop: false, pose(t) {
+    // taucht von unten in der Blase auf, schaut sich um und winkt
+    const p = base();
+    p.dy = lerp(80, 10, easeOutBack(t / 1.0));
+    p.earL = -6 * bump(t, 0.7, 1.1); p.earR = -6 * bump(t, 0.7, 1.1);
+    if (t < 1.0) p.lid = 0.06;
+    else if (t < 1.5) p.look = [-4 * smooth((t - 1.0) / 0.3), 0];
+    else if (t < 2.0) p.look = [lerp(-4, 4, smooth((t - 1.5) / 0.3)), 0];
+    else {
+      p.look = [lerp(4, 0, smooth((t - 2.0) / 0.3)), -1]; p.pupil = 'round'; p.lid = 0;
+      const w = (t - 2.0);
+      p.rimL = false;
+      p.wave = { x: lerp(33, 22, smooth(w / 0.3)), y: lerp(85, 62, easeOutBack(w / 0.35)), rot: -8 + 20 * Math.sin(TAU * w / 0.8) * smooth(w / 0.3) };
+    }
+    return p;
+  }},
+  scratch: { duration: 5.0, fps: 40, loop: false, wide: true, catUntil: 2.4, pose(t) {
+    const p = base();
+    const e = t < 0.45 ? smooth(t / 0.45) : (t < 1.9 ? 1 : 1 - smooth((t - 1.9) / 0.5));
+    p.sc = 0.88 + 0.2 * e; p.dx = 4 * e; p.dy = lerp(10, -3, e); p.rot = -8 * e; p.headTilt = -3 * e;
+    // Blick und Laune
+    p.lid = lerp(0.06, 0.3, e); p.slant = 1 * e; p.look = [3.2 * e, 0];
+    if (t >= 0.7 && t < 1.6) { p.mouth = 'fang'; p.lid = 0.2; p.look = [3.8, -0.6]; }
+    if (t >= 1.6 && t < 2.4) { p.closed = 'happy'; }
+    // Arm: kommt vom Rand, holt seitlich aus, schnellt nach rechts unten, zurück
+    if (t >= 0.35 && t < 1.9) {
+      let ax, ay, rot, claws = 0;
+      if (t < 0.8) { const q = (t - 0.35) / 0.45; ax = lerp(66, 90, easeOut(q)); ay = lerp(85, 26, easeOutBack(q)); rot = 18 * smooth(q); claws = smooth((t - 0.62) / 0.18); }
+      else if (t < 1.0) { const q = easeIn((t - 0.8) / 0.2); ax = lerp(90, 103, q); ay = lerp(26, 50, q); rot = lerp(18, 50, q); claws = 1; }
+      else if (t < 1.35) { const q = smooth((t - 1.0) / 0.35); ax = lerp(103, 100, q); ay = lerp(50, 47, q); rot = lerp(50, 44, q); claws = 1 - 0.4 * q; }
+      else { const q = smooth((t - 1.35) / 0.55); ax = lerp(100, 66, q); ay = lerp(47, 85, q); rot = lerp(44, 0, q); claws = 0.6 * (1 - q); }
+      p.arm = { x: ax, y: ay, rot, s: 1.02, claws };
+      p.rimR = false;
+    }
+    if (t >= 2.4) p.hidden = true;
+    // Spuren: erscheinen beim Treffer, bleiben 2 s stehen, verblassen
+    const prog = smooth((t - 0.86) / 0.24);
+    const alpha = t < 4.3 ? 1 : 1 - smooth((t - 4.3) / 0.7);
+    p.marksBehind = scratchMarks(prog, alpha, (t - 0.95) / 0.8);
+    p.fx = swish((t - 0.8) / 0.3);
+    return p;
+  }},
+  flick: { duration: 2.2, fps: 40, loop: false, wide: true, catUntil: 2.2, pose(t) {
+    const p = base();
+    const e = 0.8 * (t < 0.4 ? smooth(t / 0.4) : (t < 1.7 ? 1 : 1 - smooth((t - 1.7) / 0.5)));
+    p.sc = 0.88 + 0.2 * e; p.dx = 3 * e; p.dy = lerp(10, -2, e); p.rot = -5 * e;
+    p.brows = 'annoyed'; p.earL = 20; p.earR = 20; p.lid = 0.4; p.slant = 2; p.low = 0.15; p.mouth = 'side'; p.look = [-2.5, 0.6];
+    if (t >= 0.25 && t < 1.95) {
+      let ax, ay, rot;
+      if (t < 0.6) { const q = (t - 0.25) / 0.35; ax = lerp(66, 90, easeOut(q)); ay = lerp(85, 30, easeOutBack(q)); rot = 10 * q; }
+      else if (t < 1.45) { const q = (t - 0.6) / 0.85, w = Math.sin(q * TAU * 2) * (1 - q * 0.5); ax = 90 + 7 * w; ay = 30 + 2 * Math.abs(w); rot = 10 + 26 * w; }
+      else { const q = smooth((t - 1.45) / 0.5); ax = lerp(90, 66, q); ay = lerp(30, 85, q); rot = lerp(10, 0, q); }
+      p.arm = { x: ax, y: ay, rot, s: 0.98, claws: 0 };
+      p.rimR = false;
+    }
+    return p;
+  }},
 };
 
-// Schulter (im Körper, vor dem Vorbeugen) – hier setzt der Arm an
-const SHOULDER = [70, 86];
-const REST = [73, 84];      // Pfote „zu Hause“ an der Brust
-
-/** Vorbeugen: Rüdiger wird größer (kommt näher), Kopf ragt aus dem Fenster */
-const leanScale = lean => 1 + 0.32 * lean;
-const leanPoint = (p, lean) => { const s = leanScale(lean); return [50 + (p[0] - 50) * s, 100 + (p[1] - 100) * s]; };
-
-function state(name, t) {
-  if (name === 'scratch') {
-    const lean = t < 0.45 ? smooth(t / 0.45) : (t < 2.35 ? 1 : 1 - smooth((t - 2.35) / 0.45));
-    const home = leanPoint(REST, lean);
-    const top1 = [88, 27], bottom1 = [86, 63], top2 = [95, 30], bottom2 = [93, 66];
-    let pos = home, s = 0.85, claws = 0, rot = 4, pressed = false, alpha = 0;
-    if (t < 0.2) { }
-    else if (t < 0.7) { const p = (t - 0.2) / 0.5; pos = lerpPt(home, top1, easeOutBack(p)); s = lerp(0.85, 1.15, easeOut(p)); rot = lerp(4, 12, p); alpha = clamp(p * 5); }
-    else if (t < 0.85) { const p = (t - 0.7) / 0.15; pos = top1; s = 1.15 + 0.03 * Math.sin(Math.PI * p); claws = easeOut(p); rot = 12; pressed = true; alpha = 1; }
-    else if (t < 1.3) { const p = smooth((t - 0.85) / 0.45); pos = lerpPt(top1, bottom1, p); s = 1.17; claws = 1; rot = 12 - 4 * Math.sin(Math.PI * p); pressed = true; alpha = 1; }
-    else if (t < 1.5) {
-      // abheben und in einem kleinen Bogen neu ansetzen
-      const p = smooth((t - 1.3) / 0.2), arc = Math.sin(Math.PI * p) * 3;
-      pos = [lerp(bottom1[0], top2[0], p) + arc, lerp(bottom1[1], top2[1], p)]; s = 1.17 - 0.07 * Math.sin(Math.PI * p);
-      claws = 1 - 0.6 * Math.sin(Math.PI * p); rot = 12 + 3 * Math.sin(Math.PI * p); alpha = 1;
-    }
-    else if (t < 1.95) { const p = smooth((t - 1.5) / 0.45); pos = lerpPt(top2, bottom2, p); s = 1.17; claws = 1; rot = 13 - 4 * Math.sin(Math.PI * p); pressed = true; alpha = 1; }
-    else if (t < 2.45) { const p = smooth((t - 1.95) / 0.5); pos = lerpPt(bottom2, home, p); s = lerp(1.17, 0.85, p); claws = 1 - easeOut(p * 3); rot = lerp(13, 4, p); alpha = 1 - clamp((p - 0.7) / 0.3); }
-    return { lean, x: pos[0], y: pos[1], s, claws, rot, pressed, alpha, visible: t >= 0.2 && t < 2.45 };
-  }
-  // abfälliges Wegwedeln, seitlich neben dem Kopf
-  const lean = 0.85 * (t < 0.4 ? smooth(t / 0.4) : (t < 1.6 ? 1 : 1 - smooth((t - 1.6) / 0.4)));
-  const home = leanPoint(REST, lean), up = [85, 38];
-  let pos = home, s = 0.85, rot = 4, alpha = 0;
-  if (t < 0.2) { }
-  else if (t < 0.6) { const p = (t - 0.2) / 0.4; pos = lerpPt(home, up, easeOutBack(p)); s = lerp(0.85, 1.1, easeOut(p)); alpha = clamp(p * 5); }
-  else if (t < 1.35) { const p = (t - 0.6) / 0.75, w = Math.sin(p * Math.PI * 4) * (1 - p * 0.5); pos = [up[0] + 7 * w, up[1] + 2 * Math.abs(w)]; s = 1.1; rot = 8 + 22 * w; alpha = 1; }
-  else if (t < 1.8) { const p = smooth((t - 1.35) / 0.45); pos = lerpPt(up, home, p); s = lerp(1.1, 0.85, p); rot = lerp(8, 4, p); alpha = 1 - clamp((p - 0.7) / 0.3); }
-  return { lean, x: pos[0], y: pos[1], s, claws: 0, rot, pressed: false, alpha, visible: t >= 0.2 && t < 1.8 };
-}
-
-/** Krallenspitzen (global) */
-function clawTips(st) {
-  const len = 7.5 * st.claws, r = st.rot * Math.PI / 180, sx = st.pressed ? 1.08 : 1;
-  return TOES.map(([tx, ty]) => {
-    const lx = tx * sx * 1.02, ly = ty - 4.4 - len;
-    return [st.x + (lx * Math.cos(r) - ly * Math.sin(r)) * st.s, st.y + (lx * Math.sin(r) + ly * Math.cos(r)) * st.s];
-  });
-}
-
-/** Arm von der Schulter zum Handgelenk – leicht angewinkelt (Ellbogen nach außen), immer am Körper */
-function armSVG(st) {
-  const sh = leanPoint(SHOULDER, st.lean), sc = leanScale(st.lean);
-  const r = st.rot * Math.PI / 180;
-  const wrist = [st.x - Math.sin(r) * -8 * st.s * -1, st.y + Math.cos(r) * 8 * st.s];
-  const mid = [(sh[0] + wrist[0]) / 2, (sh[1] + wrist[1]) / 2];
-  const dx = wrist[0] - sh[0], dy = wrist[1] - sh[1], len = Math.hypot(dx, dy) || 1;
-  const nx = -dy / len, ny = dx / len;                 // Normale
-  const out = nx > 0 ? 1 : -1;                         // Ellbogen nach außen (rechts)
-  const bend = Math.min(9, len * 0.22);
-  const ctrl = [mid[0] + nx * bend * out, mid[1] + ny * bend * out];
-  const w0 = 9.5 * sc, w1 = 6.6 * st.s;
-  const left = [], right = [];
-  for (let i = 0; i <= 28; i++) {
-    const q = i / 28;
-    const x = (1 - q) * (1 - q) * sh[0] + 2 * (1 - q) * q * ctrl[0] + q * q * wrist[0];
-    const y = (1 - q) * (1 - q) * sh[1] + 2 * (1 - q) * q * ctrl[1] + q * q * wrist[1];
-    const tx = 2 * (1 - q) * (ctrl[0] - sh[0]) + 2 * q * (wrist[0] - ctrl[0]);
-    const ty = 2 * (1 - q) * (ctrl[1] - sh[1]) + 2 * q * (wrist[1] - ctrl[1]);
-    const tl = Math.hypot(tx, ty) || 1, px = -ty / tl, py = tx / tl;
-    const w = w0 + (w1 - w0) * q + Math.sin(q * Math.PI) * 1.2;    // Muskel
-    left.push([x + px * w, y + py * w]); right.push([x - px * w, y - py * w]);
-  }
-  const pts = [...left, ...right.reverse()].map(p => p.map(v => v.toFixed(2)).join(',')).join(' L');
-  return `<g filter="url(#fur)"><path d="M${pts} Z" fill="url(#armShade)"/>` +
-    // Schulter verschmilzt mit dem Körper
-    `<ellipse cx="${sh[0]}" cy="${sh[1]}" rx="${w0 * 1.15}" ry="${w0}" fill="#17171a"/></g>`;
-}
-
-/** Pfote (Ballen zum Betrachter) */
-function pawSVG(st) {
-  const pressed = st.pressed, sq = pressed ? 1.08 : 1, claw = st.claws;
-  let o = `<g transform="translate(${st.x} ${st.y}) rotate(${st.rot}) scale(${st.s})">`;
-  o += `<g filter="url(#fur)">`;
-  o += `<ellipse cx="0" cy="-1" rx="${13.2 * sq}" ry="11.8" fill="url(#pawShade)"/>`;
-  o += `<path d="M-9,4 C-9.5,9 -7,12 -6.5,13 L6.5,13 C7,12 9.5,9 9,4 Z" fill="#141416"/>`;
-  TOES.forEach(([tx, ty]) => { o += `<circle cx="${tx * sq}" cy="${ty}" r="4.9" fill="url(#pawShade)"/>`; });
-  o += `</g>`;
-  [[-6.3, -12.2], [0, -14.2], [6.3, -12.2]].forEach(([fx, fy]) => {
-    o += `<path d="M${fx * sq - 1},${fy + 2.5} q1,-3 1,-4.4 q0.4,2 1.2,4.4" fill="#0d0d0f"/>`;
-  });
-  const padFill = pressed ? 'url(#padPressed)' : 'url(#pad)';
-  o += `<g transform="scale(${sq} ${pressed ? 0.96 : 1})">`;
-  o += `<path d="M-7.6,4.8 C-9.4,1 -7.4,-3.6 -3.7,-3 C-2.3,-5.6 2.3,-5.6 3.7,-3 C7.4,-3.6 9.4,1 7.6,4.8 C5.6,8.4 -5.6,8.4 -7.6,4.8 Z" fill="${padFill}"/>`;
-  o += `<ellipse cx="-2.2" cy="-1.4" rx="2.3" ry="1.1" fill="#fff" opacity=".45"/>`;
-  TOES.forEach(([tx, ty]) => {
-    o += `<ellipse cx="${tx}" cy="${ty + 0.8}" rx="3.1" ry="3.6" fill="${padFill}"/>`;
-    o += `<ellipse cx="${tx - 0.9}" cy="${ty - 0.6}" rx="0.9" ry="0.6" fill="#fff" opacity=".55"/>`;
-  });
-  o += `</g>`;
-  if (claw > 0.02) {
-    const len = 7.5 * claw;
-    TOES.forEach(([tx, ty], i) => {
-      const bx = tx * sq * 1.02, by = ty - 4.4, bend = (i - 1.5) * 0.9;
-      o += `<path d="M${bx - 1.1},${by + 0.6} Q${bx - 0.9 + bend * 0.3},${by - len * 0.65} ${bx + bend},${by - len} Q${bx + 0.6 + bend * 0.2},${by - len * 0.5} ${bx + 1.1},${by + 0.6} Z" fill="url(#claw)" stroke="rgba(0,0,0,.28)" stroke-width=".25"/>`;
-    });
-  }
-  o += `<path d="M-12.4,-4 C-12,-10 -8,-14 -3,-15" stroke="rgba(255,255,255,.16)" stroke-width="1" fill="none" stroke-linecap="round"/>`;
-  return o + `</g>`;
-}
-
-function frameSVG(name, t, px) {
-  const seq = SEQUENCES[name], st = state(name, t);
-  const sc = leanScale(st.lean);
-  const lean = `translate(50 100) scale(${sc}) translate(-50 -100)`;
-  const bust = bustInner(seq.face);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="-60 -60 220 220">
-  <defs>
-    <clipPath id="win"><circle cx="50" cy="50" r="48.5"/></clipPath>
-    <clipPath id="head"><rect x="-100" y="-100" width="300" height="171"/></clipPath>
-    <filter id="fur" x="-30%" y="-30%" width="160%" height="160%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n"/>
-      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
-    </filter>
-    <filter id="drop" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="1" dy="2.2" stdDeviation="2.2" flood-color="#000" flood-opacity=".35"/></filter>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.2" stdDeviation="1.4" flood-color="#000" flood-opacity=".2"/></filter>
-    <linearGradient id="armShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c2c31"/><stop offset=".45" stop-color="#17171a"/><stop offset="1" stop-color="#08080a"/></linearGradient>
-    <radialGradient id="pawShade" cx="-4" cy="-9" r="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34343a"/><stop offset=".55" stop-color="#18181b"/><stop offset="1" stop-color="#0b0b0d"/></radialGradient>
-    <radialGradient id="pad" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#fdc4d1"/><stop offset="1" stop-color="#d97f97"/></radialGradient>
-    <radialGradient id="padPressed" cx="45%" cy="40%" r="70%"><stop offset="0" stop-color="#fed6df"/><stop offset="1" stop-color="#e796aa"/></radialGradient>
-    <linearGradient id="claw" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#d9d6cf"/><stop offset="1" stop-color="#fbfaf6"/></linearGradient>
-  </defs>
-  <g clip-path="url(#win)"><g transform="${lean}">${bust}</g></g>
-  <g filter="url(#soft)"><g transform="${lean}"><g clip-path="url(#head)">${bust}</g></g></g>
-  ${st.visible ? `<g opacity="${st.alpha}">
-     ${st.pressed ? `<ellipse cx="${st.x}" cy="${st.y - 2 * st.s}" rx="${15 * st.s}" ry="${13 * st.s}" fill="rgba(255,255,255,.14)" filter="blur(2px)"/>` : ''}
-     <g filter="url(#drop)">${armSVG(st)}${pawSVG(st)}</g></g>` : ''}
-</svg>`;
-}
-
-if (typeof module !== 'undefined') module.exports = { SEQUENCES, state, clawTips, frameSVG };
+if (typeof module !== 'undefined') module.exports = { SEQUENCES };

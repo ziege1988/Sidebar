@@ -10,8 +10,26 @@ enum CatPose: Equatable {
     /// noch nicht da (vor dem Auftritt)
     case absent
     case sleep, grumpy, ask, purr, angry
-    /// läuft durchs Fenster (x = Mitte im 100er-Feld)
+    /// genervt: Seitenblick, rollt mit den Augen, seufzt
+    case annoyed
+    /// Auftritt beim Start (Sekunden seit Beginn)
+    case intro(Double)
+    /// läuft durchs Fenster (x = Mitte im 100er-Feld) – nur noch Ersatzzeichnung
     case walk(x: CGFloat, facingRight: Bool)
+
+    /// Name der Sprite-Animation
+    var sprite: String? {
+        switch self {
+        case .absent, .walk: return nil
+        case .sleep: return "sleep"
+        case .grumpy: return "idle"
+        case .ask: return "ask"
+        case .purr: return "purr"
+        case .angry: return "angry"
+        case .annoyed: return "annoyed"
+        case .intro: return "intro"
+        }
+    }
 }
 
 @MainActor
@@ -33,7 +51,7 @@ final class CatBrain: ObservableObject {
 
     /// Auftritt beim Start: 3 Minuten nach dem Start läuft er durchs Fenster, kommt zurück und winkt
     let introStart = Date().addingTimeInterval(180)
-    static let introLength: Double = 9.6
+    static let introLength: Double = 3.6
     private(set) var introDone = false
 
     /// Maus/Eingabe gerade in der Sidebar → nicht dazwischenquatschen
@@ -83,22 +101,15 @@ final class CatBrain: ObservableObject {
     func pose(at date: Date) -> CatPose {
         let since = date.timeIntervalSince(introStart)
         if since < 0 { return .absent }
-        if since < Self.introLength {
-            // läuft von links nach rechts hinaus, kurz weg, kommt von rechts zurück und winkt
-            switch since {
-            case ..<3.2: return .walk(x: CGFloat(-30 + since / 3.2 * 160), facingRight: true)
-            case ..<4.2: return .absent
-            case ..<6.4: return .walk(x: CGFloat(130 - (since - 4.2) / 2.2 * 80), facingRight: false)
-            default: return .ask
-            }
-        }
+        // Auftritt: taucht in der Blase auf, schaut sich um und winkt
+        if since < Self.introLength { return CatSprites.shared.has("intro") ? .intro(since) : .ask }
         if let gesturePose, date < gestureEnd { return gesturePose }
         if snoozed || mood == .sleeping { return .sleep }
         if furious { return .angry }
         switch mood {
         case .asking: return .ask
         case .purring: return .purr
-        case .annoyed(let level): return level >= 2 ? .angry : .grumpy
+        case .annoyed(let level): return level >= 2 ? .angry : .annoyed
         default: return .grumpy
         }
     }
@@ -155,7 +166,7 @@ final class CatBrain: ObservableObject {
         // im eigenen Fenster bleibt so lange nur der Hintergrund.
         guard CatGestureController.shared.perform(gesture, at: location) else { return }
         gesturePose = .absent
-        gestureEnd = Date().addingTimeInterval(gesture.duration)
+        gestureEnd = Date().addingTimeInterval(gesture.catTime)
     }
 
     /// Beim Beenden: abfälliger Spruch mit Geste. `false`, wenn Rüdiger gerade nicht da ist.
@@ -249,7 +260,7 @@ final class CatBrain: ObservableObject {
 
         // Auftritt: beim Winken begrüßt er dich
         if !introDone {
-            if now.timeIntervalSince(introStart) >= 6.6 {
+            if now.timeIntervalSince(introStart) >= 2.0 {
                 introDone = true
                 set(.awake)
                 activeSince = now
@@ -460,12 +471,30 @@ struct CatView: View {
 
     var body: some View {
         let dark = scheme == .dark
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
-            let pose = brain.pose(at: timeline.date)
-            Canvas { context, size in
-                CatPainter.draw(in: &context, size: size, pose: pose, dark: dark,
-                                accent: palette.accent,
-                                time: timeline.date.timeIntervalSinceReferenceDate)
+        ZStack {
+            // Glasblase in der Farbwelt (Rand und Lichtreflexe liegen in den Sprite-Bildern)
+            Circle()
+                .fill(palette.accent.opacity(dark ? 0.35 : 0.45))
+                .blur(radius: 6)
+                .padding(-3)
+            Circle().fill(Color.white.opacity(dark ? 0.08 : 0.88))
+            Circle().fill(RadialGradient(colors: [Color.white.opacity(dark ? 0.12 : 0.5), palette.accent.opacity(dark ? 0.5 : 0.55)],
+                                         center: UnitPoint(x: 0.45, y: 0.36), startRadius: 2, endRadius: 60))
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let pose = brain.pose(at: timeline.date)
+                if let name = pose.sprite, let image = CatSprites.shared.frame(name, pose: pose, at: timeline.date) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    // Ersatz, falls die Bilder fehlen
+                    Canvas { context, size in
+                        CatPainter.draw(in: &context, size: size, pose: pose, dark: dark,
+                                        accent: palette.accent,
+                                        time: timeline.date.timeIntervalSinceReferenceDate)
+                    }
+                    .clipShape(Circle())
+                }
             }
         }
         .overlay {
@@ -492,10 +521,7 @@ struct CatView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: brain.showSnoozeControl)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Color.white.opacity(dark ? 0.35 : 0.8), lineWidth: dropTargeted ? 3 : 2))
-        .overlay(Circle().inset(by: 1.5).stroke(Color.black.opacity(0.12), lineWidth: 1))
-        .shadow(color: .black.opacity(0.22), radius: 4, y: 2)
+        .overlay(Circle().stroke(Color.white.opacity(dropTargeted ? 0.95 : 0), lineWidth: 3))
         .contentShape(Circle())
         .onTapGesture { brain.pet() }
         // Datei auf Rüdiger ziehen → er lehnt ab (die Datei springt zurück)
