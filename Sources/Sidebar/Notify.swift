@@ -1066,7 +1066,10 @@ enum AppRelaunch {
         let path = Bundle.main.bundlePath
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "sleep 0.6; /usr/bin/open \"$1\"", "sidebar-restart", path]
+        // warten, bis diese Sidebar wirklich beendet ist (Rüdiger verabschiedet sich noch)
+        let pid = ProcessInfo.processInfo.processIdentifier
+        process.arguments = ["-c", "while kill -0 \"$2\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$1\"",
+                             "sidebar-restart", path, String(pid)]
         try? process.run()
         NSApp.terminate(nil)
     }

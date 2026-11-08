@@ -56,6 +56,9 @@ final class CatBrain: ObservableObject {
     private var treats: [Date] = []
     private var ignoredToday = 0
     private var recent: [String] = []
+    /// Aussehen während einer Geste (Pfote draußen)
+    private var gesturePose: CatPose?
+    private var gestureEnd = Date.distantPast
 
     private init() {
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -89,6 +92,7 @@ final class CatBrain: ObservableObject {
             default: return .ask
             }
         }
+        if let gesturePose, date < gestureEnd { return gesturePose }
         if snoozed || mood == .sleeping { return .sleep }
         if furious { return .angry }
         switch mood {
@@ -142,6 +146,26 @@ final class CatBrain: ObservableObject {
         }
     }
 
+    // MARK: Gesten
+
+    /// Pfote kommt aus dem Fenster und kratzt bzw. winkt abfällig.
+    func performGesture(_ gesture: CatGesture) {
+        guard let location = locate?() else { return }
+        gesturePose = gesture == .flick ? .angry : .grumpy
+        gestureEnd = Date().addingTimeInterval(gesture.duration)
+        CatGestureController.shared.perform(gesture, at: location)
+    }
+
+    /// Beim Beenden: abfälliger Spruch mit Geste. `false`, wenn Rüdiger gerade nicht da ist.
+    func sayGoodbye() -> Bool {
+        guard settings.catEnabled, introDone, !snoozed, !AlertState.shared.quiet, locate?() != nil else { return false }
+        napUntil = nil
+        set(.awake)
+        performGesture(.flick)
+        say(CatLines.quit, style: .angry, force: true)
+        return true
+    }
+
     // MARK: Nachrichten vorlesen
 
     /// Neue Nachricht oder Mail vorlesen und kommentieren.
@@ -159,7 +183,10 @@ final class CatBrain: ObservableObject {
             lastFlood = now
             furious = true
             furiousUntil = now.addingTimeInterval(40)
-            queue { $0.say(CatLines.flood, style: .angry, force: true) }
+            queue { brain in
+                brain.say(CatLines.flood, style: .angry, force: true)
+                brain.performGesture(.scratch)
+            }
             return
         }
 
@@ -230,6 +257,7 @@ final class CatBrain: ObservableObject {
             return
         }
         if furious && now > furiousUntil { furious = false }
+        if gesturePose != nil && now > gestureEnd { gesturePose = nil }
         if snoozed {
             if mood != .sleeping { set(.sleeping) }
             return
@@ -281,6 +309,7 @@ final class CatBrain: ObservableObject {
             } else if age > 150, canSpeak {
                 set(.annoyed(level + 1))
                 say(level + 1 == 2 ? CatLines.annoyed2 : CatLines.annoyed3, style: .angry)
+                if level + 1 == 2 { performGesture(.scratch) }
             }
         case .purring:
             if age > 25 { set(.awake) }
@@ -318,7 +347,10 @@ final class CatBrain: ObservableObject {
         } else if roll < 0.74 {
             set(.purring)
             say(CatLines.purr, style: .purr)
-        } else if roll < 0.9 {
+        } else if roll < 0.8 {
+            say(CatLines.scratch)
+            performGesture(.scratch)
+        } else if roll < 0.92 {
             set(.sleeping)
             napUntil = Date().addingTimeInterval(.random(in: 600...1800))
             if Bool.random() { say(CatLines.nap) }

@@ -142,6 +142,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var quitting = false
+
+    /// Beim Beenden verabschiedet sich Rüdiger noch abfällig – dann schließt die App.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if quitting { return .terminateNow }
+        guard CatBrain.shared.sayGoodbye() else { return .terminateNow }
+        quitting = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings()
         return true

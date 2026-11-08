@@ -235,3 +235,21 @@ enum CatLines {
         .init(2, "Leg mir das nochmal hin und ich markier dein Revier."),
     ]
 }
+
+extension CatLines {
+    static let scratch: [CatLine] = [
+        .init(0, "Kratz, kratz. Ich mach nur sauber."),
+        .init(1, "Dein Bildschirm war eh dreckig."),
+        .init(1, "Ups. Das war meine Pfote. Absicht."),
+        .init(2, "So. Jetzt hat dein Bildschirm Charakter. Im Gegensatz zu dir."),
+        .init(2, "Ich hinterlasse nur eine Bewertung. Ein Stern."),
+    ]
+    static let quit: [CatLine] = [
+        .init(0, "Tschüss! Bis bald."),
+        .init(1, "Ja, geh nur. Ich komm schon klar."),
+        .init(1, "Endlich Feierabend. Für mich, nicht für dich."),
+        .init(2, "Hau doch ab. Hat eh keiner gemerkt, dass du da warst."),
+        .init(2, "Tschüss, du Flachpfeife. Morgen kratz ich dir die Tapete ab."),
+        .init(2, "Ja, mach doch zu. Feigling."),
+    ]
+}
