@@ -25,8 +25,12 @@ struct CatSpriteSequence {
     let span: Double
     /// Krallenspitzen je Bild (0 … 1 im Bild), `nil` = Pfote kratzt gerade nicht
     let claws: [[CGPoint]?]
+    /// Ende des letzten Kratzers (Sekunden) – die Spuren bleiben danach 2 s stehen
+    let scratchEnd: Double
 
     var duration: Double { Double(frames.count) / fps }
+    /// Spuren bleiben 2 s nach dem letzten Kratzer, dann verblassen sie in 0,6 s
+    var marksGone: Double { scratchEnd > 0 ? scratchEnd + 2.6 : 0 }
 }
 
 final class CatSprites {
@@ -37,6 +41,7 @@ final class CatSprites {
         let fps: Double
         let span: Double
         let frames: Int
+        let scratchEnd: Double?
         let claws: [[[Double]]?]
     }
 
@@ -52,7 +57,8 @@ final class CatSprites {
             frames.append(image)
         }
         let claws = meta.claws.map { frame in frame?.map { CGPoint(x: $0[0], y: $0[1]) } }
-        let sequence = CatSpriteSequence(frames: frames, fps: meta.fps, span: meta.span, claws: claws)
+        let sequence = CatSpriteSequence(frames: frames, fps: meta.fps, span: meta.span, claws: claws,
+                                         scratchEnd: meta.scratchEnd ?? 0)
         cache[gesture] = sequence
         return sequence
     }
@@ -82,7 +88,9 @@ final class CatGestureController {
         guard let sequence = CatSprites.shared.sequence(gesture) else { return false }
         let side = location.cat.width * CGFloat(sequence.span)
         let frame = NSRect(x: location.cat.midX - side / 2, y: location.cat.midY - side / 2, width: side, height: side)
-        let host = NSHostingView(rootView: CatGestureView(sequence: sequence, start: Date(), scratches: gesture == .scratch))
+        // An der rechten Bildschirmkante gespiegelt – die Pfote kratzt immer zur Bildschirmmitte hin
+        let host = NSHostingView(rootView: CatGestureView(sequence: sequence, start: Date(), scratches: gesture == .scratch,
+                                                          mirrored: location.edge == .right))
         host.sizingOptions = []
         panel.contentView = host
         panel.setFrame(frame, display: true)
@@ -96,7 +104,7 @@ final class CatGestureController {
             }
         }
         hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + sequence.duration + (gesture == .scratch ? 2.6 : 0.05),
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(sequence.duration, sequence.marksGone) + 0.05,
                                       execute: work)
         return true
     }
@@ -106,11 +114,16 @@ struct CatGestureView: View {
     let sequence: CatSpriteSequence
     let start: Date
     let scratches: Bool
+    var mirrored = false
 
     var body: some View {
         TimelineView(.animation) { timeline in
             Canvas { context, size in
                 let t = timeline.date.timeIntervalSince(start)
+                if mirrored {
+                    context.translateBy(x: size.width, y: 0)
+                    context.scaleBy(x: -1, y: 1)
+                }
                 let index = min(Int(t * sequence.fps), sequence.frames.count - 1)
                 if t < sequence.duration {
                     context.draw(Image(nsImage: sequence.frames[index]), in: CGRect(origin: .zero, size: size))
@@ -123,7 +136,9 @@ struct CatGestureView: View {
 
     /// Kratzspuren auf der „Scheibe“: folgen den Krallenspitzen, dünn → tief → ausgefranst, verblassen
     private func drawScratches(_ context: inout GraphicsContext, size: CGSize, upTo index: Int, t: Double) {
-        let fade = t < sequence.duration ? 1 : max(0, 1 - (t - sequence.duration) / 2.4)
+        // bleiben 2 s nach dem letzten Kratzer voll stehen, dann sanft weg
+        let hold = sequence.scratchEnd + 2
+        let fade = t < hold ? 1 : max(0, 1 - (t - hold) / 0.6)
         guard fade > 0 else { return }
         // zusammenhängende Kratzer (Bilder, in denen die Pfote zieht)
         var runs: [[[CGPoint]]] = []

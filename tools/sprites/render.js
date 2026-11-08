@@ -2,7 +2,7 @@
 //   node tools/sprites/render.js
 const fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
-const FPS = 30, PX = 440, SPAN = 220; // Bildbreite in Pixeln, 220 Rüdiger-Einheiten
+const FPS = 50, PX = 440, SPAN = 220; // Bildbreite in Pixeln, 220 Rüdiger-Einheiten
 
 (async () => {
   const dir = __dirname, out = path.join(dir, '..', '..', 'Resources', 'Sprites');
@@ -28,7 +28,9 @@ const FPS = 30, PX = 440, SPAN = 220; // Bildbreite in Pixeln, 220 Rüdiger-Einh
       await page.evaluate(([name, t, PX]) => { document.getElementById('f').innerHTML = frameSVG(name, t, PX); }, [name, i / FPS, PX]);
       await page.locator('#f svg').screenshot({ path: path.join(seqDir, String(i).padStart(4, '0') + '.png'), omitBackground: true });
     }
-    fs.writeFileSync(path.join(out, name + '.json'), JSON.stringify({ fps: FPS, span: SPAN / 100, frames: meta.frames, claws: meta.claws }));
+    const seq = await page.evaluate(n => SEQUENCES[n], name);
+    const lastDrag = seq.drags.length ? Math.max(...seq.drags.map(d => d[1])) : 0;
+    fs.writeFileSync(path.join(out, name + '.json'), JSON.stringify({ fps: FPS, span: SPAN / 100, frames: meta.frames, scratchEnd: lastDrag, claws: meta.claws }));
     console.log(name, meta.frames, 'Bilder');
   }
   await browser.close();
