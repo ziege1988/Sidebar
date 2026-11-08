@@ -40,7 +40,7 @@ final class CatGestureController {
 
     func perform(_ gesture: CatGesture, at location: CatLocation) {
         let diameter = location.cat.width
-        let side = diameter * 3.4
+        let side = diameter * 4
         let frame = NSRect(x: location.cat.midX - side / 2, y: location.cat.midY - side / 2, width: side, height: side)
         // Richtung: vom Bildschirmrand weg, schräg ins Bild (lokal, y nach unten)
         let s = CGFloat(0.5.squareRoot())
@@ -98,7 +98,7 @@ enum CatGesturePainter {
                      radius r: CGFloat, direction d: CGVector) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let perp = CGVector(dx: -d.dy, dy: d.dx)
-        let reach = r * 0.9 + r * 0.8           // so weit kommt die Pfote heraus
+        let reach = r * 0.9 + r * 1.25          // so weit kommt die Pfote heraus
         func point(along a: CGFloat, across b: CGFloat) -> CGPoint {
             CGPoint(x: center.x + d.dx * a + perp.dx * b, y: center.y + d.dy * a + perp.dy * b)
         }
@@ -130,18 +130,18 @@ enum CatGesturePainter {
                 guard t > from, fade > 0 else { continue }
                 let progress = min(1, ease((t - from) / (to - from)))
                 let along = reach + extra
-                for offset in [-0.14, 0.0, 0.14] {
+                for offset in [-0.17, 0.0, 0.17] {
                     let a = along + r * CGFloat(offset)
-                    let start = point(along: a, across: r * 0.42 * -0.6)
-                    let end = point(along: a, across: r * 0.42 * CGFloat(-0.6 + 1.2 * progress))
+                    let start = point(along: a, across: r * 0.6 * -0.6)
+                    let end = point(along: a, across: r * 0.6 * CGFloat(-0.6 + 1.2 * progress))
                     var mark = Path()
                     mark.move(to: start)
-                    let mid = point(along: a + r * 0.05, across: r * 0.42 * CGFloat(-0.6 + 0.6 * progress))
+                    let mid = point(along: a + r * 0.06, across: r * 0.6 * CGFloat(-0.6 + 0.6 * progress))
                     mark.addQuadCurve(to: end, control: mid)
                     context.stroke(mark, with: .color(.black.opacity(0.32 * fade)),
-                                   style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
+                                   style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     context.stroke(mark, with: .color(.white.opacity(0.9 * fade)),
-                                   style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+                                   style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
                 }
                 _ = index
             }
@@ -151,17 +151,17 @@ enum CatGesturePainter {
         let fur = CatPainter.fur
         let base = point(along: r * 0.86, across: 0)
         let tip = point(along: r * 0.86 + (reach - r * 0.86) * CGFloat(out) + shift,
-                        across: r * 0.42 * CGFloat(across) * CGFloat(out))
+                        across: r * 0.6 * CGFloat(across) * CGFloat(out))
         // Arm mit leichtem Schatten (3D)
         var arm = Path()
         arm.move(to: base)
         arm.addLine(to: tip)
         var shadow = context
         shadow.translateBy(x: 2, y: 3)
-        shadow.stroke(arm, with: .color(.black.opacity(0.25)), style: StrokeStyle(lineWidth: r * 0.34, lineCap: .round))
-        context.stroke(arm, with: .color(fur), style: StrokeStyle(lineWidth: r * 0.32, lineCap: .round))
+        shadow.stroke(arm, with: .color(.black.opacity(0.25)), style: StrokeStyle(lineWidth: r * 0.38, lineCap: .round))
+        context.stroke(arm, with: .color(fur), style: StrokeStyle(lineWidth: r * 0.36, lineCap: .round))
         // Pfote
-        let paw = r * 0.22
+        let paw = r * 0.26
         context.fill(Path(ellipseIn: CGRect(x: tip.x - paw, y: tip.y - paw, width: 2 * paw, height: 2 * paw)),
                      with: .color(fur))
         // Ballen (zum Betrachter)
