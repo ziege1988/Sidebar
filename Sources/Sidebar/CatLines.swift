@@ -278,6 +278,11 @@ extension CatLines {
     ]
     static let endOfDay: [CatLine] = [
         .init(0, "Rrrring! Feierabend, {du}!"),
+        .init(0, "Rrrring! Schluss für heute – ab nach Hause."),
+        .init(1, "Rrrring! Rechner aus, Füße hoch."),
+        .init(1, "Feierabend! Die Mails sind morgen auch noch da. Leider."),
+        .init(2, "Hey, du Penner, Zeit fürs Bett!"),
+        .init(2, "Rrrring! Feierabend, du Schreibtischkartoffel!"),
         .init(1, "Es ist {time}. Feierabend! Der Rechner läuft nicht weg. Leider."),
         .init(1, "Rrrring! Schluss für heute. Ich mach das Licht aus."),
         .init(2, "Feierabend, du Sesselkleber! Raus hier!"),
@@ -285,6 +290,7 @@ extension CatLines {
     ]
     static let endOfDayAgain: [CatLine] = [
         .init(0, "Immer noch da? Es ist {time}."),
+        .init(2, "Hey, du Penner, ich hab gesagt: Zeit fürs Bett!"),
         .init(1, "Ich hab vorhin schon geklingelt. Taub geworden?"),
         .init(2, "Du bist ja immer noch hier. Hast du kein Zuhause, {du}?"),
     ]

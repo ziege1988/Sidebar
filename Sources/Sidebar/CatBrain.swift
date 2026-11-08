@@ -236,16 +236,23 @@ final class CatBrain: ObservableObject {
         }
     }
 
-    private func ring(_ lines: [CatLine]) {
+    private func ring(_ lines: [CatLine], test: Bool = false) {
         napUntil = nil
-        set(.awake)
+        if !snoozed { set(.awake) }
         let length = CatSprites.shared.sequence("alarm")?.duration ?? 3
         special = ("alarm", Date(), length, false)
-        say(lines, values: ["time": Date().formatted(date: .omitted, time: .shortened)], style: .angry, force: true)
+        say(lines, values: ["time": Date().formatted(date: .omitted, time: .shortened)], style: .angry, force: true,
+            ignoreQuiet: test)
     }
 
-    /// Wecker zum Ausprobieren (Einstellungen)
-    func testAlarm() { ring(CatLines.endOfDay) }
+    /// Wecker zum Ausprobieren (Einstellungen) – klappt auch im Ruhe- und Schlummermodus.
+    /// `false`, wenn Rüdiger gerade nicht zu sehen ist.
+    @discardableResult
+    func testAlarm() -> Bool {
+        guard settings.catEnabled, locate?() != nil else { return false }
+        ring(CatLines.endOfDay, test: true)
+        return true
+    }
 
     // MARK: Akku
 
@@ -534,8 +541,8 @@ final class CatBrain: ObservableObject {
     }
 
     private func say(_ lines: [CatLine], values: [String: String] = [:], style: CatBubbleStyle = .normal,
-                     force: Bool = false, raw: Bool = false) {
-        guard settings.catEnabled, !AlertState.shared.quiet else { return }
+                     force: Bool = false, raw: Bool = false, ignoreQuiet: Bool = false) {
+        guard settings.catEnabled, ignoreQuiet || !AlertState.shared.quiet else { return }
         guard force || canSpeak, let location = locate?() else { return }
         var text = raw ? (lines.first?.text ?? "") : pick(lines)
         for (key, value) in values { text = text.replacingOccurrences(of: "{\(key)}", with: value) }
@@ -696,6 +703,7 @@ struct CatView: View {
 
 struct CatSettingsSection: View {
     @ObservedObject var store: ConfigStore
+    @State private var alarmTestFailed = false
 
     /// Uhrzeit des Feierabends als Datum (für den Zeitwähler)
     private var endTime: Binding<Date> {
@@ -746,7 +754,14 @@ struct CatSettingsSection: View {
                 if store.config.settings.catEndOfDay {
                     DatePicker("Feierabend um", selection: endTime, displayedComponents: .hourAndMinute)
                     Toggle("Nur Montag bis Freitag", isOn: $store.config.settings.catEndWeekdays)
-                    Button("Wecker ausprobieren") { CatBrain.shared.testAlarm() }
+                    HStack {
+                        Button("Wecker ausprobieren") { alarmTestFailed = !CatBrain.shared.testAlarm() }
+                        if alarmTestFailed {
+                            Text("Rüdiger ist gerade nicht zu sehen (Uhr aus oder Sidebar ausgeblendet).")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
                     Text("Zur eingestellten Zeit wackelt er wie ein Wecker und schickt dich heim. Bist du 30 Minuten später immer noch da, meldet er sich noch einmal.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
