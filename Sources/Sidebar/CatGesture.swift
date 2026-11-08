@@ -41,7 +41,7 @@ final class CatGestureController {
 
     func perform(_ gesture: CatGesture, at location: CatLocation, dark: Bool, accent: Color, pose: CatPose) {
         let diameter = location.cat.width
-        let side = diameter * 4.2
+        let side = diameter * 4.6
         let frame = NSRect(x: location.cat.midX - side / 2, y: location.cat.midY - side / 2, width: side, height: side)
         // Richtung: vom Bildschirmrand weg, schräg ins Bild (lokal, y nach unten)
         let s = CGFloat(0.5.squareRoot())
@@ -120,10 +120,10 @@ enum CatGesturePainter {
     private static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: Double) -> CGFloat { a + (b - a) * CGFloat(t) }
 
     // Maße in Rüdiger-Einheiten (Kopf ist 60 breit)
-    static let paw: CGFloat = 10.5        // Pfotengröße
-    static let far: CGFloat = 56          // so weit reicht der Arm
-    static let pull: CGFloat = 20         // so weit zieht er die Krallen durch
-    static let shift: CGFloat = 11        // Versatz für den zweiten Kratzer
+    static let paw: CGFloat = 12.5        // Pfotengröße
+    static let far: CGFloat = 40          // so weit reicht der Arm
+    static let pull: CGFloat = 15         // so weit zieht er die Krallen durch
+    static let shift: CGFloat = 10        // Versatz für den zweiten Kratzer
     static let drags: [(start: Double, end: Double)] = [(0.95, 1.4), (1.62, 2.07)]
 
     static func frame(_ gesture: CatGesture, t: Double) -> Frame {
@@ -187,10 +187,10 @@ enum CatGesturePainter {
         let l = CGFloat(lean)
         var m = CGAffineTransform(translationX: size.width / 2 - diameter / 2, y: size.height / 2 - diameter / 2)
         m = m.scaledBy(x: unit, y: unit)
-        m = m.translatedBy(x: d.dx * 9 * l, y: d.dy * 9 * l)
+        m = m.translatedBy(x: d.dx * 15 * l, y: d.dy * 15 * l)
         m = m.translatedBy(x: 50, y: 100)
         m = m.rotated(by: (d.dx >= 0 ? -1 : 1) * 0.1 * l)
-        m = m.scaledBy(x: 1 + 0.3 * l, y: 1 + 0.3 * l)
+        m = m.scaledBy(x: 1 + 0.42 * l, y: 1 + 0.42 * l)
         m = m.translatedBy(x: -50, y: -100)
         return m
     }
@@ -300,7 +300,7 @@ enum CatGesturePainter {
         let lp = CGVector(dx: -ld.dy, dy: ld.dx)
 
         // Bein: an der Schulter kräftig, zum Handgelenk schmaler, weiche Fellkante
-        let w0: CGFloat = 8.5, w1: CGFloat = scale * 0.62
+        let w0: CGFloat = 10, w1: CGFloat = scale * 0.7
         var left: [CGPoint] = [], right: [CGPoint] = []
         let steps = 24
         for i in 0...steps {
