@@ -53,7 +53,9 @@ final class CatBrain: ObservableObject {
     @Published var showSnoozeControl = false
 
     /// Auftritt beim Start: 3 Minuten nach dem Start läuft er durchs Fenster, kommt zurück und winkt
-    let introStart = Date().addingTimeInterval(180)
+    /// Nach dem Hochfahren des Macs (Laufzeit unter 10 Minuten) wartet er wie gewünscht 3 Minuten.
+    /// Startet nur die Sidebar neu (Update, Neustart über das Menü), ist er nach wenigen Sekunden wieder da.
+    let introStart = Date().addingTimeInterval(ProcessInfo.processInfo.systemUptime < 600 ? 180 : 4)
     static let introLength: Double = 3.6
     private(set) var introDone = false
 
