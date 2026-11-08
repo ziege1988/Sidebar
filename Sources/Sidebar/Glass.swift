@@ -125,6 +125,8 @@ struct SidebarOutline: Shape {
     var clockRadius: CGFloat = 16
     /// `false`: Umriss ohne die Seite am Bildschirmrand (für den Glasrand)
     var closed = true
+    /// Viertelkreis zwischen Uhr und Leiste (für Rüdiger), 0 = keiner
+    var catRadius: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
         let length = edge.isVertical ? rect.height : rect.width
@@ -158,11 +160,20 @@ struct SidebarOutline: Shape {
             let fillet = min(10, (cw - t) / 2)
             start(at: map(cw - rc, 0))
             path.addArc(tangent1End: map(cw, 0), tangent2End: map(cw, rc), radius: rc)
-            path.addLine(to: map(cw, cl - rc))
-            path.addArc(tangent1End: map(cw, cl), tangent2End: map(cw - rc, cl), radius: rc)
-            path.addLine(to: map(t + fillet, cl))
-            // weicher, nach innen gewölbter Übergang von der Uhr in die Leiste
-            path.addArc(tangent1End: map(t, cl), tangent2End: map(t, cl + fillet), radius: fillet)
+            let cat = catRadius
+            if cat > CatGeometry.fillet * 2, abs(cat - (cw - t)) < 1, cl + cat < length - r {
+                // Uhr → Viertelkreis (Rüdigers Platz) → Leiste, ohne Kante
+                let q = cat - CatGeometry.fillet
+                path.addLine(to: map(cw, cl))
+                path.addArc(tangent1End: map(cw, cl + q), tangent2End: map(cw - q, cl + q), radius: q)
+                path.addArc(tangent1End: map(t, cl + q), tangent2End: map(t, cl + cat), radius: CatGeometry.fillet)
+            } else {
+                path.addLine(to: map(cw, cl - rc))
+                path.addArc(tangent1End: map(cw, cl), tangent2End: map(cw - rc, cl), radius: rc)
+                path.addLine(to: map(t + fillet, cl))
+                // weicher, nach innen gewölbter Übergang von der Uhr in die Leiste
+                path.addArc(tangent1End: map(t, cl), tangent2End: map(t, cl + fillet), radius: fillet)
+            }
         } else {
             start(at: map(t - r, 0))
             path.addArc(tangent1End: map(t, 0), tangent2End: map(t, r), radius: r)

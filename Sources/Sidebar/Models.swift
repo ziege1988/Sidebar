@@ -280,6 +280,13 @@ struct SidebarSettings: Codable, Equatable {
     /// Ruhezeit von … bis … (volle Stunden)
     var quietFrom: Int = 22
     var quietTo: Int = 7
+    /// Rüdiger, die Bürokatze
+    var catEnabled: Bool = true
+    /// 0 = selten, 1 = normal, 2 = oft
+    var catFrequency: Int = 1
+    /// 0 = lieb, 1 = frech, 2 = beleidigend
+    var catTone: Int = 2
+    var catMessages: Bool = true
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
     var mailEnabled: Bool = false
     var mailClientID: String = ""
@@ -333,6 +340,10 @@ extension SidebarSettings {
         quietScheduled = try c.decodeIfPresent(Bool.self, forKey: .quietScheduled) ?? quietScheduled
         quietFrom = try c.decodeIfPresent(Int.self, forKey: .quietFrom) ?? quietFrom
         quietTo = try c.decodeIfPresent(Int.self, forKey: .quietTo) ?? quietTo
+        catEnabled = try c.decodeIfPresent(Bool.self, forKey: .catEnabled) ?? catEnabled
+        catFrequency = try c.decodeIfPresent(Int.self, forKey: .catFrequency) ?? catFrequency
+        catTone = try c.decodeIfPresent(Int.self, forKey: .catTone) ?? catTone
+        catMessages = try c.decodeIfPresent(Bool.self, forKey: .catMessages) ?? catMessages
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
         mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID

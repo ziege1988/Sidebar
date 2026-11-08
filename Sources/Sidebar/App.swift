@@ -82,6 +82,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         )
         sidebar = SidebarController(store: store, updater: Updater.shared, actions: actions)
+        // Rüdiger: Namen der Apps und Platz auf dem Bildschirm
+        CatBrain.shared.store = store
+        CatBrain.shared.locate = { [weak self] in self?.sidebar?.catLocation() }
         setupStatusItem()
 
         Updater.shared.startAutomaticChecks { [weak self] in
@@ -124,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 MainActor.assumeIsolated {
                     AlertState.shared.apply(config.settings)
                     MailWatcher.shared.apply(config.settings)
+                    CatBrain.shared.apply(config.settings)
                     DockBadgeWatcher.shared.update(items: config.favorites + config.groups.flatMap(\.items),
                                                    enabled: config.settings.dockBadges)
                 }
@@ -256,6 +260,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         quiet.state = settings.quietMode ? .on : .off
         menu.addItem(quiet)
+        if settings.catEnabled {
+            let brain = CatBrain.shared
+            menu.addItem(menuItem(brain.snoozed ? "Rüdiger wecken" : "Rüdiger schlafen schicken") {
+                brain.toggleSnooze()
+            })
+        }
 
         let visible = sidebar.isVisible
         menu.addItem(menuItem(visible ? "Sidebar ausblenden" : "Sidebar einblenden") { [weak self] in

@@ -126,10 +126,12 @@ struct SidebarView: View {
         let clockOn = settings.showClock && showContent
         let clockSize = clockOn ? ClockLayout.panelSize(settings) : .zero
         let clockAlong = vertical ? clockSize.height : clockSize.width
+        // Rüdiger: Viertelkreis zwischen Uhr und Leiste
+        let cat = CatGeometry.make(settings, clockOn: clockOn)
         // Uhr und Leiste: ein gemeinsamer Umriss, eine Glasfläche, ein Rand – ohne Kante dazwischen
         let outline = SidebarOutline(edge: edge, barCross: thickness,
                                      clockCross: vertical ? clockSize.width : clockSize.height,
-                                     clockAlong: clockAlong)
+                                     clockAlong: clockAlong, catRadius: cat?.radius ?? 0)
         Group {
             if showContent {
                 ZStack {
@@ -144,11 +146,19 @@ struct SidebarView: View {
                     HoverBubble(edge: edge, cell: state.hoverRect, barThickness: thickness)
                         .clipShape(outline)
                     content(palette, clockOn: clockOn, clockSize: clockSize)
+                    if let cat {
+                        GeometryReader { proxy in
+                            CatView(palette: palette, openSettings: actions.openSettings)
+                                .frame(width: cat.diameter, height: cat.diameter)
+                                .position(cat.point(in: proxy.size, edge: edge))
+                        }
+                    }
                 }
                 // Glasrand nur auf den Seiten zum Bildschirminneren, nicht am Bildschirmrand
                 .overlay(GlassRim(shape: SidebarOutline(edge: edge, barCross: thickness,
                                                         clockCross: vertical ? clockSize.width : clockSize.height,
-                                                        clockAlong: clockAlong, closed: false),
+                                                        clockAlong: clockAlong, closed: false,
+                                                        catRadius: cat?.radius ?? 0),
                                   intensity: glass, clip: AnyShape(outline)))
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.

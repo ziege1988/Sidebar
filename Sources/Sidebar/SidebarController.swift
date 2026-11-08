@@ -303,6 +303,8 @@ final class SidebarController {
         // Korridor zwischen Ordner-Symbol und Ordner-Fenster (diagonale Mausbewegung)
         let corridor = anchorRect.union(flyoutPanel.frame).insetBy(dx: -4, dy: -4)
         let inFlyout = flyoutVisible && (flyoutZone.contains(mouse) || corridor.contains(mouse))
+        // Rüdiger hält den Mund, solange du in der Sidebar arbeitest
+        CatBrain.shared.sidebarBusy = inBar || inFlyout || input.isVisible || NotesController.shared.isVisible
 
         // Link im Ordner-Fenster unter der Maus (Lupe + Hervorhebung)
         var row: UUID?
@@ -518,13 +520,28 @@ final class SidebarController {
                                            duration: settings.messageToastDuration)
     }
 
+    /// Wo Rüdiger gerade sitzt (Bildschirmkoordinaten) – `nil`, wenn er nicht zu sehen ist.
+    func catLocation() -> CatLocation? {
+        let settings = store.config.settings
+        guard isVisible, state.contentVisible,
+              let cat = CatGeometry.make(settings, clockOn: settings.showClock),
+              let screen = targetScreen(for: settings) else { return nil }
+        let frame = panel.frame
+        let p = cat.point(in: frame.size, edge: settings.edge)
+        let d = cat.diameter
+        let rect = NSRect(x: frame.minX + p.x - d / 2, y: frame.maxY - p.y - d / 2, width: d, height: d)
+        return CatLocation(cat: rect, strip: stripFrame(for: settings, forceVisible: true),
+                           edge: settings.edge, visible: screen.visibleFrame)
+    }
+
     /// Das Fenster der Leiste ist so breit wie die Uhr – neben der Leiste (unter der Uhr) ist es aber
     /// durchsichtig. Dort Klicks an den Schreibtisch bzw. die Fenster dahinter durchlassen.
     private func updateClickThrough(mouse: NSPoint, settings: SidebarSettings, tracking: Bool) {
         guard !tracking else { return }
         let inStrip = stripFrame(for: settings).insetBy(dx: -2, dy: -2).contains(mouse)
         let inClock = clockRect(for: settings)?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
-        let ignore = !(inStrip || inClock)
+        let inCat = catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
+        let ignore = !(inStrip || inClock || inCat)
         if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }
 

@@ -19,7 +19,7 @@ final class SettingsRouter: ObservableObject {
 
 /// Bereiche der Einstellungen (links in der Seitenleiste).
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case links, appearance, bar, clock, tools, notifications, opening, system
+    case links, appearance, bar, clock, tools, notifications, cat, opening, system
     var id: String { rawValue }
 
     var title: String {
@@ -30,6 +30,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .clock: return "Uhr"
         case .tools: return "KI, Ablage & Notizen"
         case .notifications: return "Mitteilungen"
+        case .cat: return "Rüdiger"
         case .opening: return "Links öffnen"
         case .system: return "Updates & System"
         }
@@ -43,6 +44,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .clock: return "clock.fill"
         case .tools: return "sparkles"
         case .notifications: return "bell.badge.fill"
+        case .cat: return "cat.fill"
         case .opening: return "safari.fill"
         case .system: return "gearshape.fill"
         }
@@ -57,6 +59,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .clock: return Color(hex: 0xC5A04A)
         case .tools: return Color(hex: 0x7A6BA8)
         case .notifications: return Color(hex: 0xD0645A)
+        case .cat: return Color(hex: 0x3A3B3F)
         case .opening: return Color(hex: 0x4E9384)
         case .system: return Color(hex: 0x7C8088)
         }
@@ -70,6 +73,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .clock: return "Analoge Uhr oben an der Sidebar."
         case .tools: return "KI- und Google-Suche, Ablagefach und Schnellnotizen."
         case .notifications: return "Rote Zahlen, WhatsApp & Co., Ruhemodus und Mini-Vorschau."
+        case .cat: return "Die Bürokatze: Laune, Sprüche und Schlummermodus."
         case .opening: return "Wie Links standardmäßig geöffnet werden."
         case .system: return "Version, Updates, Autostart und Konfiguration."
         }
@@ -450,6 +454,10 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            if category == .cat {
+                CatSettingsSection(store: store)
             }
 
             if category == .opening {
