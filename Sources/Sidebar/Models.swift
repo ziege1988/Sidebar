@@ -287,6 +287,8 @@ struct SidebarSettings: Codable, Equatable {
     /// 0 = lieb, 1 = frech, 2 = beleidigend
     var catTone: Int = 2
     var catMessages: Bool = true
+    /// Eigene Sprüche (eine Zeile pro Spruch)
+    var catCustomLines: String = ""
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
     var mailEnabled: Bool = false
     var mailClientID: String = ""
@@ -344,6 +346,7 @@ extension SidebarSettings {
         catFrequency = try c.decodeIfPresent(Int.self, forKey: .catFrequency) ?? catFrequency
         catTone = try c.decodeIfPresent(Int.self, forKey: .catTone) ?? catTone
         catMessages = try c.decodeIfPresent(Bool.self, forKey: .catMessages) ?? catMessages
+        catCustomLines = try c.decodeIfPresent(String.self, forKey: .catCustomLines) ?? catCustomLines
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
         mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID

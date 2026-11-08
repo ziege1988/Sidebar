@@ -305,6 +305,7 @@ final class SidebarController {
         let inFlyout = flyoutVisible && (flyoutZone.contains(mouse) || corridor.contains(mouse))
         // Rüdiger hält den Mund, solange du in der Sidebar arbeitest
         CatBrain.shared.sidebarBusy = inBar || inFlyout || input.isVisible || NotesController.shared.isVisible
+        updateCatHover(mouse: mouse, now: now)
 
         // Link im Ordner-Fenster unter der Maus (Lupe + Hervorhebung)
         var row: UUID?
@@ -500,7 +501,26 @@ final class SidebarController {
     /// Nachricht neben dem Favoriten (bzw. dem Ordner, in dem der Link liegt) einblenden.
     private func showToast(_ toast: BadgeStore.Toast) {
         let settings = store.config.settings
-        guard isVisible, settings.messageToast, !AlertState.shared.quiet else { return }
+        guard !AlertState.shared.quiet else { return }
+        // Rüdiger liest vor – dann keine Einblendung am Icon
+        let brain = CatBrain.shared
+        if brain.takesOverMessages {
+            let items = store.config.favorites + store.config.groups.flatMap(\.items)
+            let item = items.first { item in
+                if let id = toast.itemID { return item.id == id }
+                return toast.key != nil && BadgeStore.key(for: item) == toast.key
+            }
+            let app = DockBadgeWatcher.cleanDisplayName(item?.displayName ?? "Neue Nachricht")
+            let isMail = item != nil && item?.id == settings.mailItemID && toast.itemID != nil
+            var from = toast.title
+            if isMail {
+                // „Neue E-Mail · Absender“ bzw. „3 neue E-Mails“
+                if let range = from.range(of: " · ") { from = String(from[range.upperBound...]) }
+            }
+            brain.announce(app: app, from: from, text: toast.body, isMail: isMail)
+            return
+        }
+        guard isVisible, settings.messageToast else { return }
         let bar = stripFrame(for: settings, forceVisible: !settings.autoHide || state.isRevealed)
         var local: CGRect?
         func matches(_ item: LinkItem) -> Bool {
@@ -518,6 +538,22 @@ final class SidebarController {
         MessageToastController.shared.show(title: toast.title, message: toast.body, beside: bar, anchor: anchor,
                                            edge: settings.edge, theme: settings.colorTheme,
                                            duration: settings.messageToastDuration)
+    }
+
+    private var catHoverSince: Date?
+
+    /// Versteckter Schalter: 4 Sekunden mit der Maus auf Rüdiger → „Schlummern ein/aus“
+    private func updateCatHover(mouse: NSPoint, now: Date) {
+        let brain = CatBrain.shared
+        guard let cat = catLocation()?.cat, cat.contains(mouse) else {
+            catHoverSince = nil
+            if brain.showSnoozeControl { brain.showSnoozeControl = false }
+            return
+        }
+        if catHoverSince == nil { catHoverSince = now }
+        if let since = catHoverSince, now.timeIntervalSince(since) >= 4, !brain.showSnoozeControl {
+            brain.showSnoozeControl = true
+        }
     }
 
     /// Wo Rüdiger gerade sitzt (Bildschirmkoordinaten) – `nil`, wenn er nicht zu sehen ist.

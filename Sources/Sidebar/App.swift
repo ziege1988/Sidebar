@@ -260,12 +260,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         quiet.state = settings.quietMode ? .on : .off
         menu.addItem(quiet)
-        if settings.catEnabled {
-            let brain = CatBrain.shared
-            menu.addItem(menuItem(brain.snoozed ? "Rüdiger wecken" : "Rüdiger schlafen schicken") {
-                brain.toggleSnooze()
-            })
-        }
 
         let visible = sidebar.isVisible
         menu.addItem(menuItem(visible ? "Sidebar ausblenden" : "Sidebar einblenden") { [weak self] in
