@@ -295,7 +295,20 @@ final class SidebarController {
             && (input.frame.insetBy(dx: -6, dy: -6).contains(mouse)
                 || input.anchor.union(input.frame).insetBy(dx: -4, dy: -4).contains(mouse))
         let inClock = clockRect(for: settings)?.contains(mouse) ?? false
-        let inBar = stripFrame(for: settings).contains(mouse) || inClock
+        var inBar = stripFrame(for: settings).contains(mouse) || inClock
+        // Nicht „immer im Vordergrund“: liegt ein anderes Programm über der Sidebar, reagiert sie dort nicht
+        // (keine Namensschilder, keine Ordner durch fremde Fenster hindurch). Fährt die Maus auf einen
+        // sichtbaren Teil der Sidebar, kommt sie nach vorne.
+        if !settings.alwaysOnTop {
+            if inBar && isCovered(at: mouse) {
+                inBar = false
+            } else if inBar && !broughtForward {
+                broughtForward = true
+                panel.orderFrontRegardless()
+            } else if !inBar && !flyoutPanel.isVisible {
+                broughtForward = false
+            }
+        }
         // Ausgeblendet: großzügiger Auslösebereich bis an den echten Bildschirmrand
         let inRevealZone = settings.autoHide && !state.isRevealed && revealZone(for: settings).contains(mouse)
         let flyoutVisible = flyoutPanel.isVisible
@@ -541,6 +554,15 @@ final class SidebarController {
     }
 
     private var catHoverSince: Date?
+    /// Sidebar wurde beim Darüberfahren schon nach vorne geholt
+    private var broughtForward = false
+
+    /// Liegt an dieser Stelle ein Fenster eines anderen Programms über der Sidebar?
+    private func isCovered(at point: NSPoint) -> Bool {
+        let top = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
+        guard top > 0 else { return false }
+        return !NSApp.windows.contains { $0.windowNumber == top }
+    }
 
     /// Versteckter Schalter: 4 Sekunden mit der Maus auf Rüdiger → „Schlummern ein/aus“
     private func updateCatHover(mouse: NSPoint, now: Date) {
