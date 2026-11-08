@@ -27,11 +27,6 @@ BUILD_NUMBER="${BUILD_NUMBER:-0}"
   "$APP/Contents/Info.plist"
 echo "  Version $VERSION ($BUILD_NUMBER)"
 
-# Rüdigers Sprite-Animationen (Einzelbilder, erzeugt mit tools/sprites/render.js)
-if [[ -d Resources/Sprites ]]; then
-  cp -R Resources/Sprites "$APP/Contents/Resources/Sprites"
-fi
-
 # App-Icon: aus Resources/Icon/AppIcon.png (1024 × 1024) alle Größen erzeugen
 if [[ -f Resources/Icon/AppIcon.png ]]; then
   echo "▸ Erzeuge App-Icon …"
