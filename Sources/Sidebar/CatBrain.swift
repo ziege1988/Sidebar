@@ -53,9 +53,8 @@ final class CatBrain: ObservableObject {
     @Published var showSnoozeControl = false
 
     /// Auftritt beim Start: 3 Minuten nach dem Start läuft er durchs Fenster, kommt zurück und winkt
-    /// Nach dem Hochfahren des Macs (Laufzeit unter 10 Minuten) wartet er wie gewünscht 3 Minuten.
-    /// Startet nur die Sidebar neu (Update, Neustart über das Menü), ist er nach wenigen Sekunden wieder da.
-    let introStart = Date().addingTimeInterval(ProcessInfo.processInfo.systemUptime < 600 ? 180 : 4)
+    /// 30 Sekunden nach dem Öffnen der Sidebar taucht er auf und begrüßt dich.
+    let introStart = Date().addingTimeInterval(30)
     static let introLength: Double = 3.6
     private(set) var introDone = false
 
@@ -67,7 +66,7 @@ final class CatBrain: ObservableObject {
     private var settings = SidebarSettings()
     private var timer: Timer?
     private var moodSince = Date()
-    private var nextEventAt = Date().addingTimeInterval(180 + 600)
+    private var nextEventAt = Date().addingTimeInterval(30 + 600)
     private var napUntil: Date?
     private var away = false
     private var lastSpoke = Date.distantPast
@@ -95,7 +94,7 @@ final class CatBrain: ObservableObject {
     /// kleine Bewegungen in der Ruhephase – etwa alle 20 Sekunden eine
     private static let idleClips = ["idle_tilt", "idle_look", "idle_tongue", "idle_slowblink", "idle_ears", "idle_stretch"]
     private var idleClip: (name: String, start: Date, length: Double)?
-    private var nextIdleClip = Date().addingTimeInterval(200)
+    private var nextIdleClip = Date().addingTimeInterval(55)
     /// Aussehen während einer Geste (Pfote draußen)
     private var gesturePose: CatPose?
     private var gestureEnd = Date.distantPast
