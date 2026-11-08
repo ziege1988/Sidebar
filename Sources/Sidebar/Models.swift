@@ -291,9 +291,6 @@ struct SidebarSettings: Codable, Equatable {
     var catCustomLines: String = ""
     /// Dein Vorname – Rüdiger spricht dich damit an
     var userName: String = ""
-    var catSounds: Bool = true
-    /// Lautstärke der Geräusche (0 … 1)
-    var catVolume: Double = 0.35
     /// Feierabend-Wecker
     var catEndOfDay: Bool = false
     var catEndHour: Int = 18
@@ -360,8 +357,6 @@ extension SidebarSettings {
         catMessages = try c.decodeIfPresent(Bool.self, forKey: .catMessages) ?? catMessages
         catCustomLines = try c.decodeIfPresent(String.self, forKey: .catCustomLines) ?? catCustomLines
         userName = try c.decodeIfPresent(String.self, forKey: .userName) ?? userName
-        catSounds = try c.decodeIfPresent(Bool.self, forKey: .catSounds) ?? catSounds
-        catVolume = try c.decodeIfPresent(Double.self, forKey: .catVolume) ?? catVolume
         catEndOfDay = try c.decodeIfPresent(Bool.self, forKey: .catEndOfDay) ?? catEndOfDay
         catEndHour = try c.decodeIfPresent(Int.self, forKey: .catEndHour) ?? catEndHour
         catEndMinute = try c.decodeIfPresent(Int.self, forKey: .catEndMinute) ?? catEndMinute

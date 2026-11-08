@@ -186,11 +186,16 @@ final class CatBrain: ObservableObject {
         set(.awake)
         let length = CatSprites.shared.sequence("eat")?.duration ?? 2.5
         special = ("eat", Date(), length, false)
-        CatSound.play(.chomp, settings: settings)
-        DispatchQueue.main.asyncAfter(deadline: .now() + length - 0.6) { [weak self] in
+        // erst ein Rülpser, dann sein Kommentar
+        let comment = added >= 5 ? CatLines.ateLots : (added > 1 ? CatLines.ateMany : CatLines.ate)
+        DispatchQueue.main.asyncAfter(deadline: .now() + length - 0.9) { [weak self] in
             MainActor.assumeIsolated {
-                self?.say(added > 1 ? CatLines.ateMany : CatLines.ate, values: ["n": "\(added)"], style: .purr,
-                          force: true, sound: .silent)
+                self?.say(CatLines.burp, style: .purr, force: true, raw: true)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + length + 2.2) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.say(comment, values: ["n": "\(added)"], force: true)
             }
         }
     }
@@ -235,8 +240,7 @@ final class CatBrain: ObservableObject {
         set(.awake)
         let length = CatSprites.shared.sequence("alarm")?.duration ?? 3
         special = ("alarm", Date(), length, false)
-        say(lines, values: ["time": Date().formatted(date: .omitted, time: .shortened)], style: .angry,
-            force: true, sound: .alarm)
+        say(lines, values: ["time": Date().formatted(date: .omitted, time: .shortened)], style: .angry, force: true)
     }
 
     /// Wecker zum Ausprobieren (Einstellungen)
@@ -254,8 +258,7 @@ final class CatBrain: ObservableObject {
         for level in [5, 10, 20] where battery.percent <= level && batteryWarned > level {
             batteryWarned = level
             let lines = level == 5 ? CatLines.battery5 : (level == 10 ? CatLines.battery10 : CatLines.battery20)
-            say(lines, values: ["p": "\(battery.percent)"], style: level <= 10 ? .angry : .normal, force: true,
-                sound: level <= 10 ? .meow : .mrrp)
+            say(lines, values: ["p": "\(battery.percent)"], style: level <= 10 ? .angry : .normal, force: true)
             return
         }
     }
@@ -530,7 +533,7 @@ final class CatBrain: ObservableObject {
     }
 
     private func say(_ lines: [CatLine], values: [String: String] = [:], style: CatBubbleStyle = .normal,
-                     force: Bool = false, raw: Bool = false, sound: CatSound? = nil) {
+                     force: Bool = false, raw: Bool = false) {
         guard settings.catEnabled, !AlertState.shared.quiet else { return }
         guard force || canSpeak, let location = locate?() else { return }
         var text = raw ? (lines.first?.text ?? "") : pick(lines)
@@ -538,15 +541,6 @@ final class CatBrain: ObservableObject {
         text = addressed(text, raw: raw)
         lastSpoke = Date()
         CatBubbleController.shared.show(text, style: style, at: location)
-        // Geräusch passend zur Laune
-        let fallback: CatSound
-        switch style {
-        case .purr: fallback = .purr
-        case .angry:
-            if furious { fallback = .hiss } else if case .annoyed(let level) = mood, level >= 2 { fallback = .hiss } else { fallback = .meow }
-        case .normal: fallback = Bool.random() ? .mrrp : .meow2
-        }
-        CatSound.play(sound ?? fallback, settings: settings)
     }
 
     /// Spricht dich ab und zu mit Namen an („Streichel mich, Christian!“) und füllt {du}
@@ -746,26 +740,6 @@ struct CatSettingsSection: View {
             }
         }
         if store.config.settings.catEnabled {
-            Section("Geräusche") {
-                Toggle("Geräusche (Miau, Schnurren, Fauchen …)", isOn: $store.config.settings.catSounds)
-                if store.config.settings.catSounds {
-                    LabeledContent("Lautstärke: \(Int((store.config.settings.catVolume * 100).rounded())) %") {
-                        HStack {
-                            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
-                            Slider(value: $store.config.settings.catVolume, in: 0...1, step: 0.05)
-                            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
-                        }
-                    }
-                    HStack {
-                        Button("Miau") { CatSound.play(.meow, settings: store.config.settings, force: true) }
-                        Button("Schnurren") { CatSound.play(.purr, settings: store.config.settings, force: true) }
-                        Button("Fauchen") { CatSound.play(.hiss, settings: store.config.settings, force: true) }
-                    }
-                    Text("Dezent, unabhängig von der Systemlautstärke einstellbar. Im Ruhe- und Schlummermodus bleibt er still.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
             Section("Feierabend-Wecker") {
                 Toggle("Rüdiger klingelt zum Feierabend", isOn: $store.config.settings.catEndOfDay)
                 if store.config.settings.catEndOfDay {

@@ -286,7 +286,7 @@ Object.assign(SEQUENCES, {
     return p;
   }},
   // Datei fällt ins Maul, er kaut, schluckt, leckt sich die Lippen
-  eat: { duration: 3.0, fps: 25, loop: false, pose(t) {
+  eat: { duration: 3.2, fps: 25, loop: false, pose(t) {
     const p = base();
     let fx = '';
     if (t < 0.55) {
@@ -306,9 +306,14 @@ Object.assign(SEQUENCES, {
     } else if (t < 2.25) {
       const q = (t - 1.95) / 0.3;                                 // schlucken
       p.closed = 'happy'; p.mouth = 'smile'; p.headDy = 2.5 * Math.sin(Math.PI * q); p.cheeks = 0.6 * (1 - q);
+    } else if (t < 2.8) {
+      // Rülpser: Maul kurz auf, Augen halb zu, Wölkchen
+      const q = (t - 2.25) / 0.55;
+      p.mouth = q < 0.75 ? 'fang' : 'smile'; p.lid = 0.5; p.headTilt = -4 * Math.sin(Math.PI * q); p.headDy = -1.2 * Math.sin(Math.PI * q);
+      fx += sigh(q);
     } else {
-      p.mouth = t < 2.75 ? 'blep' : 'smile'; p.lid = 0.25; p.look = [0, -0.5];
-      fx += sparkle(80, 30, (t - 2.25) / 0.6);
+      p.mouth = 'blep'; p.lid = 0.3; p.look = [0, -0.5];
+      fx += sparkle(80, 30, (t - 2.8) / 0.4);
     }
     p.fx = fx;
     return p;

@@ -258,16 +258,23 @@ extension CatLines {
 
 // MARK: Füttern, Feierabend, Akku
 extension CatLines {
+    static let burp: [CatLine] = [.init(0, "Rülpsssss …")]
     static let ate: [CatLine] = [
-        .init(0, "Mjam. Liegt im Ablagefach."),
-        .init(1, "Lecker Datei. Hab sie ins Fach gelegt. Leicht angesabbert."),
-        .init(1, "Verdaut und abgelegt. Gern geschehen, {du}."),
-        .init(2, "Schmeckt nach Arbeit. Liegt im Fach, du Faulpelz."),
-        .init(2, "Ich bin doch kein Mülleimer! … Na gut, liegt im Fach."),
+        .init(0, "Endlich! Ich wär fast verhungert."),
+        .init(0, "Danke. Liegt jetzt im Ablagefach."),
+        .init(1, "Schmeckt nach Pappe. Kauf mal gescheites Futter."),
+        .init(1, "Etwas trocken. Nächstes Mal bitte mit Soße."),
+        .init(1, "War das alles? Ich hab immer noch Hunger."),
+        .init(2, "Schmeckt nach Arbeit. Kauf mal gescheites Futter, du Geizhals."),
     ]
     static let ateMany: [CatLine] = [
-        .init(0, "{n} Dateien! Alle im Ablagefach."),
-        .init(1, "{n} auf einmal? Ich platze gleich. Liegen im Fach."),
+        .init(0, "{n} Gänge auf einmal. Sehr nobel."),
+        .init(1, "{n} Dateien. Na also, endlich ein richtiges Menü."),
+        .init(2, "{n} Stück und alle schmecken nach Pappe. Danke für nichts."),
+    ]
+    static let ateLots: [CatLine] = [
+        .init(0, "{n} Dateien? Willst du mich mästen?"),
+        .init(1, "{n} auf einmal. Willst du mich mästen? Ich pass bald nicht mehr in meine Blase."),
         .init(2, "{n} Dateien. Willst du mich mästen, du Datei-Messie?"),
     ]
     static let endOfDay: [CatLine] = [
