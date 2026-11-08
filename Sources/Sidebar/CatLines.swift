@@ -72,6 +72,7 @@ enum CatLines {
     ]
     static let back: [CatLine] = [
         .init(0, "Ach, auch wieder da?"),
+        .init(1, "Ach, {du}. Auch wieder da?"),
         .init(1, "Schöne Pause gehabt? Ich nicht."),
         .init(1, "Ich hab dich vermisst. Kleiner Scherz."),
         .init(2, "Na, auch mal wieder da, du Pausenkönig?"),
@@ -89,6 +90,7 @@ enum CatLines {
     ]
     static let intro: [CatLine] = [
         .init(0, "Da bin ich!"),
+        .init(0, "Hallo {du}! Da bin ich."),
         .init(1, "Rüdiger ist da. Ihr dürft jetzt applaudieren."),
         .init(1, "Morgen. Ich bin heute für schlechte Laune zuständig."),
         .init(2, "Da bin ich. Freu dich gefälligst."),
@@ -251,5 +253,51 @@ extension CatLines {
         .init(2, "Hau doch ab. Hat eh keiner gemerkt, dass du da warst."),
         .init(2, "Tschüss, du Flachpfeife. Morgen kratz ich dir die Tapete ab."),
         .init(2, "Ja, mach doch zu. Feigling."),
+    ]
+}
+
+// MARK: Füttern, Feierabend, Akku
+extension CatLines {
+    static let ate: [CatLine] = [
+        .init(0, "Mjam. Liegt im Ablagefach."),
+        .init(1, "Lecker Datei. Hab sie ins Fach gelegt. Leicht angesabbert."),
+        .init(1, "Verdaut und abgelegt. Gern geschehen, {du}."),
+        .init(2, "Schmeckt nach Arbeit. Liegt im Fach, du Faulpelz."),
+        .init(2, "Ich bin doch kein Mülleimer! … Na gut, liegt im Fach."),
+    ]
+    static let ateMany: [CatLine] = [
+        .init(0, "{n} Dateien! Alle im Ablagefach."),
+        .init(1, "{n} auf einmal? Ich platze gleich. Liegen im Fach."),
+        .init(2, "{n} Dateien. Willst du mich mästen, du Datei-Messie?"),
+    ]
+    static let endOfDay: [CatLine] = [
+        .init(0, "Rrrring! Feierabend, {du}!"),
+        .init(1, "Es ist {time}. Feierabend! Der Rechner läuft nicht weg. Leider."),
+        .init(1, "Rrrring! Schluss für heute. Ich mach das Licht aus."),
+        .init(2, "Feierabend, du Sesselkleber! Raus hier!"),
+        .init(2, "{time}. Wenn du jetzt nicht gehst, erzähl ich allen, dass du Überstunden liebst."),
+    ]
+    static let endOfDayAgain: [CatLine] = [
+        .init(0, "Immer noch da? Es ist {time}."),
+        .init(1, "Ich hab vorhin schon geklingelt. Taub geworden?"),
+        .init(2, "Du bist ja immer noch hier. Hast du kein Zuhause, {du}?"),
+    ]
+    static let battery20: [CatLine] = [
+        .init(0, "Akku bei {p} %. Such schon mal das Ladekabel."),
+        .init(1, "{p} % Akku. Ich sag's ja nur."),
+        .init(2, "{p} % Akku. Lad das Ding, bevor es stirbt. Wie deine Motivation."),
+    ]
+    static let battery10: [CatLine] = [
+        .init(1, "{p} % Akku. Ich hab noch 9 Leben, du nicht."),
+        .init(1, "{p} % Akku! Strom her, sonst wird's dunkel."),
+        .init(2, "{p} % Akku. Ich hab noch 9 Leben – dein Mac nur eins, du Schnarchnase."),
+    ]
+    static let battery5: [CatLine] = [
+        .init(0, "{p} % Akku! Jetzt aber schnell ans Kabel!"),
+        .init(2, "{p} %. Ich sag beim Begräbnis ein paar nette Worte. Lüge."),
+    ]
+    static let pluggedIn: [CatLine] = [
+        .init(0, "Strom! Gerade noch mal gut gegangen."),
+        .init(1, "Na endlich. Ich dachte schon, wir sterben hier."),
     ]
 }

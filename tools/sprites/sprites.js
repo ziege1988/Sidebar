@@ -251,4 +251,78 @@ Object.assign(SEQUENCES, {
   }},
 });
 
+// ---------- Ablagefach füttern & Feierabend-Wecker ----------
+function paper(x, y, rot, s, o = 1) {
+  return `<g transform="translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${rot.toFixed(1)}) scale(${s.toFixed(3)})" opacity="${o.toFixed(2)}">
+    <path d="M-8,-10 L4,-10 L8,-6 L8,10 L-8,10 Z" fill="#ffffff" stroke="#151518" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M4,-10 L4,-6 L8,-6" fill="#e6e6ea" stroke="#151518" stroke-width="1"/>
+    <path d="M-5,-3 h9 M-5,0.5 h9 M-5,4 h6" stroke="#9aa0a8" stroke-width="1.2" stroke-linecap="round"/></g>`;
+}
+function crumbs(p) {
+  if (p <= 0 || p >= 1) return '';
+  let s = '';
+  [[44, 76, -5, 6], [56, 77, 6, 5], [50, 79, 1, 8]].forEach(([x, y, vx, vy]) => {
+    s += `<rect x="${(x + vx * p).toFixed(2)}" y="${(y + vy * p).toFixed(2)}" width="1.6" height="1.6" fill="#ffffff" stroke="#151518" stroke-width=".3" opacity="${(1 - p).toFixed(2)}"/>`;
+  });
+  return s;
+}
+function sparkle(x, y, p) {
+  if (p <= 0 || p >= 1) return '';
+  const k = Math.sin(Math.PI * p), r = 4 * k;
+  return `<path d="M${x},${y - r} L${x + r * 0.25},${y - r * 0.25} L${x + r},${y} L${x + r * 0.25},${y + r * 0.25} L${x},${y + r} L${x - r * 0.25},${y + r * 0.25} L${x - r},${y} L${x - r * 0.25},${y - r * 0.25} Z" fill="#fff6c8" opacity="${k.toFixed(2)}"/>`;
+}
+function ringLines(t) {
+  const on = Math.floor(t * 8) % 2 === 0;
+  if (!on) return '';
+  return `<g stroke="#ffffff" stroke-width="1.6" fill="none" stroke-linecap="round">
+    <path d="M10,22 Q4,30 8,40"/><path d="M4,18 Q-4,30 2,44"/><path d="M90,22 Q96,30 92,40"/><path d="M96,18 Q104,30 98,44"/></g>`;
+}
+Object.assign(SEQUENCES, {
+  // Datei wird über Rüdiger gezogen: Maul auf, große Augen, wippt vor Vorfreude
+  eat_ready: { duration: 1.2, fps: 25, loop: true, pose(t) {
+    const p = base();
+    p.mouth = 'wide'; p.pupil = 'round'; p.lid = 0; p.look = [0, -2.5]; p.earL = -6; p.earR = -6;
+    p.dy = 2 - 1.5 * Math.abs(Math.sin(TAU * t / 1.2));
+    return p;
+  }},
+  // Datei fällt ins Maul, er kaut, schluckt, leckt sich die Lippen
+  eat: { duration: 3.0, fps: 25, loop: false, pose(t) {
+    const p = base();
+    let fx = '';
+    if (t < 0.55) {
+      const q = easeIn(t / 0.55);
+      p.mouth = 'wide'; p.pupil = 'round'; p.lid = 0; p.look = [0, lerp(-3, 1.5, q)]; p.earL = -6; p.earR = -6;
+      fx += paper(50, lerp(-4, 68, q), lerp(-24, 8, q), lerp(1.25, 0.55, q));
+    } else if (t < 0.65) {
+      p.mouth = 'chew'; p.closed = 'happy'; p.dy = 3.5;          // Happs!
+      fx += crumbs((t - 0.55) / 0.5);
+    } else if (t < 1.95) {
+      const c = (t - 0.65) / 0.16;
+      p.closed = 'happy'; p.mouth = Math.floor(c) % 2 === 0 ? 'chew' : 'smile';
+      p.cheeks = 0.6 + 0.4 * Math.abs(Math.sin(Math.PI * c));
+      p.dy = 2 + 0.8 * Math.abs(Math.sin(Math.PI * c));
+      p.headTilt = 3 * Math.sin(TAU * (t - 0.65) / 1.3);
+      fx += crumbs((t - 0.55) / 0.5);
+    } else if (t < 2.25) {
+      const q = (t - 1.95) / 0.3;                                 // schlucken
+      p.closed = 'happy'; p.mouth = 'smile'; p.headDy = 2.5 * Math.sin(Math.PI * q); p.cheeks = 0.6 * (1 - q);
+    } else {
+      p.mouth = t < 2.75 ? 'blep' : 'smile'; p.lid = 0.25; p.look = [0, -0.5];
+      fx += sparkle(80, 30, (t - 2.25) / 0.6);
+    }
+    p.fx = fx;
+    return p;
+  }},
+  // Feierabend: wackelt wie ein Wecker
+  alarm: { duration: 3.0, fps: 30, loop: false, pose(t) {
+    const p = base();
+    const ring = t < 2.4 ? 1 : 1 - smooth((t - 2.4) / 0.6);
+    p.dx = 2.6 * Math.sin(TAU * t * 11) * ring;
+    p.rot = 3.5 * Math.sin(TAU * t * 11 + 1) * ring;
+    p.pupil = 'round'; p.lid = 0; p.mouth = 'fang'; p.earL = -8; p.earR = -8; p.look = [0, -1];
+    p.fx = t < 2.4 ? ringLines(t) : '';
+    return p;
+  }},
+});
+
 if (typeof module !== 'undefined') module.exports = { SEQUENCES };

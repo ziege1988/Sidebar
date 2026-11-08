@@ -289,6 +289,18 @@ struct SidebarSettings: Codable, Equatable {
     var catMessages: Bool = true
     /// Eigene Sprüche (eine Zeile pro Spruch)
     var catCustomLines: String = ""
+    /// Dein Vorname – Rüdiger spricht dich damit an
+    var userName: String = ""
+    var catSounds: Bool = true
+    /// Lautstärke der Geräusche (0 … 1)
+    var catVolume: Double = 0.35
+    /// Feierabend-Wecker
+    var catEndOfDay: Bool = false
+    var catEndHour: Int = 18
+    var catEndMinute: Int = 0
+    var catEndWeekdays: Bool = true
+    /// Kommentare zum Akku
+    var catBattery: Bool = true
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
     var mailEnabled: Bool = false
     var mailClientID: String = ""
@@ -347,6 +359,14 @@ extension SidebarSettings {
         catTone = try c.decodeIfPresent(Int.self, forKey: .catTone) ?? catTone
         catMessages = try c.decodeIfPresent(Bool.self, forKey: .catMessages) ?? catMessages
         catCustomLines = try c.decodeIfPresent(String.self, forKey: .catCustomLines) ?? catCustomLines
+        userName = try c.decodeIfPresent(String.self, forKey: .userName) ?? userName
+        catSounds = try c.decodeIfPresent(Bool.self, forKey: .catSounds) ?? catSounds
+        catVolume = try c.decodeIfPresent(Double.self, forKey: .catVolume) ?? catVolume
+        catEndOfDay = try c.decodeIfPresent(Bool.self, forKey: .catEndOfDay) ?? catEndOfDay
+        catEndHour = try c.decodeIfPresent(Int.self, forKey: .catEndHour) ?? catEndHour
+        catEndMinute = try c.decodeIfPresent(Int.self, forKey: .catEndMinute) ?? catEndMinute
+        catEndWeekdays = try c.decodeIfPresent(Bool.self, forKey: .catEndWeekdays) ?? catEndWeekdays
+        catBattery = try c.decodeIfPresent(Bool.self, forKey: .catBattery) ?? catBattery
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
         mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID

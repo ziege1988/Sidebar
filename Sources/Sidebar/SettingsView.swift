@@ -15,6 +15,8 @@ final class SettingsRouter: ObservableObject {
     }
 
     @Published var request: Request?
+    /// Einstellungen gleich an dieser Stelle öffnen (z. B. „Rüdiger“)
+    @Published var showCategory: SettingsCategory?
 }
 
 /// Bereiche der Einstellungen (links in der Seitenleiste).
@@ -109,6 +111,11 @@ struct SettingsView: View {
         .frame(minWidth: 860, minHeight: 560)
         .onReceive(router.$request) { request in
             if request != nil { category = .links }
+        }
+        .onReceive(router.$showCategory) { wanted in
+            guard let wanted else { return }
+            category = wanted
+            DispatchQueue.main.async { router.showCategory = nil }
         }
         .environment(\.colorTheme, store.config.settings.colorTheme)
     }

@@ -148,7 +148,14 @@ struct SidebarView: View {
                     content(palette, clockOn: clockOn, clockSize: clockSize)
                     if let cat {
                         GeometryReader { proxy in
-                            CatView(palette: palette, openSettings: actions.openSettings)
+                            CatView(palette: palette, openSettings: {
+                                SettingsRouter.shared.showCategory = .cat
+                                actions.openSettings()
+                            }, onFeed: { payloads in
+                                let before = store.config.shelf.count
+                                _ = store.addToShelf(payloads)
+                                return store.config.shelf.count - before
+                            })
                                 .frame(width: cat.diameter, height: cat.diameter)
                                 .position(cat.point(in: proxy.size, edge: edge))
                         }

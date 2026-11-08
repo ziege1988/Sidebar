@@ -81,6 +81,10 @@ function mouth(kind) {
     case 'side': return `<path d="M44.5,70.2 Q48.5,68.2 55.5,68.8" stroke="${OUT}" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M55.2,68.6 l1.4,-0.9" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/>`;
     case 'fang': return `<path d="M44,68.5 Q47,74.5 50,69.5 Q53,74.5 56,68.5 Q55,72.8 50,73.8 Q45,72.8 44,68.5 Z" fill="#e8687f" stroke="${OUT}" stroke-width=".8"/><path d="M45.6,69.3 l1,2.6 l1,-2.2 Z M54.4,69.3 l-1,2.6 l-1,-2.2 Z" fill="#fff"/>`;
     case 'hiss': return `<path d="M43,68 Q50,80 57,68 Q50,71 43,68 Z" fill="#c9465f" stroke="${OUT}" stroke-width=".9"/><path d="M45,68.6 l1.2,3.2 l1.2,-2.6 Z M55,68.6 l-1.2,3.2 l-1.2,-2.6 Z" fill="#fff"/>`;
+    case 'wide': return `<path d="M43,67.5 Q43,79.5 50,80 Q57,79.5 57,67.5 Q50,70.5 43,67.5 Z" fill="#b8344f" stroke="${OUT}" stroke-width="1"/>
+      <path d="M45.2,75.6 Q50,72.6 54.8,75.6 Q53.6,79 50,79.2 Q46.4,79 45.2,75.6 Z" fill="#f06d88"/>
+      <path d="M44.6,68.4 l1.1,2.8 l1.1,-2.3 Z M55.4,68.4 l-1.1,2.8 l-1.1,-2.3 Z" fill="#fff"/>`;
+    case 'chew': return `<path d="M44.5,69 Q46.5,71.2 48.5,69.4 Q50.5,71.6 52.5,69.4 Q54.5,71.2 56,69" stroke="${OUT}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
     case 'blep': return `<path d="M47.6,69.2 Q47.4,75.2 50,75.6 Q52.6,75.2 52.4,69.2 Z" fill="#f06d88" stroke="${OUT}" stroke-width=".8"/><path d="M50,70 v3.6" stroke="#c84a64" stroke-width=".6" stroke-linecap="round"/>
       <path d="M45.5,68 Q47.8,70.6 50,68.2 Q52.2,70.6 54.5,68" stroke="${OUT}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
     default: return `<path d="M45.5,68 Q47.8,70.6 50,68.2 Q52.2,70.6 54.5,68" stroke="${OUT}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
@@ -90,7 +94,8 @@ function mouth(kind) {
 function headSVG(p) {
   let s = ear(true, p.earL || 0) + ear(false, p.earR || 0);
   const bristle = p.bristle ? 2.2 : 1;
-  s += `<path d="${fluffy(50, 53, 33, 27.5, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9]])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  const puff = p.cheeks || 0;
+  s += `<path d="${fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9]])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
   const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes };
   s += eye(37.5, 54, 1, eo) + eye(62.5, 54, -1, eo);
   s += brows(p.brows, p.browRaise || 0);

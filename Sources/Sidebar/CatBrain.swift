@@ -77,6 +77,19 @@ final class CatBrain: ObservableObject {
     private var treats: [Date] = []
     private var ignoredToday = 0
     private var recent: [String] = []
+    /// gerade laufende besondere Animation (Fressen, Wecker)
+    private var special: (name: String, start: Date, length: Double, loop: Bool)?
+    /// eine Datei wird gerade über Rüdiger gezogen
+    @Published var feedHover = false {
+        didSet { if feedHover && !oldValue { feedHoverStart = Date() } }
+    }
+    private var feedHoverStart = Date()
+    // Feierabend
+    private var alarmDay: Int?
+    private var alarmNudge: Date?
+    // Akku
+    private var lastBatteryCheck = Date.distantPast
+    private var batteryWarned: Int = 101
     /// kleine Bewegungen in der Ruhephase – etwa alle 20 Sekunden eine
     private static let idleClips = ["idle_tilt", "idle_look", "idle_tongue", "idle_slowblink", "idle_ears", "idle_stretch"]
     private var idleClip: (name: String, start: Date, length: Double)?
@@ -111,6 +124,12 @@ final class CatBrain: ObservableObject {
         // Auftritt: taucht in der Blase auf, schaut sich um und winkt
         if since < Self.introLength { return CatSprites.shared.has("intro") ? .intro(since) : .ask }
         if let gesturePose, date < gestureEnd { return gesturePose }
+        // Füttern (Datei schwebt über ihm / er frisst) und Feierabend-Wecker
+        if let special {
+            let since = date.timeIntervalSince(special.start)
+            if since >= 0, special.loop || since < special.length { return .clip(special.name, since) }
+        }
+        if feedHover { return .clip("eat_ready", date.timeIntervalSince(feedHoverStart)) }
         if snoozed || mood == .sleeping { return .sleep }
         if furious { return .angry }
         // kleine Bewegung in der Ruhephase (Kopf neigen, Zunge raus, Blinzeln …)
@@ -155,6 +174,27 @@ final class CatBrain: ObservableObject {
         say(CatLines.fileDrop, style: .angry, force: true)
     }
 
+    /// Datei wurde Rüdiger gefüttert. `added`: Anzahl neuer Dateien im Ablagefach (0 = nichts Fressbares)
+    func fed(added: Int) {
+        feedHover = false
+        guard settings.catEnabled else { return }
+        guard added > 0 else {
+            fileDropped()
+            return
+        }
+        napUntil = nil
+        set(.awake)
+        let length = CatSprites.shared.sequence("eat")?.duration ?? 2.5
+        special = ("eat", Date(), length, false)
+        CatSound.play(.chomp, settings: settings)
+        DispatchQueue.main.asyncAfter(deadline: .now() + length - 0.6) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.say(added > 1 ? CatLines.ateMany : CatLines.ate, values: ["n": "\(added)"], style: .purr,
+                          force: true, sound: .silent)
+            }
+        }
+    }
+
     func toggleSnooze() {
         showSnoozeControl = false
         snoozed.toggle()
@@ -166,6 +206,57 @@ final class CatBrain: ObservableObject {
             set(.awake)
             say(CatLines.wake, force: true)
             scheduleNext()
+        }
+    }
+
+    // MARK: Feierabend-Wecker
+
+    private func checkEndOfDay(_ now: Date) {
+        guard settings.catEndOfDay, !snoozed, !AlertState.shared.quiet else { return }
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: now)       // 1 = Sonntag
+        if settings.catEndWeekdays && (weekday == 1 || weekday == 7) { return }
+        let day = calendar.ordinality(of: .day, in: .era, for: now) ?? 0
+        guard let target = calendar.date(bySettingHour: settings.catEndHour, minute: settings.catEndMinute, second: 0, of: now)
+        else { return }
+        let idle = Self.idleSeconds()
+        if alarmDay != day, now >= target, now.timeIntervalSince(target) < 2 * 3600, idle < 300 {
+            alarmDay = day
+            alarmNudge = now.addingTimeInterval(30 * 60)
+            ring(CatLines.endOfDay)
+        } else if let nudge = alarmNudge, now >= nudge {
+            alarmNudge = nil
+            if idle < 300 { ring(CatLines.endOfDayAgain) }      // immer noch da?
+        }
+    }
+
+    private func ring(_ lines: [CatLine]) {
+        napUntil = nil
+        set(.awake)
+        let length = CatSprites.shared.sequence("alarm")?.duration ?? 3
+        special = ("alarm", Date(), length, false)
+        say(lines, values: ["time": Date().formatted(date: .omitted, time: .shortened)], style: .angry,
+            force: true, sound: .alarm)
+    }
+
+    /// Wecker zum Ausprobieren (Einstellungen)
+    func testAlarm() { ring(CatLines.endOfDay) }
+
+    // MARK: Akku
+
+    private func checkBattery() {
+        guard settings.catBattery, let battery = Battery.read() else { return }
+        if battery.charging {
+            if batteryWarned <= 20 { say(CatLines.pluggedIn, force: true) }
+            batteryWarned = 101
+            return
+        }
+        for level in [5, 10, 20] where battery.percent <= level && batteryWarned > level {
+            batteryWarned = level
+            let lines = level == 5 ? CatLines.battery5 : (level == 10 ? CatLines.battery10 : CatLines.battery20)
+            say(lines, values: ["p": "\(battery.percent)"], style: level <= 10 ? .angry : .normal, force: true,
+                sound: level <= 10 ? .meow : .mrrp)
+            return
         }
     }
 
@@ -291,6 +382,12 @@ final class CatBrain: ObservableObject {
             nextIdleClip = now.addingTimeInterval(.random(in: 16...24))
         }
         if gesturePose != nil && now > gestureEnd { gesturePose = nil }
+        if let special, !special.loop, now.timeIntervalSince(special.start) > special.length { self.special = nil }
+        checkEndOfDay(now)
+        if now.timeIntervalSince(lastBatteryCheck) > 60 {
+            lastBatteryCheck = now
+            checkBattery()
+        }
         if snoozed {
             if mood != .sleeping { set(.sleeping) }
             return
@@ -433,13 +530,43 @@ final class CatBrain: ObservableObject {
     }
 
     private func say(_ lines: [CatLine], values: [String: String] = [:], style: CatBubbleStyle = .normal,
-                     force: Bool = false, raw: Bool = false) {
+                     force: Bool = false, raw: Bool = false, sound: CatSound? = nil) {
         guard settings.catEnabled, !AlertState.shared.quiet else { return }
         guard force || canSpeak, let location = locate?() else { return }
         var text = raw ? (lines.first?.text ?? "") : pick(lines)
         for (key, value) in values { text = text.replacingOccurrences(of: "{\(key)}", with: value) }
+        text = addressed(text, raw: raw)
         lastSpoke = Date()
         CatBubbleController.shared.show(text, style: style, at: location)
+        // Geräusch passend zur Laune
+        let fallback: CatSound
+        switch style {
+        case .purr: fallback = .purr
+        case .angry:
+            if furious { fallback = .hiss } else if case .annoyed(let level) = mood, level >= 2 { fallback = .hiss } else { fallback = .meow }
+        case .normal: fallback = Bool.random() ? .mrrp : .meow2
+        }
+        CatSound.play(sound ?? fallback, settings: settings)
+    }
+
+    /// Spricht dich ab und zu mit Namen an („Streichel mich, Christian!“) und füllt {du}
+    private func addressed(_ text: String, raw: Bool) -> String {
+        let name = settings.userName.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty {
+            return text.replacingOccurrences(of: ", {du}", with: "").replacingOccurrences(of: "{du}, ", with: "")
+                .replacingOccurrences(of: "{du}", with: "")
+        }
+        if text.contains("{du}") { return text.replacingOccurrences(of: "{du}", with: name) }
+        guard !raw, !text.contains("\n"), Double.random(in: 0..<1) < 0.3 else { return text }
+        // vor dem Satzzeichen am Ende einfügen
+        var body = text
+        var end = ""
+        while let last = body.last, ".!?…".contains(last) {
+            end = String(last) + end
+            body.removeLast()
+        }
+        if body.hasSuffix(" ") { body.removeLast() }
+        return body + ", " + name + (end.isEmpty ? "." : end)
     }
 
     /// Ton „frech, wird schwarz“: frech – wird er ignoriert, genervt oder ist er wütend, wird's schwarz.
@@ -485,6 +612,8 @@ final class CatBrain: ObservableObject {
 struct CatView: View {
     let palette: Palette
     var openSettings: (() -> Void)?
+    /// Dateien ins Ablagefach legen – liefert die Anzahl neu abgelegter Dateien
+    var onFeed: (([DropPayload]) -> Int)?
     @ObservedObject private var brain = CatBrain.shared
     @State private var dropTargeted = false
     @Environment(\.colorScheme) private var scheme
@@ -551,10 +680,11 @@ struct CatView: View {
         .contentShape(Circle())
         .onTapGesture { brain.pet() }
         // Datei auf Rüdiger ziehen → er lehnt ab (die Datei springt zurück)
-        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { _ in
-            brain.fileDropped()
-            return false
+        // Datei auf Rüdiger ziehen → er frisst sie und legt sie ins Ablagefach
+        .linkDropTarget(isTargeted: $dropTargeted) { payloads in
+            brain.fed(added: onFeed?(payloads) ?? 0)
         }
+        .onChange(of: dropTargeted) { _, targeted in brain.feedHover = targeted }
         .contextMenu {
             Button("Streicheln") { brain.pet() }
             Button("Leckerli geben") { brain.giveTreat() }
@@ -572,10 +702,26 @@ struct CatView: View {
 struct CatSettingsSection: View {
     @ObservedObject var store: ConfigStore
 
+    /// Uhrzeit des Feierabends als Datum (für den Zeitwähler)
+    private var endTime: Binding<Date> {
+        Binding(get: {
+            Calendar.current.date(bySettingHour: store.config.settings.catEndHour,
+                                  minute: store.config.settings.catEndMinute, second: 0, of: Date()) ?? Date()
+        }, set: { date in
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+            store.config.settings.catEndHour = parts.hour ?? 18
+            store.config.settings.catEndMinute = parts.minute ?? 0
+        })
+    }
+
     var body: some View {
         Section("Rüdiger") {
             Toggle("Rüdiger anzeigen", isOn: $store.config.settings.catEnabled)
             if store.config.settings.catEnabled {
+                TextField("Dein Name", text: $store.config.settings.userName, prompt: Text("z. B. Christian"))
+                Text("Rüdiger spricht dich ab und zu mit Namen an. Leer lassen, wenn nicht.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker("Wie oft meldet er sich?", selection: $store.config.settings.catFrequency) {
                     Text("Selten").tag(0)
                     Text("Normal").tag(1)
@@ -592,10 +738,6 @@ struct CatSettingsSection: View {
                 Text("„Frech → schwarz“: anfangs frech – je mehr du ihn ignorierst oder nervst, desto schwärzer wird sein Humor.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Liest neue Nachrichten und E-Mails vor", isOn: $store.config.settings.catMessages)
-                Text("Statt der Einblendung am Icon liest Rüdiger Absender und Text vor – mit Kommentar. Ist Rüdiger aus (oder nicht zu sehen), erscheint wieder die Einblendung am Icon.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 if CatGeometry.make(store.config.settings, clockOn: store.config.settings.showClock) == nil {
                     Text("Rüdiger sitzt im Viertelkreis zwischen Uhr und Leiste. Dafür muss die Uhr eingeschaltet sein und deutlich über die Leiste hinausragen (Uhr größer oder Leiste schmaler stellen).")
                         .font(.caption)
@@ -604,6 +746,47 @@ struct CatSettingsSection: View {
             }
         }
         if store.config.settings.catEnabled {
+            Section("Geräusche") {
+                Toggle("Geräusche (Miau, Schnurren, Fauchen …)", isOn: $store.config.settings.catSounds)
+                if store.config.settings.catSounds {
+                    LabeledContent("Lautstärke: \(Int((store.config.settings.catVolume * 100).rounded())) %") {
+                        HStack {
+                            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+                            Slider(value: $store.config.settings.catVolume, in: 0...1, step: 0.05)
+                            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack {
+                        Button("Miau") { CatSound.play(.meow, settings: store.config.settings, force: true) }
+                        Button("Schnurren") { CatSound.play(.purr, settings: store.config.settings, force: true) }
+                        Button("Fauchen") { CatSound.play(.hiss, settings: store.config.settings, force: true) }
+                    }
+                    Text("Dezent, unabhängig von der Systemlautstärke einstellbar. Im Ruhe- und Schlummermodus bleibt er still.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("Feierabend-Wecker") {
+                Toggle("Rüdiger klingelt zum Feierabend", isOn: $store.config.settings.catEndOfDay)
+                if store.config.settings.catEndOfDay {
+                    DatePicker("Feierabend um", selection: endTime, displayedComponents: .hourAndMinute)
+                    Toggle("Nur Montag bis Freitag", isOn: $store.config.settings.catEndWeekdays)
+                    Button("Wecker ausprobieren") { CatBrain.shared.testAlarm() }
+                    Text("Zur eingestellten Zeit wackelt er wie ein Wecker und schickt dich heim. Bist du 30 Minuten später immer noch da, meldet er sich noch einmal.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("Nachrichten, Ablagefach & Mac") {
+                Toggle("Liest neue Nachrichten und E-Mails vor", isOn: $store.config.settings.catMessages)
+                Text("Statt der Einblendung am Icon liest Rüdiger Absender und Text vor – mit Kommentar. Ist Rüdiger aus, erscheint wieder die Einblendung am Icon.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("Kommentiert den Akku (20 %, 10 %, 5 %)", isOn: $store.config.settings.catBattery)
+                Text("Dateien auf Rüdiger ziehen: Er frisst sie und legt sie ins Ablagefach (die Dateien bleiben, wo sie sind).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Eigene Sprüche") {
                 TextEditor(text: $store.config.settings.catCustomLines)
                     .font(.system(size: 12))
@@ -613,7 +796,7 @@ struct CatSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                Text("Klick = streicheln · Rechtsklick = Leckerli · Datei draufziehen = lieber nicht. Ignorierst du ihn, wird er ungemütlich. Ist niemand am Mac, schläft er; im Ruhemodus ist er still. Nach 90 Minuten am Stück erinnert er dich an eine Pause.")
+                Text("Klick = streicheln · Rechtsklick = Leckerli · Datei draufziehen = füttern. Ignorierst du ihn, wird er ungemütlich. Ist niemand am Mac, schläft er; im Ruhemodus ist er still. Nach 90 Minuten am Stück erinnert er dich an eine Pause.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

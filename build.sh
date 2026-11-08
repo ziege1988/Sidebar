@@ -31,6 +31,10 @@ echo "  Version $VERSION ($BUILD_NUMBER)"
 if [[ -d Resources/Sprites ]]; then
   cp -R Resources/Sprites "$APP/Contents/Resources/Sprites"
 fi
+# Rüdigers Geräusche (erzeugt mit tools/sounds/make_sounds.py)
+if [[ -d Resources/Sounds ]]; then
+  cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
+fi
 
 # App-Icon: aus Resources/Icon/AppIcon.png (1024 × 1024) alle Größen erzeugen
 if [[ -f Resources/Icon/AppIcon.png ]]; then
