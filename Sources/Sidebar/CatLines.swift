@@ -261,7 +261,6 @@ extension CatLines {
     static let burp: [CatLine] = [.init(0, "Rülpsssss …")]
     static let ate: [CatLine] = [
         .init(0, "Endlich! Ich wär fast verhungert."),
-        .init(0, "Danke. Liegt jetzt im Ablagefach."),
         .init(1, "Schmeckt nach Pappe. Kauf mal gescheites Futter."),
         .init(1, "Etwas trocken. Nächstes Mal bitte mit Soße."),
         .init(1, "War das alles? Ich hab immer noch Hunger."),
