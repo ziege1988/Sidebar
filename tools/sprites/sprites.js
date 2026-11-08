@@ -11,7 +11,7 @@ const bump = (t, a, b) => (t < a || t > b) ? 0 : Math.sin(Math.PI * (t - a) / (b
 const TAU = Math.PI * 2;
 
 function base() {
-  return { sc: 0.88, dx: 0, dy: 10, rot: 0, headDy: 0, headTilt: 0, earL: 0, earR: 0, look: [0, 0], lid: 0.06, low: 0, slant: 0, mouth: 'smile', pupil: 'normal' };
+  return { sc: 0.92, dx: 0, dy: 2, rot: 0, headDy: 0, headTilt: 0, earL: 0, earR: 0, look: [0, 0], lid: 0.06, low: 0, slant: 0, mouth: 'smile', pupil: 'normal' };
 }
 
 // ---------- Effekte ----------
@@ -90,7 +90,7 @@ function swish(p) {
 const SEQUENCES = {
   idle: { duration: 4.8, fps: 25, loop: true, pose(t) {
     const p = base();
-    p.sc = 0.88 * (1 + 0.012 * Math.sin(TAU * t / 2.4));
+    p.sc = 0.92 * (1 + 0.012 * Math.sin(TAU * t / 2.4));
     p.look = [1.8 * Math.sin(TAU * t / 4.8), 0];
     const blink = Math.max(bump(t, 1.6, 1.78), bump(t, 4.0, 4.16));
     p.lid = Math.max(0.06, blink);
@@ -100,7 +100,7 @@ const SEQUENCES = {
   sleep: { duration: 4.8, fps: 25, loop: true, pose(t) {
     const p = base();
     p.dy = 16; p.headDy = 4; p.headTilt = -7; p.closed = 'sleep'; p.earL = 8; p.earR = 8;
-    p.sc = 0.88 * (1 + 0.02 * Math.sin(TAU * t / 2.4));
+    p.sc = 0.92 * (1 + 0.02 * Math.sin(TAU * t / 2.4));
     p.fx = zzz(t);
     return p;
   }},
@@ -114,7 +114,7 @@ const SEQUENCES = {
   }},
   purr: { duration: 2.4, fps: 25, loop: true, pose(t) {
     const p = base();
-    p.closed = 'happy'; p.headTilt = 6 * Math.sin(TAU * t / 2.4); p.sc = 0.88 * (1 + 0.015 * Math.sin(TAU * t / 0.6));
+    p.closed = 'happy'; p.headTilt = 6 * Math.sin(TAU * t / 2.4); p.sc = 0.92 * (1 + 0.015 * Math.sin(TAU * t / 0.6));
     p.fx = hearts(t);
     return p;
   }},
@@ -146,15 +146,16 @@ const SEQUENCES = {
   }},
   angry: { duration: 1.6, fps: 25, loop: true, pose(t) {
     const p = base();
-    p.brows = 'angry'; p.earL = 34; p.earR = 34; p.slant = 4.2; p.lid = 0.34; p.pupil = 'slit'; p.angryEyes = true; p.mouth = 'hiss';
-    p.headTilt = 1.6 * Math.sin(TAU * t * 3);
+    p.brows = 'angry'; p.earL = 38 + 3 * bump(t % 0.8, 0, 0.12); p.earR = 38 + 3 * bump(t % 0.8, 0, 0.12);
+    p.slant = 5.5; p.lid = 0.14; p.low = 0.12; p.pupil = 'slit'; p.angryEyes = true; p.mouth = 'hiss'; p.bristle = true;
+    p.sc = 0.92 * (1.03 + 0.008 * Math.sin(TAU * t / 0.4)); p.dy = 0;   // leicht vorgebeugt, angespannt
     p.fx = steam(t);
     return p;
   }},
   intro: { duration: 3.6, fps: 30, loop: false, pose(t) {
     // taucht von unten in der Blase auf, schaut sich um und winkt
     const p = base();
-    p.dy = lerp(80, 10, easeOutBack(t / 1.0));
+    p.dy = lerp(80, 2, easeOutBack(t / 1.0));
     p.earL = -6 * bump(t, 0.7, 1.1); p.earR = -6 * bump(t, 0.7, 1.1);
     if (t < 1.0) p.lid = 0.06;
     else if (t < 1.5) p.look = [-4 * smooth((t - 1.0) / 0.3), 0];
@@ -170,7 +171,7 @@ const SEQUENCES = {
   scratch: { duration: 5.0, fps: 40, loop: false, wide: true, catUntil: 2.4, pose(t) {
     const p = base();
     const e = t < 0.45 ? smooth(t / 0.45) : (t < 1.9 ? 1 : 1 - smooth((t - 1.9) / 0.5));
-    p.sc = 0.88 + 0.2 * e; p.dx = 4 * e; p.dy = lerp(10, -3, e); p.rot = -8 * e; p.headTilt = -3 * e;
+    p.sc = 0.92 + 0.18 * e; p.dx = 4 * e; p.dy = lerp(2, -3, e); p.rot = -8 * e; p.headTilt = -3 * e;
     // Blick und Laune
     p.lid = lerp(0.06, 0.3, e); p.slant = 1 * e; p.look = [3.2 * e, 0];
     if (t >= 0.7 && t < 1.6) { p.mouth = 'fang'; p.lid = 0.2; p.look = [3.8, -0.6]; }
@@ -196,7 +197,7 @@ const SEQUENCES = {
   flick: { duration: 2.2, fps: 40, loop: false, wide: true, catUntil: 2.2, pose(t) {
     const p = base();
     const e = 0.8 * (t < 0.4 ? smooth(t / 0.4) : (t < 1.7 ? 1 : 1 - smooth((t - 1.7) / 0.5)));
-    p.sc = 0.88 + 0.2 * e; p.dx = 3 * e; p.dy = lerp(10, -2, e); p.rot = -5 * e;
+    p.sc = 0.92 + 0.18 * e; p.dx = 3 * e; p.dy = lerp(2, -2, e); p.rot = -5 * e;
     p.brows = 'annoyed'; p.earL = 20; p.earR = 20; p.lid = 0.4; p.slant = 2; p.low = 0.15; p.mouth = 'side'; p.look = [-2.5, 0.6];
     if (t >= 0.25 && t < 1.95) {
       let ax, ay, rot;
@@ -209,5 +210,45 @@ const SEQUENCES = {
     return p;
   }},
 };
+
+
+// ---------- kleine Bewegungen in der Ruhephase (etwa alle 20 s eine) ----------
+Object.assign(SEQUENCES, {
+  idle_tilt: { duration: 2.6, fps: 25, loop: false, pose(t) {
+    const p = base(); const k = bump(t, 0, 2.6);
+    p.headTilt = 9 * Math.min(1, k * 1.6); p.look = [1.2 * k, -0.8 * k]; p.earR = -5 * k; return p;
+  }},
+  idle_look: { duration: 2.8, fps: 25, loop: false, pose(t) {
+    const p = base();
+    if (t < 0.9) p.look = [-4 * smooth(t / 0.5), 0];
+    else if (t < 1.9) p.look = [lerp(-4, 4, smooth((t - 0.9) / 0.5)), 0];
+    else p.look = [lerp(4, 0, smooth((t - 1.9) / 0.6)), 0];
+    p.headTilt = -3 * Math.sin(TAU * t / 2.8);
+    p.lid = Math.max(0.06, bump(t, 1.3, 1.45));
+    return p;
+  }},
+  idle_tongue: { duration: 3.0, fps: 25, loop: false, pose(t) {
+    const p = base();
+    if (t > 0.5 && t < 2.5) { p.mouth = 'blep'; p.lid = 0.22; p.look = [0, -0.5]; }
+    p.headTilt = 5 * bump(t, 0.3, 2.7);
+    return p;
+  }},
+  idle_slowblink: { duration: 2.0, fps: 25, loop: false, pose(t) {
+    const p = base(); p.lid = Math.max(0.06, 0.95 * Math.min(1, bump(t, 0.2, 1.8) * 1.3)); return p;
+  }},
+  idle_ears: { duration: 1.4, fps: 25, loop: false, pose(t) {
+    const p = base();
+    p.earL = 12 * bump(t, 0.1, 0.35) - 6 * bump(t, 0.35, 0.55);
+    p.earR = 10 * bump(t, 0.6, 0.85) - 5 * bump(t, 0.85, 1.05);
+    p.look = [0.8 * Math.sin(TAU * t / 1.4), 0];
+    return p;
+  }},
+  idle_stretch: { duration: 2.6, fps: 25, loop: false, pose(t) {
+    // reckt sich kurz: Kopf hoch, Augen zu, wieder runter
+    const p = base(); const k = bump(t, 0.2, 2.4);
+    p.dy = 2 - 5 * k; p.headTilt = -4 * k; p.lid = Math.max(0.06, 0.8 * Math.min(1, k * 1.5)); p.mouth = k > 0.6 ? 'fang' : 'smile';
+    return p;
+  }},
+});
 
 if (typeof module !== 'undefined') module.exports = { SEQUENCES };

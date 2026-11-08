@@ -81,13 +81,16 @@ function mouth(kind) {
     case 'side': return `<path d="M44.5,70.2 Q48.5,68.2 55.5,68.8" stroke="${OUT}" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M55.2,68.6 l1.4,-0.9" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/>`;
     case 'fang': return `<path d="M44,68.5 Q47,74.5 50,69.5 Q53,74.5 56,68.5 Q55,72.8 50,73.8 Q45,72.8 44,68.5 Z" fill="#e8687f" stroke="${OUT}" stroke-width=".8"/><path d="M45.6,69.3 l1,2.6 l1,-2.2 Z M54.4,69.3 l-1,2.6 l-1,-2.2 Z" fill="#fff"/>`;
     case 'hiss': return `<path d="M43,68 Q50,80 57,68 Q50,71 43,68 Z" fill="#c9465f" stroke="${OUT}" stroke-width=".9"/><path d="M45,68.6 l1.2,3.2 l1.2,-2.6 Z M55,68.6 l-1.2,3.2 l-1.2,-2.6 Z" fill="#fff"/>`;
+    case 'blep': return `<path d="M47.6,69.2 Q47.4,75.2 50,75.6 Q52.6,75.2 52.4,69.2 Z" fill="#f06d88" stroke="${OUT}" stroke-width=".8"/><path d="M50,70 v3.6" stroke="#c84a64" stroke-width=".6" stroke-linecap="round"/>
+      <path d="M45.5,68 Q47.8,70.6 50,68.2 Q52.2,70.6 54.5,68" stroke="${OUT}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
     default: return `<path d="M45.5,68 Q47.8,70.6 50,68.2 Q52.2,70.6 54.5,68" stroke="${OUT}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
   }
 }
 
 function headSVG(p) {
   let s = ear(true, p.earL || 0) + ear(false, p.earR || 0);
-  s += `<path d="${fluffy(50, 53, 33, 27.5, [[146, 214, 2.6], [326, 358, 2.6], [0, 34, 2.6], [242, 298, 1.5]])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  const bristle = p.bristle ? 2.2 : 1;
+  s += `<path d="${fluffy(50, 53, 33, 27.5, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9]])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
   const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes };
   s += eye(37.5, 54, 1, eo) + eye(62.5, 54, -1, eo);
   s += brows(p.brows, p.browRaise || 0);
@@ -154,12 +157,13 @@ function glassFront() {
  * Ebenen: Katze in der Blase → Glas vorne → was aus der Blase ragt (Kopf/Ohren/Arm) → Effekte.
  * Die Blase selbst (Glasfarbe, Leuchten) zeichnet die App darunter.
  */
-function frameSVG(p, px, wide) {
+function frameSVG(p, px, span) {
+  const wide = span > 1;
   const id = 'f' + (UID++);
   const T = `translate(50 100) scale(${f2(p.sc || 1)}) translate(-50 -100) translate(${f2(p.dx || 0)} ${f2(p.dy || 0)}) rotate(${f2(p.rot || 0)} 50 74)`;
   const H = `translate(0 ${f2(p.headDy || 0)}) rotate(${f2(p.headTilt || 0)} 50 74)`;
   const cat = `${bodySVG()}<g transform="${H}">${headSVG(p)}</g>`;
-  const view = wide ? '-60 -60 220 220' : '0 0 100 100';
+  const half = 50 * span, view = `${50 - half} ${50 - half} ${2 * half} ${2 * half}`;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="${view}"><defs>${defs()}
     <clipPath id="${id}in"><circle cx="50" cy="50" r="47.4"/></clipPath>
     <clipPath id="${id}rim"><circle cx="50" cy="50" r="51"/></clipPath>

@@ -74,9 +74,14 @@ final class CatSprites {
 
     /// Bild für Rüdigers Fenster: Schleifen laufen mit der Uhr, der Auftritt ab seinem Beginn
     func frame(_ name: String, pose: CatPose, at date: Date) -> NSImage? {
-        if case .intro(let since) = pose { return image(name, at: since) }
-        return image(name, at: date.timeIntervalSinceReferenceDate)
+        switch pose {
+        case .intro(let since), .clip(_, let since): return image(name, at: since)
+        default: return image(name, at: date.timeIntervalSinceReferenceDate)
+        }
     }
+
+    /// Bildgröße im Verhältnis zur Blase (z. B. 1,3: Ohrenspitzen ragen heraus)
+    func span(_ name: String) -> Double { sequence(name)?.span ?? 1 }
 }
 
 // MARK: - Gesten (ragen aus der Blase heraus)

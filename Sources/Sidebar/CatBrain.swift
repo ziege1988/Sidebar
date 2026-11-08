@@ -14,6 +14,8 @@ enum CatPose: Equatable {
     case annoyed
     /// Auftritt beim Start (Sekunden seit Beginn)
     case intro(Double)
+    /// kleine Bewegung in der Ruhephase (Name der Animation, Sekunden seit Beginn)
+    case clip(String, Double)
     /// läuft durchs Fenster (x = Mitte im 100er-Feld) – nur noch Ersatzzeichnung
     case walk(x: CGFloat, facingRight: Bool)
 
@@ -28,6 +30,7 @@ enum CatPose: Equatable {
         case .angry: return "angry"
         case .annoyed: return "annoyed"
         case .intro: return "intro"
+        case .clip(let name, _): return name
         }
     }
 }
@@ -74,6 +77,10 @@ final class CatBrain: ObservableObject {
     private var treats: [Date] = []
     private var ignoredToday = 0
     private var recent: [String] = []
+    /// kleine Bewegungen in der Ruhephase – etwa alle 20 Sekunden eine
+    private static let idleClips = ["idle_tilt", "idle_look", "idle_tongue", "idle_slowblink", "idle_ears", "idle_stretch"]
+    private var idleClip: (name: String, start: Date, length: Double)?
+    private var nextIdleClip = Date().addingTimeInterval(200)
     /// Aussehen während einer Geste (Pfote draußen)
     private var gesturePose: CatPose?
     private var gestureEnd = Date.distantPast
@@ -106,6 +113,11 @@ final class CatBrain: ObservableObject {
         if let gesturePose, date < gestureEnd { return gesturePose }
         if snoozed || mood == .sleeping { return .sleep }
         if furious { return .angry }
+        // kleine Bewegung in der Ruhephase (Kopf neigen, Zunge raus, Blinzeln …)
+        if mood == .awake, let clip = idleClip {
+            let since = date.timeIntervalSince(clip.start)
+            if since >= 0, since < clip.length { return .clip(clip.name, since) }
+        }
         switch mood {
         case .asking: return .ask
         case .purring: return .purr
@@ -270,6 +282,14 @@ final class CatBrain: ObservableObject {
             return
         }
         if furious && now > furiousUntil { furious = false }
+        // Ruhephase: ab und zu eine kleine Bewegung
+        if mood == .awake, !furious, now >= nextIdleClip, now >= gestureEnd {
+            let choices = Self.idleClips.filter { $0 != idleClip?.name }
+            if let name = choices.randomElement(), let sequence = CatSprites.shared.sequence(name) {
+                idleClip = (name, now, sequence.duration)
+            }
+            nextIdleClip = now.addingTimeInterval(.random(in: 16...24))
+        }
         if gesturePose != nil && now > gestureEnd { gesturePose = nil }
         if snoozed {
             if mood != .sleeping { set(.sleeping) }
@@ -483,9 +503,15 @@ struct CatView: View {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let pose = brain.pose(at: timeline.date)
                 if let name = pose.sprite, let image = CatSprites.shared.frame(name, pose: pose, at: timeline.date) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .interpolation(.high)
+                    // Das Bild ist etwas größer als die Blase, damit Ohrenspitzen herausragen können
+                    GeometryReader { proxy in
+                        let side = proxy.size.width * CGFloat(CatSprites.shared.span(name))
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: side, height: side)
+                            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                    }
                 } else {
                     // Ersatz, falls die Bilder fehlen
                     Canvas { context, size in
