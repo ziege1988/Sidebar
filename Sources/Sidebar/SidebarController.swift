@@ -162,7 +162,9 @@ final class SidebarController {
         installBarContent()
         installClickMonitor()
         FloatingCat.shared.configure(store: store, openSettings: { actions.openSettings() },
-                                     dockRect: { [weak self] in self?.dockedCatRect() })
+                                     dockRect: { [weak self] in self?.dockedCatRect() },
+                                     badgeRect: { [weak self] in self?.homeworkBadgeRect() })
+        HomeworkController.shared.store = store
 
         let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, geometry: geometry,
                                                                 actions: actions))
@@ -596,6 +598,7 @@ final class SidebarController {
     /// Versteckter Schalter: 4 Sekunden mit der Maus auf Rüdiger → „Schlummern ein/aus“
     private func updateCatHover(mouse: NSPoint, now: Date) {
         let brain = CatBrain.shared
+        updateHomeworkBadge(mouse: mouse)
         guard let cat = catLocation()?.cat, cat.contains(mouse) else {
             catHoverSince = nil
             if brain.showSnoozeControl { brain.showSnoozeControl = false }
@@ -605,6 +608,43 @@ final class SidebarController {
         if let since = catHoverSince, now.timeIntervalSince(since) >= 4, !brain.showSnoozeControl {
             brain.showSnoozeControl = true
         }
+    }
+
+    /// Knopf „Text prüfen“: sofort sichtbar, solange die Maus höchstens 40 pt vom Blasenrand entfernt ist
+    private func updateHomeworkBadge(mouse: NSPoint) {
+        let brain = CatBrain.shared
+        var corner: CGPoint?
+        var hover = false
+        if let location = catLocation(), !brain.teaching, !brain.carried, brain.introDone {
+            let cat = location.cat
+            let c: CGPoint
+            if location.floating {
+                // zur Bildschirmmitte hin
+                let screen = location.visible
+                c = CGPoint(x: cat.midX < screen.midX ? 1 : -1, y: cat.midY > screen.midY ? 1 : -1)
+            } else {
+                switch location.edge {
+                case .left, .top: c = CGPoint(x: 1, y: 1)
+                case .right: c = CGPoint(x: -1, y: 1)
+                case .bottom: c = CGPoint(x: 1, y: -1)
+                }
+            }
+            let badge = brain.homeworkBadgeRect(for: cat, corner: c)
+            let near = hypot(mouse.x - cat.midX, mouse.y - cat.midY) <= cat.width / 2 + HomeworkBadge.radius
+            if near || badge.contains(mouse) {
+                corner = c
+                hover = badge.contains(mouse)
+            }
+        }
+        if brain.homeworkBadge != corner { brain.homeworkBadge = corner }
+        if brain.homeworkHover != hover { brain.homeworkHover = hover }
+    }
+
+    /// Bereich des Knopfs „Text prüfen“, solange er zu sehen ist
+    func homeworkBadgeRect() -> NSRect? {
+        let brain = CatBrain.shared
+        guard let corner = brain.homeworkBadge, let cat = catLocation()?.cat else { return nil }
+        return brain.homeworkBadgeRect(for: cat, corner: corner)
     }
 
     /// Wo Rüdiger gerade sitzt (Bildschirmkoordinaten) – `nil`, wenn er nicht zu sehen ist.
@@ -644,7 +684,8 @@ final class SidebarController {
         guard !tracking else { return }
         let inStrip = stripFrame(for: settings).insetBy(dx: -2, dy: -2).contains(mouse)
         let inClock = clockRect(for: settings)?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
-        let inCat = !settings.catFloating && (catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
+        let inCat = !settings.catFloating && ((catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
+                                              || (homeworkBadgeRect()?.contains(mouse) ?? false))
         let ignore = !(inStrip || inClock || inCat)
         if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }

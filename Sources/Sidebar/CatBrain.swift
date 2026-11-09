@@ -90,6 +90,12 @@ final class CatBrain: ObservableObject {
         didSet { if carried && !oldValue { carriedStart = Date() } }
     }
     private var carriedStart = Date()
+    /// Rüdiger sitzt gerade am Lehrer-Blatt (sein normaler Platz ist so lange leer)
+    @Published var teaching = false
+    /// Knopf „Text prüfen“: sichtbar (Maus in der Nähe) und in welche Richtung (x/y je ±1, y nach unten)
+    @Published var homeworkBadge: CGPoint?
+    /// Maus direkt auf dem Knopf
+    @Published var homeworkHover = false
     /// zuletzt abgesetzt – für das kleine „Plumps“
     @Published private(set) var landedAt = Date.distantPast
     // Feierabend
@@ -126,7 +132,30 @@ final class CatBrain: ObservableObject {
 
     /// Rüdiger ist zu sehen und übernimmt das Vorlesen neuer Nachrichten (statt der Einblendung am Icon)
     var takesOverMessages: Bool {
-        settings.catEnabled && settings.catMessages && introDone && locate?() != nil
+        settings.catEnabled && settings.catMessages && introDone && !teaching && locate?() != nil
+    }
+
+    /// Lehrer-Blatt öffnen
+    func openHomework() {
+        homeworkBadge = nil
+        homeworkHover = false
+        HomeworkController.shared.open()
+    }
+
+    /// Bereich des Knopfs „Text prüfen“ auf dem Bildschirm (für Klicks und Mausnähe)
+    func homeworkBadgeRect(for cat: NSRect, corner: CGPoint) -> NSRect {
+        let d = cat.width
+        let center = NSPoint(x: cat.midX + corner.x * HomeworkBadge.offset * d,
+                             y: cat.midY - corner.y * HomeworkBadge.offset * d)
+        let side = HomeworkBadge.size + 4
+        return NSRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
+    }
+
+    /// Kurzer Satz in Rüdigers normaler Sprechblase
+    func remark(_ text: String) {
+        guard settings.catEnabled, let location = locate?() else { return }
+        lastSpoke = Date()
+        CatBubbleController.shared.show(text, style: .purr, at: location)
     }
 
     // MARK: Aussehen
@@ -383,7 +412,7 @@ final class CatBrain: ObservableObject {
 
     private func tick() {
         // gesperrt / Bildschirmschoner: Rüdiger denkt nicht (Feierabend-Wecker usw. holt er danach nach)
-        guard settings.catEnabled, !PowerState.shared.paused else { return }
+        guard settings.catEnabled, !PowerState.shared.paused, !teaching else { return }
         let now = Date()
 
         // Auftritt: beim Winken begrüßt er dich
@@ -416,6 +445,12 @@ final class CatBrain: ObservableObject {
         if snoozed {
             if mood != .sleeping { set(.sleeping) }
             return
+        }
+        // Einmalig nach dem Update: auf „Text prüfen“ hinweisen
+        if !settings.catHomeworkHint, now.timeIntervalSince(introStart) > 90, !sidebarBusy,
+           !AlertState.shared.quiet, now.timeIntervalSince(lastSpoke) > 20, locate?() != nil {
+            store?.config.settings.catHomeworkHint = true
+            remark("Neu: Ich korrigiere jetzt auch Texte. Fahr mit der Maus zu mir – dann siehst du das Heft.")
         }
 
         // Niemand am Mac → schlafen, beim Zurückkommen kurz kommentieren
@@ -725,6 +760,7 @@ struct CatView: View {
         .contextMenu {
             Button("Streicheln") { brain.pet() }
             Button("Leckerli geben") { brain.giveTreat() }
+            Button("Text prüfen …") { brain.openHomework() }
             if let onReturnToDock {
                 Button("Zurück in die Sidebar") { onReturnToDock() }
             }
@@ -734,6 +770,21 @@ struct CatView: View {
             }
         }
         .help("Rüdiger – klicken zum Streicheln")
+        // Sitzt er am Lehrer-Blatt, ist sein Platz leer
+        .opacity(brain.teaching ? 0 : 1)
+        .allowsHitTesting(!brain.teaching)
+        // Knopf „Text prüfen“ – nur bei Maus in der Nähe
+        .overlay {
+            if let corner = brain.homeworkBadge, !brain.teaching {
+                GeometryReader { proxy in
+                    HomeworkBadge(hovered: brain.homeworkHover) { brain.openHomework() }
+                        .position(x: proxy.size.width / 2 + corner.x * HomeworkBadge.offset * proxy.size.width,
+                                  y: proxy.size.height / 2 + corner.y * HomeworkBadge.offset * proxy.size.height)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.1), value: brain.homeworkBadge != nil)
     }
 }
 
@@ -848,6 +899,9 @@ struct CatSettingsSection: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                Text("Text prüfen: Maus in Rüdigers Nähe → Heft anklicken (oder Rechtsklick → „Text prüfen …“). Er streicht rot an und gibt eine Note – verbessern musst du selbst, erst dann lässt sich der Text kopieren. Alles wird lokal auf dem Mac geprüft.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("Klick = streicheln · Rechtsklick = Leckerli · Datei draufziehen = füttern. Ignorierst du ihn, wird er ungemütlich. Ist niemand am Mac, schläft er; im Ruhemodus ist er still. Nach 90 Minuten am Stück erinnert er dich an eine Pause.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

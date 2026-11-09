@@ -34,6 +34,8 @@ final class FloatingCat {
     private var openSettings: (@MainActor () -> Void)?
     /// Platz an der Uhr (Bildschirmkoordinaten) – `nil`, wenn es dort keinen gibt
     private var dockRect: (@MainActor () -> NSRect?)?
+    /// Knopf „Text prüfen“ (wenn sichtbar) – muss klickbar sein
+    private var badgeRect: (@MainActor () -> NSRect?)?
     /// Rüdiger wird gerade getragen: Abstand vom Mauszeiger zu seinem Mittelpunkt
     private var grab: CGPoint?
     private var installed = false
@@ -66,10 +68,12 @@ final class FloatingCat {
     }
 
     func configure(store: ConfigStore, openSettings: @escaping @MainActor () -> Void,
-                   dockRect: @escaping @MainActor () -> NSRect?) {
+                   dockRect: @escaping @MainActor () -> NSRect?,
+                   badgeRect: @escaping @MainActor () -> NSRect?) {
         self.store = store
         self.openSettings = openSettings
         self.dockRect = dockRect
+        self.badgeRect = badgeRect
     }
 
     private func installContent() {
@@ -129,7 +133,8 @@ final class FloatingCat {
         }
 
         // Nur der Kreis ist klickbar, alles drumherum geht durch
-        let inCat = catRect?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
+        let inCat = (catRect?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
+            || (badgeRect?()?.contains(mouse) ?? false)
         let ignore = !(inCat || grab != nil)
         if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }

@@ -306,6 +306,8 @@ struct SidebarSettings: Codable, Equatable {
     var catFloatScreenID: UInt32?
     /// Schwebend immer über allen Fenstern (sonst können Programme ihn verdecken)
     var catFloatOnTop: Bool = true
+    /// Hinweis auf „Text prüfen“ schon gezeigt
+    var catHomeworkHint: Bool = false
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
     var mailEnabled: Bool = false
     var mailClientID: String = ""
@@ -375,6 +377,7 @@ extension SidebarSettings {
         catFloatY = try c.decodeIfPresent(Double.self, forKey: .catFloatY)
         catFloatScreenID = try c.decodeIfPresent(UInt32.self, forKey: .catFloatScreenID)
         catFloatOnTop = try c.decodeIfPresent(Bool.self, forKey: .catFloatOnTop) ?? catFloatOnTop
+        catHomeworkHint = try c.decodeIfPresent(Bool.self, forKey: .catHomeworkHint) ?? catHomeworkHint
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
         mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID
