@@ -89,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Rüdiger: Namen der Apps und Platz auf dem Bildschirm
         CatBrain.shared.store = store
         CatBrain.shared.locate = { [weak self] in self?.sidebar?.catLocation() }
+        // Gesperrt / Bildschirmschoner / Displays aus → pausieren, danach automatisch weiter
+        PowerState.shared.start()
         setupStatusItem()
 
         Updater.shared.startAutomaticChecks { [weak self] in

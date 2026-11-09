@@ -195,6 +195,29 @@ final class SidebarController {
             }
             .store(in: &cancellables)
 
+        // Stromsparen: beim Pausieren offene Einblendungen schließen, danach alles frisch einrichten
+        PowerState.shared.$paused
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] paused in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if paused {
+                        self.hideFlyout()
+                        self.updateHovered(nil)
+                        self.updateLabel(nil)
+                        self.updatePreview(nil, now: Date())
+                    } else {
+                        self.barEnteredAt = nil
+                        self.barLeftAt = nil
+                        self.applySettings(self.store.config.settings)
+                        if self.isVisible { self.panel.orderFrontRegardless() }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
         // Monitor angeschlossen/entfernt, Auflösung oder Dock geändert
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: RunLoop.main)
@@ -279,6 +302,8 @@ final class SidebarController {
     }
 
     private func tick() {
+        // Niemand sieht hin (gesperrt, Bildschirmschoner, Displays aus) → nichts tun
+        if PowerState.shared.paused { return }
         // Schwebender Rüdiger: sichtbar, solange die Sidebar läuft – auch wenn sie eingefahren ist
         FloatingCat.shared.update(sidebarVisible: isVisible)
         guard isVisible, !isDragging else {

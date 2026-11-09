@@ -382,7 +382,8 @@ final class CatBrain: ObservableObject {
     }
 
     private func tick() {
-        guard settings.catEnabled else { return }
+        // gesperrt / Bildschirmschoner: Rüdiger denkt nicht (Feierabend-Wecker usw. holt er danach nach)
+        guard settings.catEnabled, !PowerState.shared.paused else { return }
         let now = Date()
 
         // Auftritt: beim Winken begrüßt er dich
@@ -634,6 +635,7 @@ struct CatView: View {
     /// nur schwebend: Menüpunkt „Zurück in die Sidebar“
     var onReturnToDock: (() -> Void)?
     @ObservedObject private var brain = CatBrain.shared
+    @ObservedObject private var power = PowerState.shared
     @State private var dropTargeted = false
     @State private var squash = false
     @Environment(\.colorScheme) private var scheme
@@ -649,7 +651,9 @@ struct CatView: View {
             Circle().fill(Color.white.opacity(dark ? 0.08 : 0.88))
             Circle().fill(RadialGradient(colors: [Color.white.opacity(dark ? 0.12 : 0.5), palette.accent.opacity(dark ? 0.5 : 0.55)],
                                          center: UnitPoint(x: 0.45, y: 0.36), startRadius: 2, endRadius: 60))
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            // Schläft er, reichen 12 Bilder pro Sekunde; sieht niemand hin, steht die Animation still
+            TimelineView(.animation(minimumInterval: (brain.snoozed || brain.mood == .sleeping) ? 1.0 / 12.0 : 1.0 / 30.0,
+                                    paused: power.paused)) { timeline in
                 let pose = brain.pose(at: timeline.date)
                 if let name = pose.sprite, let image = CatSprites.shared.frame(name, pose: pose, at: timeline.date) {
                     // Das Bild ist etwas größer als die Blase, damit Ohrenspitzen herausragen können
