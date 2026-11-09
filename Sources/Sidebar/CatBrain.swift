@@ -631,6 +631,8 @@ struct CatView: View {
     var onFeed: (([DropPayload]) -> Int)?
     /// Rüdiger wird mit der Maus gepackt (ziehen statt klicken)
     var onCarry: (() -> Void)?
+    /// nur schwebend: Menüpunkt „Zurück in die Sidebar“
+    var onReturnToDock: (() -> Void)?
     @ObservedObject private var brain = CatBrain.shared
     @State private var dropTargeted = false
     @State private var squash = false
@@ -719,6 +721,9 @@ struct CatView: View {
         .contextMenu {
             Button("Streicheln") { brain.pet() }
             Button("Leckerli geben") { brain.giveTreat() }
+            if let onReturnToDock {
+                Button("Zurück in die Sidebar") { onReturnToDock() }
+            }
             if let openSettings {
                 Divider()
                 Button("Rüdiger-Einstellungen …") { openSettings() }

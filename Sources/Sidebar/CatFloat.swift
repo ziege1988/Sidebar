@@ -245,7 +245,8 @@ private struct FloatingCatView: View {
                     let before = store.config.shelf.count
                     _ = store.addToShelf(payloads)
                     return store.config.shelf.count - before
-                }, onCarry: { FloatingCat.shared.beginCarry() })
+                }, onCarry: { FloatingCat.shared.beginCarry() },
+                onReturnToDock: { store.config.settings.catFloating = false })
             .frame(width: FloatingCat.diameter, height: FloatingCat.diameter)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
