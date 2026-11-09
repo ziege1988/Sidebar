@@ -21,8 +21,9 @@ final class FloatingCat {
 
     /// Größe der Glasblase – immer gleich, nicht verstellbar
     static let diameter: CGFloat = 96
-    /// Fenster etwas größer als die Blase: Ohrenspitzen und Leuchten ragen heraus
-    private static let windowFactor: CGFloat = 1.6
+    /// Fenster etwas größer als die Blase: Ohrenspitzen, Leuchten und (beim Tragen) der Schatten ragen heraus.
+    /// Klickbar bleibt trotzdem nur der Kreis – der Rest lässt Klicks durch.
+    private static let windowFactor: CGFloat = 1.8
     /// So nah (Mittelpunkte) muss Rüdiger am Platz an der Uhr sein, damit er einrastet
     private static let dockDistance: CGFloat = 70
 
@@ -234,21 +235,76 @@ final class FloatingCat {
 private struct FloatingCatView: View {
     @ObservedObject var store: ConfigStore
     let openSettings: @MainActor () -> Void
+    @ObservedObject private var brain = CatBrain.shared
     @Environment(\.colorScheme) private var scheme
+    /// Schatten nur als kurze Animation beim Tragen und Absetzen – sonst keiner
+    @State private var shadow: ShadowPhase = .hidden
+
+    private enum ShadowPhase { case hidden, lifted, impact }
 
     var body: some View {
-        CatView(palette: Palette.resolve(store.config.settings.colorTheme, scheme),
-                openSettings: {
-                    SettingsRouter.shared.showCategory = .cat
-                    openSettings()
-                }, onFeed: { payloads in
-                    let before = store.config.shelf.count
-                    _ = store.addToShelf(payloads)
-                    return store.config.shelf.count - before
-                }, onCarry: { FloatingCat.shared.beginCarry() },
-                onReturnToDock: { store.config.settings.catFloating = false })
-            .frame(width: FloatingCat.diameter, height: FloatingCat.diameter)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        let d = FloatingCat.diameter
+        ZStack {
+            // Schatten am „Boden“ unter der Blase (nur gezeichnet – fängt keine Klicks ab)
+            Ellipse()
+                .fill(RadialGradient(colors: [Color.black.opacity(0.55), Color.black.opacity(0)],
+                                     center: .center, startRadius: 0, endRadius: d * 0.6))
+                .frame(width: d * shadowWidth, height: shadowHeight)
+                .blur(radius: shadow == .lifted ? 6 : 2.5)
+                .opacity(shadowOpacity)
+                .offset(y: d / 2 + 8)
+                .allowsHitTesting(false)
+            CatView(palette: Palette.resolve(store.config.settings.colorTheme, scheme),
+                    openSettings: {
+                        SettingsRouter.shared.showCategory = .cat
+                        openSettings()
+                    }, onFeed: { payloads in
+                        let before = store.config.shelf.count
+                        _ = store.addToShelf(payloads)
+                        return store.config.shelf.count - before
+                    }, onCarry: { FloatingCat.shared.beginCarry() },
+                    onReturnToDock: { store.config.settings.catFloating = false })
+                .frame(width: d, height: d)
+                // Getragen: hebt leicht ab
+                .offset(y: brain.carried ? -12 : 0)
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: brain.carried)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: brain.carried) { _, carried in
+            if carried {
+                withAnimation(.easeOut(duration: 0.18)) { shadow = .lifted }
+            } else {
+                // Plumps: Schatten kurz breit und dunkel, dann ausblenden
+                withAnimation(.easeIn(duration: 0.1)) { shadow = .impact }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    withAnimation(.easeOut(duration: 0.4)) { shadow = .hidden }
+                }
+            }
+        }
+    }
+
+    private var shadowWidth: CGFloat {
+        switch shadow {
+        case .hidden: return 0.8
+        case .lifted: return 1.15
+        case .impact: return 1.05
+        }
+    }
+
+    private var shadowHeight: CGFloat {
+        switch shadow {
+        case .hidden: return 10
+        case .lifted: return 22
+        case .impact: return 13
+        }
+    }
+
+    private var shadowOpacity: Double {
+        switch shadow {
+        case .hidden: return 0
+        case .lifted: return 0.45
+        case .impact: return 0.75
+        }
     }
 }
 
