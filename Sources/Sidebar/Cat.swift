@@ -56,6 +56,8 @@ struct CatLocation {
     let strip: NSRect
     let edge: ScreenEdge
     let visible: NSRect
+    /// Rüdiger schwebt frei (Sprechblase dorthin, wo am meisten Platz ist)
+    var floating = false
 }
 
 enum CatPainter {
@@ -451,9 +453,14 @@ struct CatBubbleView: View {
     let ellipse: CGRect
     let tail: CGPoint
     let size: CGSize
+    /// Schriftgröße und Textfeld aus `CatBubbleLayout` – das Feld liegt ganz innerhalb der Zacken
+    let fontSize: CGFloat
+    let textSize: CGSize
     @State private var shown = false
 
-    static let font = NSFont(name: "ChalkboardSE-Bold", size: 15) ?? NSFont.boldSystemFont(ofSize: 15)
+    static func font(_ size: CGFloat) -> NSFont {
+        NSFont(name: "ChalkboardSE-Bold", size: size) ?? NSFont.boldSystemFont(ofSize: size)
+    }
 
     var body: some View {
         let shape = SpikyBubble(ellipse: ellipse, tail: tail, spikes: style.spikes, amplitude: style.amplitude)
@@ -462,11 +469,13 @@ struct CatBubbleView: View {
             shape.stroke(Color.black.opacity(0.88),
                          style: StrokeStyle(lineWidth: style == .angry ? 2.6 : 2.2, lineJoin: .round))
             Text(text)
-                .font(.custom("ChalkboardSE-Bold", size: 15))
+                .font(Font(Self.font(fontSize) as CTFont))
                 .foregroundColor(Color(white: 0.08))
                 .multilineTextAlignment(.center)
-                .lineSpacing(1)
-                .frame(width: ellipse.width * 0.76, height: ellipse.height * 0.8)
+                .lineSpacing(CatBubbleLayout.lineSpacing)
+                // Falls SwiftUI doch etwas anders umbricht: lieber kleiner als abgeschnitten
+                .minimumScaleFactor(0.6)
+                .frame(width: textSize.width, height: textSize.height)
                 .position(x: ellipse.midX, y: ellipse.midY)
         }
         .frame(width: size.width, height: size.height)
@@ -476,6 +485,45 @@ struct CatBubbleView: View {
         .onAppear {
             withAnimation(.spring(response: 0.32, dampingFraction: style == .angry ? 0.45 : 0.6)) { shown = true }
         }
+    }
+}
+
+/// Größe der Sprechblase so, dass der Text immer ganz drin steht.
+///
+/// Ein Rechteck passt in eine Ellipse, wenn seine Ecken innerhalb liegen. Mit Halbachsen = halbe Textgröße · √2
+/// liegen die Ecken genau auf der Ellipse; die Zacken greifen bis (1 − Ausschlag) nach innen – also noch durch
+/// (1 − Ausschlag) teilen und etwas Luft lassen. Ist die Blase dann zu groß für den Bildschirm, wird die Schrift
+/// kleiner (bis 10 pt) bzw. der Text breiter umbrochen.
+struct CatBubbleLayout {
+    static let lineSpacing: CGFloat = 1
+    let fontSize: CGFloat
+    let textSize: CGSize
+    let ellipseSize: CGSize
+
+    static func make(_ text: String, style: CatBubbleStyle, maxSize: CGSize) -> CatBubbleLayout {
+        let grow = 2.squareRoot() / (1 - style.amplitude)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        paragraph.alignment = .center
+        var best: CatBubbleLayout?
+        for fontSize in stride(from: CGFloat(15), through: 10, by: -1) {
+            for wrap in [CGFloat(220), 280, 340] {
+                let measured = (text as NSString).boundingRect(
+                    with: CGSize(width: wrap, height: 2000), options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: CatBubbleView.font(fontSize), .paragraphStyle: paragraph])
+                // etwas Reserve, weil SwiftUI minimal anders setzt als AppKit
+                let tw = ceil(measured.width) + 8
+                let th = ceil(measured.height) + 6
+                let ew = max(120, (tw + 10) * grow)
+                let eh = max(58, (th + 8) * grow)
+                let layout = CatBubbleLayout(fontSize: fontSize, textSize: CGSize(width: tw, height: th),
+                                             ellipseSize: CGSize(width: ew, height: eh))
+                if ew <= maxSize.width && eh <= maxSize.height { return layout }
+                if best == nil || ew * eh < best!.ellipseSize.width * best!.ellipseSize.height { best = layout }
+            }
+        }
+        // Sehr langer Text: kleinste Variante (minimumScaleFactor in der Ansicht hilft notfalls weiter)
+        return best!
     }
 }
 
@@ -499,27 +547,44 @@ final class CatBubbleController {
     }
 
     func show(_ text: String, style: CatBubbleStyle, at location: CatLocation) {
-        // Größe der Blase aus dem Text
-        let measured = (text as NSString).boundingRect(
-            with: CGSize(width: 230, height: 400), options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: CatBubbleView.font])
-        let ew = max(120, ceil(measured.width) * 1.3 + 40)
-        let eh = max(58, ceil(measured.height) * 1.45 + 30)
+        let area = location.visible.insetBy(dx: 4, dy: 4)
+        // Größe der Blase aus dem Text – nie größer als ein guter Teil des Bildschirms
+        let layout = CatBubbleLayout.make(text, style: style,
+                                          maxSize: CGSize(width: min(560, area.width * 0.5),
+                                                          height: min(320, area.height * 0.45)))
+        let ew = min(layout.ellipseSize.width, area.width)
+        let eh = min(layout.ellipseSize.height, area.height)
         let margin: CGFloat = 46
 
-        // Mitte der Blase: über der Leiste, neben der Katze
         let cat = location.cat
         let strip = location.strip
         var center: CGPoint
-        switch location.edge {
-        case .top, .bottom:
-            center = CGPoint(x: cat.midX + cat.width * 0.25 + ew / 2, y: strip.midY)
-        case .left:
-            center = CGPoint(x: strip.midX + ew / 2 - 12, y: cat.minY - eh / 2 - 8)
-        case .right:
-            center = CGPoint(x: strip.midX - ew / 2 + 12, y: cat.minY - eh / 2 - 8)
+        if location.floating {
+            // Schwebend: dorthin, wo am meisten Platz ist
+            let gap: CGFloat = 14
+            let room = [
+                (CGPoint(x: cat.maxX + gap + ew / 2, y: cat.midY + cat.height * 0.3), (area.maxX - cat.maxX) / ew),
+                (CGPoint(x: cat.minX - gap - ew / 2, y: cat.midY + cat.height * 0.3), (cat.minX - area.minX) / ew),
+                (CGPoint(x: cat.midX, y: cat.maxY + gap + eh / 2), (area.maxY - cat.maxY) / eh),
+                (CGPoint(x: cat.midX, y: cat.minY - gap - eh / 2), (cat.minY - area.minY) / eh),
+            ]
+            // Seitlich bevorzugt (liest sich besser), wenn dort genug Platz ist
+            if let side = room.prefix(2).filter({ $0.1 >= 1.05 }).max(by: { $0.1 < $1.1 }) {
+                center = side.0
+            } else {
+                center = room.max(by: { $0.1 < $1.1 })?.0 ?? CGPoint(x: cat.midX, y: cat.maxY + eh / 2)
+            }
+        } else {
+            // In der Sidebar: über der Leiste, neben der Katze
+            switch location.edge {
+            case .top, .bottom:
+                center = CGPoint(x: cat.midX + cat.width * 0.25 + ew / 2, y: strip.midY)
+            case .left:
+                center = CGPoint(x: strip.midX + ew / 2 - 12, y: cat.minY - eh / 2 - 8)
+            case .right:
+                center = CGPoint(x: strip.midX - ew / 2 + 12, y: cat.minY - eh / 2 - 8)
+            }
         }
-        let area = location.visible.insetBy(dx: 4, dy: 4)
         center.x = min(max(center.x, area.minX + ew / 2), area.maxX - ew / 2)
         center.y = min(max(center.y, area.minY + eh / 2), area.maxY - eh / 2)
 
@@ -543,7 +608,12 @@ final class CatBubbleController {
         tail.x = min(max(tail.x, 2), size.width - 2)
         tail.y = min(max(tail.y, 2), size.height - 2)
 
-        let host = NSHostingView(rootView: CatBubbleView(text: text, style: style, ellipse: ellipse, tail: tail, size: size))
+        // Textfeld nie größer als das, was in die (evtl. begrenzte) Blase passt
+        let grow = 2.squareRoot() / (1 - style.amplitude)
+        let textSize = CGSize(width: min(layout.textSize.width, ew / grow - 6),
+                              height: min(layout.textSize.height, eh / grow - 4))
+        let host = NSHostingView(rootView: CatBubbleView(text: text, style: style, ellipse: ellipse, tail: tail,
+                                                         size: size, fontSize: layout.fontSize, textSize: textSize))
         host.sizingOptions = []
         panel.contentView = host
         panel.setFrame(frame, display: true)
@@ -551,7 +621,7 @@ final class CatBubbleController {
         panel.orderFrontRegardless()
 
         hideWork?.cancel()
-        let duration = max(2.8, min(6.5, Double(text.count) * 0.075))
+        let duration = max(2.8, min(8, Double(text.count) * 0.075))
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.hide() }
         }

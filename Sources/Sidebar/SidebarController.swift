@@ -161,6 +161,8 @@ final class SidebarController {
         self.actions = actions
         installBarContent()
         installClickMonitor()
+        FloatingCat.shared.configure(store: store, openSettings: { actions.openSettings() },
+                                     dockRect: { [weak self] in self?.dockedCatRect() })
 
         let flyout = FirstMouseHostingView(rootView: FlyoutView(store: store, state: state, geometry: geometry,
                                                                 actions: actions))
@@ -277,6 +279,8 @@ final class SidebarController {
     }
 
     private func tick() {
+        // Schwebender Rüdiger: sichtbar, solange die Sidebar läuft – auch wenn sie eingefahren ist
+        FloatingCat.shared.update(sidebarVisible: isVisible)
         guard isVisible, !isDragging else {
             updateHovered(nil)
             updateLabel(nil)
@@ -581,15 +585,32 @@ final class SidebarController {
     /// Wo Rüdiger gerade sitzt (Bildschirmkoordinaten) – `nil`, wenn er nicht zu sehen ist.
     func catLocation() -> CatLocation? {
         let settings = store.config.settings
+        guard isVisible, settings.catEnabled else { return nil }
+        if settings.catFloating {
+            // Schwebend: Seite für Gesten = zur Bildschirmmitte hin
+            guard let rect = FloatingCat.shared.catRect else { return nil }
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+            let screen = NSScreen.screens.first(where: { $0.frame.contains(center) })
+                ?? NSScreen.screens.first(where: { $0.frame.intersects(rect) }) ?? NSScreen.screens.first
+            let frame = screen?.frame ?? rect
+            return CatLocation(cat: rect, strip: rect, edge: rect.midX > frame.midX ? .right : .left,
+                               visible: screen?.visibleFrame ?? rect, floating: true)
+        }
+        guard let rect = dockedCatRect(), let screen = targetScreen(for: settings) else { return nil }
+        return CatLocation(cat: rect, strip: stripFrame(for: settings, forceVisible: true),
+                           edge: settings.edge, visible: screen.visibleFrame)
+    }
+
+    /// Platz im Viertelkreis an der Uhr (Bildschirmkoordinaten) – auch wenn Rüdiger gerade schwebt.
+    /// `nil`, wenn die Sidebar eingefahren ist oder dort kein Platz ist (Uhr aus/zu klein).
+    func dockedCatRect() -> NSRect? {
+        let settings = store.config.settings
         guard isVisible, state.contentVisible,
-              let cat = CatGeometry.make(settings, clockOn: settings.showClock),
-              let screen = targetScreen(for: settings) else { return nil }
+              let cat = CatGeometry.make(settings, clockOn: settings.showClock) else { return nil }
         let frame = panel.frame
         let p = cat.point(in: frame.size, edge: settings.edge)
         let d = cat.diameter
-        let rect = NSRect(x: frame.minX + p.x - d / 2, y: frame.maxY - p.y - d / 2, width: d, height: d)
-        return CatLocation(cat: rect, strip: stripFrame(for: settings, forceVisible: true),
-                           edge: settings.edge, visible: screen.visibleFrame)
+        return NSRect(x: frame.minX + p.x - d / 2, y: frame.maxY - p.y - d / 2, width: d, height: d)
     }
 
     /// Das Fenster der Leiste ist so breit wie die Uhr – neben der Leiste (unter der Uhr) ist es aber
@@ -598,7 +619,7 @@ final class SidebarController {
         guard !tracking else { return }
         let inStrip = stripFrame(for: settings).insetBy(dx: -2, dy: -2).contains(mouse)
         let inClock = clockRect(for: settings)?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
-        let inCat = catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
+        let inCat = !settings.catFloating && (catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
         let ignore = !(inStrip || inClock || inCat)
         if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }

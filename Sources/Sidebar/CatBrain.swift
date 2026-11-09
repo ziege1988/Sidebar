@@ -85,6 +85,13 @@ final class CatBrain: ObservableObject {
         didSet { if feedHover && !oldValue { feedHoverStart = Date() } }
     }
     private var feedHoverStart = Date()
+    /// Rüdiger wird gerade mit der Maus getragen (schaut überrascht)
+    @Published var carried = false {
+        didSet { if carried && !oldValue { carriedStart = Date() } }
+    }
+    private var carriedStart = Date()
+    /// zuletzt abgesetzt – für das kleine „Plumps“
+    @Published private(set) var landedAt = Date.distantPast
     // Feierabend
     private var alarmDay: Int?
     private var alarmNudge: Date?
@@ -107,6 +114,11 @@ final class CatBrain: ObservableObject {
         self.timer = timer
     }
 
+    /// Nach dem Tragen abgesetzt
+    func landed() {
+        landedAt = Date()
+    }
+
     func apply(_ settings: SidebarSettings) {
         self.settings = settings
         if !settings.catEnabled { CatBubbleController.shared.hide() }
@@ -124,6 +136,7 @@ final class CatBrain: ObservableObject {
         if since < 0 { return .absent }
         // Auftritt: taucht in der Blase auf, schaut sich um und winkt
         if since < Self.introLength { return CatSprites.shared.has("intro") ? .intro(since) : .ask }
+        if carried { return .clip("eat_ready", date.timeIntervalSince(carriedStart)) }
         if let gesturePose, date < gestureEnd { return gesturePose }
         // Füttern (Datei schwebt über ihm / er frisst) und Feierabend-Wecker
         if let special {
@@ -616,8 +629,11 @@ struct CatView: View {
     var openSettings: (() -> Void)?
     /// Dateien ins Ablagefach legen – liefert die Anzahl neu abgelegter Dateien
     var onFeed: (([DropPayload]) -> Int)?
+    /// Rüdiger wird mit der Maus gepackt (ziehen statt klicken)
+    var onCarry: (() -> Void)?
     @ObservedObject private var brain = CatBrain.shared
     @State private var dropTargeted = false
+    @State private var squash = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -679,8 +695,21 @@ struct CatView: View {
         }
         .animation(.easeOut(duration: 0.2), value: brain.showSnoozeControl)
         .overlay(Circle().stroke(Color.white.opacity(dropTargeted ? 0.95 : 0), lineWidth: 3))
+        // Getragen: etwas größer · abgesetzt: kurz platt gedrückt („Plumps“)
+        .scaleEffect(x: squash ? 1.12 : (brain.carried ? 1.07 : 1),
+                     y: squash ? 0.86 : (brain.carried ? 1.07 : 1), anchor: .bottom)
+        .animation(.spring(response: 0.3, dampingFraction: 0.45), value: squash)
+        .animation(.easeOut(duration: 0.15), value: brain.carried)
+        .onChange(of: brain.landedAt) { _, _ in
+            guard onCarry != nil else { return }
+            squash = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) { squash = false }
+        }
         .contentShape(Circle())
         .onTapGesture { brain.pet() }
+        .gesture(DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            // Weitertragen übernimmt das Fenster selbst (folgt der Maus bis zum Loslassen)
+            .onChanged { _ in onCarry?() })
         // Datei auf Rüdiger ziehen → er lehnt ab (die Datei springt zurück)
         // Datei auf Rüdiger ziehen → er frisst sie und legt sie ins Ablagefach
         .linkDropTarget(isTargeted: $dropTargeted) { payloads in
@@ -741,10 +770,34 @@ struct CatSettingsSection: View {
                 Text("„Frech → schwarz“: anfangs frech – je mehr du ihn ignorierst oder nervst, desto schwärzer wird sein Humor.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if CatGeometry.make(store.config.settings, clockOn: store.config.settings.showClock) == nil {
-                    Text("Rüdiger sitzt im Viertelkreis zwischen Uhr und Leiste. Dafür muss die Uhr eingeschaltet sein und deutlich über die Leiste hinausragen (Uhr größer oder Leiste schmaler stellen).")
+            }
+        }
+        if store.config.settings.catEnabled {
+            Section("Platz") {
+                Picker("Rüdiger sitzt", selection: $store.config.settings.catFloating) {
+                    Text("In der Sidebar").tag(false)
+                    Text("Schwebend").tag(true)
+                }
+                .pickerStyle(.segmented)
+                if store.config.settings.catFloating {
+                    Toggle("Immer im Vordergrund", isOn: $store.config.settings.catFloatOnTop)
+                    Text(store.config.settings.catFloatOnTop
+                         ? "Rüdiger bleibt über allen Fenstern."
+                         : "Geöffnete Programme können Rüdiger verdecken – er bleibt dann im Hintergrund.")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
+                    Text("Rüdiger mit der Maus packen und irgendwo absetzen – auch auf einem anderen Bildschirm. Klickbar ist nur sein Kreis. Zurück in die Sidebar: auf den gestrichelten Kreis an der Uhr ziehen. Sein Platz bleibt gespeichert, auch nach einem Neustart.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Tipp: Rüdiger aus dem Viertelkreis herausziehen – dann schwebt er frei.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if CatGeometry.make(store.config.settings, clockOn: store.config.settings.showClock) == nil {
+                        Text("Rüdiger sitzt im Viertelkreis zwischen Uhr und Leiste. Dafür muss die Uhr eingeschaltet sein und deutlich über die Leiste hinausragen (Uhr größer oder Leiste schmaler stellen) – oder „Schwebend“ wählen.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
         }
@@ -757,7 +810,7 @@ struct CatSettingsSection: View {
                     HStack {
                         Button("Wecker ausprobieren") { alarmTestFailed = !CatBrain.shared.testAlarm() }
                         if alarmTestFailed {
-                            Text("Rüdiger ist gerade nicht zu sehen (Uhr aus oder Sidebar ausgeblendet).")
+                            Text("Rüdiger ist gerade nicht zu sehen (Uhr aus, Sidebar ausgeblendet oder kein Platz an der Uhr).")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }

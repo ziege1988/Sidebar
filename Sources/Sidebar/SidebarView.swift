@@ -126,8 +126,8 @@ struct SidebarView: View {
         let clockOn = settings.showClock && showContent
         let clockSize = clockOn ? ClockLayout.panelSize(settings) : .zero
         let clockAlong = vertical ? clockSize.height : clockSize.width
-        // Rüdiger: Viertelkreis zwischen Uhr und Leiste
-        let cat = CatGeometry.make(settings, clockOn: clockOn)
+        // Rüdiger: Viertelkreis zwischen Uhr und Leiste (schwebt er, hat die Uhr ihre normale Ecke)
+        let cat = settings.catFloating ? nil : CatGeometry.make(settings, clockOn: clockOn)
         // Uhr und Leiste: ein gemeinsamer Umriss, eine Glasfläche, ein Rand – ohne Kante dazwischen
         let outline = SidebarOutline(edge: edge, barCross: thickness,
                                      clockCross: vertical ? clockSize.width : clockSize.height,
@@ -155,6 +155,9 @@ struct SidebarView: View {
                                 let before = store.config.shelf.count
                                 _ = store.addToShelf(payloads)
                                 return store.config.shelf.count - before
+                            }, onCarry: {
+                                // Aus dem Viertelkreis herausziehen → schwebt frei
+                                FloatingCat.shared.beginCarry(fromDock: true)
                             })
                                 .frame(width: cat.diameter, height: cat.diameter)
                                 .position(cat.point(in: proxy.size, edge: edge))

@@ -298,6 +298,14 @@ struct SidebarSettings: Codable, Equatable {
     var catEndWeekdays: Bool = true
     /// Kommentare zum Akku
     var catBattery: Bool = true
+    /// Rüdiger schwebt frei auf dem Bildschirm (statt im Viertelkreis an der Uhr)
+    var catFloating: Bool = false
+    /// Mittelpunkt des schwebenden Rüdigers (Bildschirmkoordinaten) und sein Bildschirm
+    var catFloatX: Double?
+    var catFloatY: Double?
+    var catFloatScreenID: UInt32?
+    /// Schwebend immer über allen Fenstern (sonst können Programme ihn verdecken)
+    var catFloatOnTop: Bool = true
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
     var mailEnabled: Bool = false
     var mailClientID: String = ""
@@ -362,6 +370,11 @@ extension SidebarSettings {
         catEndMinute = try c.decodeIfPresent(Int.self, forKey: .catEndMinute) ?? catEndMinute
         catEndWeekdays = try c.decodeIfPresent(Bool.self, forKey: .catEndWeekdays) ?? catEndWeekdays
         catBattery = try c.decodeIfPresent(Bool.self, forKey: .catBattery) ?? catBattery
+        catFloating = try c.decodeIfPresent(Bool.self, forKey: .catFloating) ?? catFloating
+        catFloatX = try c.decodeIfPresent(Double.self, forKey: .catFloatX)
+        catFloatY = try c.decodeIfPresent(Double.self, forKey: .catFloatY)
+        catFloatScreenID = try c.decodeIfPresent(UInt32.self, forKey: .catFloatScreenID)
+        catFloatOnTop = try c.decodeIfPresent(Bool.self, forKey: .catFloatOnTop) ?? catFloatOnTop
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
         mailTenantID = try c.decodeIfPresent(String.self, forKey: .mailTenantID) ?? mailTenantID
