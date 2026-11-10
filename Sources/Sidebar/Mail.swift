@@ -1,5 +1,7 @@
 import AppKit
+import CryptoKit
 import Foundation
+import IOKit
 import Security
 import SwiftUI
 
@@ -12,6 +14,8 @@ import SwiftUI
 @MainActor
 final class MailWatcher: ObservableObject {
     static let shared = MailWatcher()
+    /// Der alte Schlüsselbund-Eintrag wurde schon (im Hintergrund) abgefragt
+    private var legacyChecked = false
 
     struct Mail: Identifiable, Equatable {
         let id: String
@@ -73,6 +77,18 @@ final class MailWatcher: ObservableObject {
         }
         if phase == .signedOut, MailKeychain.read() != nil {
             phase = .signedIn
+        } else if phase == .signedOut, !legacyChecked {
+            // Alter Eintrag im Schlüsselbund? Einmal im Hintergrund übernehmen (blockiert nie die Oberfläche)
+            legacyChecked = true
+            MailKeychain.migrateLegacy { found in
+                guard found else { return }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        let watcher = MailWatcher.shared
+                        watcher.apply(watcher.settings)
+                    }
+                }
+            }
         }
         if phase == .signedIn {
             startTimer()
@@ -335,42 +351,80 @@ final class MailWatcher: ObservableObject {
     }
 }
 
-/// Anmeldeschlüssel im macOS-Schlüsselbund (nur für die Sidebar lesbar).
+/// Anmeldeschlüssel für das Postfach.
+///
+/// Er liegt verschlüsselt (AES-GCM, Schlüssel aus der Hardware-Kennung dieses Macs) in einer Datei, die nur du lesen
+/// kannst. Früher lag er im Schlüsselbund – nach jedem Update fragte macOS dort neu nach, und die Abfrage hielt die
+/// Sidebar beim Start an („Programm reagiert nicht“). Ein alter Eintrag im Schlüsselbund wird einmal im Hintergrund
+/// übernommen und gelöscht; die Sidebar bleibt dabei bedienbar.
 enum MailKeychain {
     private static let service = "app.sidebar.Sidebar.mail"
     private static let account = "microsoft-refresh-token"
 
-    static func save(_ value: String) {
-        let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        let update = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if update == errSecItemNotFound {
-            var item = query
-            item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            SecItemAdd(item as CFDictionary, nil)
-        }
+    private static var fileURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Sidebar", isDirectory: true).appendingPathComponent("mail-token")
     }
 
+    private static var key: SymmetricKey {
+        var uuid = "sidebar-fallback"
+        let entry = IORegistryEntryFromPath(kIOMainPortDefault, "IOService:/")
+        if entry != 0 {
+            if let value = IORegistryEntryCreateCFProperty(entry, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? String {
+                uuid = value
+            }
+            IOObjectRelease(entry)
+        }
+        return SymmetricKey(data: SHA256.hash(data: Data((uuid + "|" + service).utf8)))
+    }
+
+    static var hasToken: Bool { FileManager.default.fileExists(atPath: fileURL.path) }
+
+    static func save(_ value: String) {
+        guard let sealed = try? AES.GCM.seal(Data(value.utf8), using: key).combined else { return }
+        let url = fileURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? sealed.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Liest nur die Datei – nie den Schlüsselbund (der kann blockieren).
     static func read() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard let data = try? Data(contentsOf: fileURL),
+              let box = try? AES.GCM.SealedBox(combined: data),
+              let plain = try? AES.GCM.open(box, using: key) else { return nil }
+        return String(data: plain, encoding: .utf8)
     }
 
     static func delete() {
+        try? FileManager.default.removeItem(at: fileURL)
+        DispatchQueue.global().async { legacyDelete() }
+    }
+
+    /// Alten Eintrag aus dem Schlüsselbund holen (im Hintergrund – hier kann macOS nachfragen).
+    static func migrateLegacy(completion: @escaping @Sendable (Bool) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ]
+            var result: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+               let data = result as? Data, let token = String(data: data, encoding: .utf8) {
+                save(token)
+                legacyDelete()
+                completion(true)
+            } else {
+                completion(false)
+            }
+        }
+    }
+
+    private static func legacyDelete() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
