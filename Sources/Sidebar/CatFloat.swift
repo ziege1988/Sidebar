@@ -113,8 +113,14 @@ final class FloatingCat {
         let level: NSWindow.Level = s.catFloatOnTop ? .floating : .normal
         if panel.level != level { panel.level = level }
         if !panel.isVisible {
+            // weich einblenden
             place(at: savedCenter(s))
+            panel.alphaValue = 0
             panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                self.panel.animator().alphaValue = 1
+            }
         }
 
         let mouse = NSEvent.mouseLocation
@@ -152,6 +158,7 @@ final class FloatingCat {
             installContent()
             place(at: center)
             store.config.settings.catFloating = true
+            panel.alphaValue = 1
             panel.orderFrontRegardless()
         }
         guard let rect = catRect ?? center.map({ NSRect(x: $0.x - 1, y: $0.y - 1, width: 2, height: 2) }) else { return }
@@ -165,7 +172,19 @@ final class FloatingCat {
         guard let store else { return }
         endCarry()
         var s = store.config.settings
-        if docked {
+        if docked, let dock = dockRect?() {
+            // In seinen Platz an der Uhr gleiten, dann dort einrasten
+            let side = panel.frame.width
+            let target = NSRect(x: dock.midX - side / 2, y: dock.midY - side / 2, width: side, height: side)
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.panel.animator().setFrame(target, display: true)
+            }, completionHandler: {
+                MainActor.assumeIsolated { store.config.settings.catFloating = false }
+            })
+            return
+        } else if docked {
             s.catFloating = false
         } else {
             // Ganz auf den Bildschirm unter der Maus holen

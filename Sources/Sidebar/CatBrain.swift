@@ -772,6 +772,7 @@ struct CatView: View {
         .help("Rüdiger – klicken zum Streicheln")
         // Sitzt er am Lehrer-Blatt, ist sein Platz leer
         .opacity(brain.teaching ? 0 : 1)
+        .animation(.easeInOut(duration: 0.2), value: brain.teaching)
         .allowsHitTesting(!brain.teaching)
         // Knopf „Text prüfen“ – nur bei Maus in der Nähe
         .overlay {
@@ -850,11 +851,11 @@ struct CatSettingsSection: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Tipp: Rüdiger aus dem Viertelkreis herausziehen – dann schwebt er frei.")
+                    Text("Tipp: Rüdiger von seinem Platz an der Uhr wegziehen – dann schwebt er frei.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if CatGeometry.make(store.config.settings, clockOn: store.config.settings.showClock) == nil {
-                        Text("Rüdiger sitzt im Viertelkreis zwischen Uhr und Leiste. Dafür muss die Uhr eingeschaltet sein und deutlich über die Leiste hinausragen (Uhr größer oder Leiste schmaler stellen) – oder „Schwebend“ wählen.")
+                        Text("Rüdiger sitzt im Bogen zwischen Uhr und Leiste. Dafür muss die Uhr eingeschaltet sein und deutlich über die Leiste hinausragen (Uhr größer oder Leiste schmaler stellen) – oder „Schwebend“ wählen.")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }

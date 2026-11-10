@@ -662,6 +662,8 @@ private struct HomeworkView: View {
     let onNote: () -> Void
     let onMove: (CGSize, Bool) -> Void
     @ObservedObject private var power = PowerState.shared
+    /// Blatt klappt aus Rüdigers Ecke auf
+    @State private var appeared = false
 
     private static let dateText: String = {
         let f = DateFormatter()
@@ -676,13 +678,19 @@ private struct HomeworkView: View {
         ZStack(alignment: .topLeading) {
             sheet
                 .frame(width: paper.width, height: paper.height)
+                .scaleEffect(appeared ? 1 : 0.9, anchor: layout.right ? .topTrailing : .topLeading)
+                .opacity(appeared ? 1 : 0)
                 .offset(x: origin.x, y: origin.y)
             bubble
+                .opacity(appeared ? 1 : 0)
             cat
                 .frame(width: HomeworkLayout.diameter, height: HomeworkLayout.diameter)
                 .position(layout.catCenter)
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
+        .onAppear {
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) { appeared = true }
+        }
     }
 
     // Blatt
@@ -1000,16 +1008,30 @@ final class HomeworkController {
         CatBubbleController.shared.hide()
         CatBrain.shared.teaching = true
         NSApp.activate()
+        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            panel.animator().alphaValue = 1
+        }
     }
 
     func close() {
-        panel?.orderOut(nil)
-        panel?.contentView = nil
+        guard let closing = panel else { return }
         panel = nil
         model = nil
         dragStart = nil
         CatBrain.shared.teaching = false
+        // weich ausblenden, dann aufräumen
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.14
+            closing.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                closing.orderOut(nil)
+                closing.contentView = nil
+            }
+        })
     }
 
     private func saveToNote() {

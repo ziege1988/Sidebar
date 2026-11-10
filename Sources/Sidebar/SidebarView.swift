@@ -126,12 +126,12 @@ struct SidebarView: View {
         let clockOn = settings.showClock && showContent
         let clockSize = clockOn ? ClockLayout.panelSize(settings) : .zero
         let clockAlong = vertical ? clockSize.height : clockSize.width
-        // Rüdiger: Viertelkreis zwischen Uhr und Leiste (schwebt er, hat die Uhr ihre normale Ecke)
+        // Rüdiger: in der Mulde des Bogens zwischen Uhr und Leiste (der Umriss bleibt gleich, wenn er schwebt)
         let cat = settings.catFloating ? nil : CatGeometry.make(settings, clockOn: clockOn)
         // Uhr und Leiste: ein gemeinsamer Umriss, eine Glasfläche, ein Rand – ohne Kante dazwischen
         let outline = SidebarOutline(edge: edge, barCross: thickness,
                                      clockCross: vertical ? clockSize.width : clockSize.height,
-                                     clockAlong: clockAlong, catRadius: cat?.radius ?? 0)
+                                     clockAlong: clockAlong)
         Group {
             if showContent {
                 ZStack {
@@ -162,13 +162,14 @@ struct SidebarView: View {
                                 .frame(width: cat.diameter, height: cat.diameter)
                                 .position(cat.point(in: proxy.size, edge: edge))
                         }
+                        // weich in die Mulde hinein und heraus
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
                 }
                 // Glasrand nur auf den Seiten zum Bildschirminneren, nicht am Bildschirmrand
                 .overlay(GlassRim(shape: SidebarOutline(edge: edge, barCross: thickness,
                                                         clockCross: vertical ? clockSize.width : clockSize.height,
-                                                        clockAlong: clockAlong, closed: false,
-                                                        catRadius: cat?.radius ?? 0),
+                                                        clockAlong: clockAlong, closed: false),
                                   intensity: glass, clip: AnyShape(outline)))
             } else {
                 // Automatisch ausgeblendet: nur ein dezenter Rand als Auslöser.
@@ -176,6 +177,7 @@ struct SidebarView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: settings.catFloating)
         .coordinateSpace(name: "bar")
         .onPreferenceChange(GroupFramesKey.self) { frames in
             geometry.groupFrames = frames

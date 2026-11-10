@@ -5,7 +5,7 @@ import SwiftUI
 
 // MARK: - Rüdiger, die Bürokatze
 //
-// Sitzt in einem runden Fenster im Viertelkreis zwischen Uhr und Leiste. Schläft, wenn nichts los ist,
+// Sitzt in einem runden Fenster in der Mulde des Bogens zwischen Uhr und Leiste. Schläft, wenn nichts los ist,
 // will ab und zu gestreichelt werden, wird ungemütlich, wenn man sie ignoriert, und kommentiert
 // neue Nachrichten. Alles lokal – keine Internetverbindung, keine KI.
 
@@ -13,30 +13,28 @@ import SwiftUI
 
 /// Wo das Katzenfenster sitzt. Gerechnet wie der Umriss: c = quer zur Kante, a = entlang der Kante.
 struct CatGeometry {
-    /// Radius des Viertelkreises zwischen Uhr und Leiste
-    let radius: CGFloat
     let centerCross: CGFloat
     let centerAlong: CGFloat
     let diameter: CGFloat
 
-    static let fillet: CGFloat = 10
-
+    /// Rüdiger sitzt frei in der Mulde des Bogens zwischen Uhr und Leiste.
     static func make(_ s: SidebarSettings, clockOn: Bool) -> CatGeometry? {
         guard s.catEnabled, clockOn else { return nil }
         let size = ClockLayout.panelSize(s)
-        let vertical = s.edge.isVertical
-        let clockCross = vertical ? size.width : size.height
-        let clockAlong = vertical ? size.height : size.width
-        let bar = CGFloat(s.collapsedThickness)
-        let radius = clockCross - bar
-        // Die Uhr muss deutlich über die Leiste hinausragen, sonst ist kein Platz für die Katze
-        guard radius >= 80 else { return nil }
-        let q = radius - fillet
-        let inner = q / (1 + 2.squareRoot())
-        return CatGeometry(radius: radius,
-                           centerCross: bar + fillet + inner,
-                           centerAlong: clockAlong + inner,
-                           diameter: 2 * inner - 6)
+        guard abs(size.width - size.height) < 1,
+              let sweep = ClockSweep.make(clock: size.width, bar: CGFloat(s.collapsedThickness)) else { return nil }
+        // Größe folgt dem Bogen; ist die Mulde zu klein, ist dort kein Platz für ihn
+        let diameter = min(96, 0.8 * sweep.radius)
+        guard diameter >= 56 else { return nil }
+        // Mitte: vom Mittelpunkt des Bogens zur Mitte der Mulde hin (zwischen Leiste und Uhr)
+        var bx = -1 - sweep.direction.x, by = -sweep.direction.y
+        let length = max((bx * bx + by * by).squareRoot(), 0.001)
+        bx /= length
+        by /= length
+        let distance = sweep.radius - diameter / 2 - 7
+        return CatGeometry(centerCross: sweep.center.x + bx * distance,
+                           centerAlong: sweep.center.y + by * distance,
+                           diameter: diameter)
     }
 
     /// Mittelpunkt im Fenster der Leiste (Ursprung oben links)

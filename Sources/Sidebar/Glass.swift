@@ -113,6 +113,42 @@ struct GlassRim<S: Shape>: View {
 
 /// Gemeinsamer Umriss von Uhr und Leiste: ein Stück, mit weich gerundetem Übergang („Schulter“).
 /// Gerechnet wird für die linke Kante und dann für die anderen Kanten gespiegelt/gedreht.
+///
+/// Die Uhr sitzt in einer runden Fassung (Kreis um das Zifferblatt), die mit einem langen, nach innen
+/// gewölbten Bogen in die Leiste ausläuft. In der Mulde dieses Bogens sitzt Rüdiger.
+
+/// Geometrie des Bogens zwischen Uhr und Leiste (c = quer zur Kante, a = entlang der Kante)
+struct ClockSweep {
+    /// Radius der runden Fassung um die Uhr (Mittelpunkt bei c = a = radius)
+    let lobe: CGFloat
+    /// Radius des Bogens
+    let radius: CGFloat
+    /// Mittelpunkt des Bogens
+    let center: CGPoint
+    /// Hier berührt der Bogen die Fassung
+    let touch: CGPoint
+    /// Richtung von der Mitte der Uhr zum Mittelpunkt des Bogens
+    let direction: CGPoint
+    /// Hier läuft der Bogen in die Leiste aus (c = Leistenbreite)
+    var end: CGFloat { center.y }
+
+    /// `nil`, wenn die Uhr nicht (deutlich) über die Leiste hinausragt
+    static func make(clock size: CGFloat, bar t: CGFloat) -> ClockSweep? {
+        let over = size - t
+        guard over > 6 else { return nil }
+        // Bogen wächst mit der Uhr – bei großen Uhren langsamer, damit er nicht die halbe Leiste belegt
+        let f = min(150, over <= 110 ? 0.95 * over : 104.5 + 0.45 * (over - 110))
+        let r = size / 2
+        let reach = r + f
+        let dc = t + f - r
+        let af = r + (reach * reach - dc * dc).squareRoot()
+        let u = CGPoint(x: dc / reach, y: (af - r) / reach)
+        guard u.y > 0.05 else { return nil }
+        return ClockSweep(lobe: r, radius: f, center: CGPoint(x: t + f, y: af),
+                          touch: CGPoint(x: r + r * u.x, y: r + r * u.y), direction: u)
+    }
+}
+
 struct SidebarOutline: Shape {
     let edge: ScreenEdge
     /// Breite der Leiste (quer zur Kante)
@@ -125,8 +161,6 @@ struct SidebarOutline: Shape {
     var clockRadius: CGFloat = 16
     /// `false`: Umriss ohne die Seite am Bildschirmrand (für den Glasrand)
     var closed = true
-    /// Viertelkreis zwischen Uhr und Leiste (für Rüdiger), 0 = keiner
-    var catRadius: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
         let length = edge.isVertical ? rect.height : rect.width
@@ -160,13 +194,15 @@ struct SidebarOutline: Shape {
             let fillet = min(10, (cw - t) / 2)
             start(at: map(cw - rc, 0))
             path.addArc(tangent1End: map(cw, 0), tangent2End: map(cw, rc), radius: rc)
-            let cat = catRadius
-            if cat > CatGeometry.fillet * 2, abs(cat - (cw - t)) < 1, cl + cat < length - r {
-                // Uhr → Viertelkreis (Rüdigers Platz) → Leiste, ohne Kante
-                let q = cat - CatGeometry.fillet
-                path.addLine(to: map(cw, cl))
-                path.addArc(tangent1End: map(cw, cl + q), tangent2End: map(cw - q, cl + q), radius: q)
-                path.addArc(tangent1End: map(t, cl + q), tangent2End: map(t, cl + cat), radius: CatGeometry.fillet)
+            if abs(cw - cl) < 1, let sweep = ClockSweep.make(clock: cw, bar: t), sweep.end < length - r - 4 {
+                // Runde Fassung um die Uhr → langer Bogen → Leiste
+                let u = sweep.direction, e = sweep.touch
+                path.addLine(to: map(cw, sweep.lobe))
+                // Schnittpunkte der Tangenten (Fassung unten / Berührpunkt / Leistenkante)
+                let p = e.y - (cw - e.x) * u.x / u.y
+                path.addArc(tangent1End: map(cw, p), tangent2End: map(e.x, e.y), radius: sweep.lobe)
+                let q = e.y - (t - e.x) * u.x / u.y
+                path.addArc(tangent1End: map(t, q), tangent2End: map(t, sweep.end), radius: sweep.radius)
             } else {
                 path.addLine(to: map(cw, cl - rc))
                 path.addArc(tangent1End: map(cw, cl), tangent2End: map(cw - rc, cl), radius: rc)

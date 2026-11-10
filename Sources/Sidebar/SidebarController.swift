@@ -683,7 +683,13 @@ final class SidebarController {
     private func updateClickThrough(mouse: NSPoint, settings: SidebarSettings, tracking: Bool) {
         guard !tracking else { return }
         let inStrip = stripFrame(for: settings).insetBy(dx: -2, dy: -2).contains(mouse)
-        let inClock = clockRect(for: settings)?.insetBy(dx: -2, dy: -2).contains(mouse) ?? false
+        // Uhr: nur die runde Fassung zählt – die Ecke daneben ist durchsichtig und lässt Klicks durch
+        var inClock = false
+        if let clock = clockRect(for: settings), clock.insetBy(dx: -2, dy: -2).contains(mouse) {
+            let round = abs(clock.width - clock.height) < 1
+                && ClockSweep.make(clock: clock.width, bar: CGFloat(settings.collapsedThickness)) != nil
+            inClock = !round || hypot(mouse.x - clock.midX, mouse.y - clock.midY) <= clock.width / 2 + 2
+        }
         let inCat = !settings.catFloating && ((catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
                                               || (homeworkBadgeRect()?.contains(mouse) ?? false))
         let ignore = !(inStrip || inClock || inCat)
