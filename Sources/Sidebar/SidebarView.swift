@@ -342,7 +342,7 @@ struct SidebarView: View {
             // Favoriten (max. 10)
             ForEach(store.config.favorites) { item in
                 FavoriteCell(item: item, iconSize: metrics.icon, cellSize: cellSize,
-                             store: store, actions: actions)
+                             fade: settings.iconFade, store: store, actions: actions)
                     .modifier(HoverScale(active: hovered == "fav:\(item.id)", scale: maxScale))
             }
             if showFavoriteSlot {
@@ -538,6 +538,8 @@ struct FavoriteCell: View {
     let item: LinkItem
     let iconSize: CGFloat
     let cellSize: CGSize
+    /// Verblassen der Icons – als eigener Wert, damit sich die Zelle beim Verschieben des Reglers neu zeichnet
+    let fade: Double
     let store: ConfigStore
     let actions: SidebarActions
     @State private var targeted = false
@@ -552,9 +554,9 @@ struct FavoriteCell: View {
         } label: {
             FaviconView(item: item, size: iconSize)
                 // Verblassen: entsättigen, in den Ton der Farbwelt färben, etwas durchsichtiger
-                .saturation(1 - store.config.settings.iconFade)
-                .colorMultiply(Palette.fadeTint(theme, scheme, amount: store.config.settings.iconFade))
-                .opacity(1 - 0.25 * store.config.settings.iconFade)
+                .saturation(1 - fade)
+                .colorMultiply(Palette.fadeTint(theme, scheme, amount: fade))
+                .opacity(1 - 0.25 * fade)
                 .overlay(alignment: .topTrailing) {
                     BadgeView(count: badges.count(for: item))
                         .offset(x: 6, y: -5)

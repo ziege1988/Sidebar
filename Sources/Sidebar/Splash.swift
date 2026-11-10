@@ -11,8 +11,6 @@ final class SplashController {
     static let shared = SplashController()
     private var panel: NSPanel?
 
-    /// Läuft der Mac schon länger als 10 Minuten, ist das ein Neustart der Sidebar (kein Hochfahren).
-    static var isAppRestart: Bool { ProcessInfo.processInfo.systemUptime > 600 }
 
     func show(settings: SidebarSettings, version: String) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }

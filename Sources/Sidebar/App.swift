@@ -41,9 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store = ConfigStore.shared
         NSApp.setActivationPolicy(.accessory)
         installMainMenu()
-        // Startbild bei einem Neustart der Sidebar (nicht beim Hochfahren des Macs)
-        if SplashController.isAppRestart {
-            SplashController.shared.show(settings: store.config.settings, version: Updater.shared.currentVersion)
+        // Startbild bei jedem Start der Sidebar (auch nach dem Hochfahren und nach einem Update)
+        // (kurz warten, damit nach dem Hochfahren Bildschirm und Menüleiste bereit sind)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self else { return }
+            SplashController.shared.show(settings: self.store.config.settings, version: Updater.shared.currentVersion)
         }
 
         let actions = SidebarActions(
