@@ -9,7 +9,9 @@ import CoreGraphics
 //
 // Damit danach sicher alles wieder anläuft, wird der Zustand nicht nur aus Meldungen von macOS abgeleitet
 // (die können verloren gehen), sondern alle 2 Sekunden direkt nachgefragt. Fällt eine Meldung aus,
-// läuft spätestens nach 2 Sekunden wieder alles.
+// läuft spätestens nach 2 Sekunden wieder alles. Der Bildschirmschoner gilt nur so lange als aktiv,
+// wie niemand Maus oder Tastatur benutzt (sein Hilfsprozess läuft auf manchen Systemen einfach weiter –
+// darauf darf man sich nicht verlassen).
 
 @MainActor
 final class PowerState: ObservableObject {
@@ -19,6 +21,8 @@ final class PowerState: ObservableObject {
     @Published private(set) var paused = false
 
     private var timer: Timer?
+    /// Bildschirmschoner läuft (laut Meldung von macOS)
+    private var screensaver = false
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
     private init() {}
@@ -43,6 +47,8 @@ final class PowerState: ObservableObject {
             let token = distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 // Die Meldung kommt manchmal minimal vor dem neuen Zustand – kurz danach noch einmal prüfen
                 MainActor.assumeIsolated {
+                    if name == "com.apple.screensaver.didstart" { self?.screensaver = true }
+                    if name == "com.apple.screensaver.didstop" { self?.screensaver = false }
                     self?.refresh()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self?.refresh() }
                 }
@@ -59,11 +65,19 @@ final class PowerState: ObservableObject {
     }
 
     func refresh() {
-        let now = Self.nobodyWatching()
+        // Sobald jemand Maus oder Tastatur benutzt, läuft kein Bildschirmschoner mehr –
+        // so bleibt die Sidebar nie hängen, auch wenn die Meldung „beendet“ ausbleibt.
+        if screensaver && Self.secondsSinceInput() < 3 { screensaver = false }
+        let now = Self.nobodyWatching(screensaver: screensaver)
         if paused != now { paused = now }
     }
 
-    private static func nobodyWatching() -> Bool {
+    private static func secondsSinceInput() -> Double {
+        let types: [CGEventType] = [.mouseMoved, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
+        return types.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min() ?? 0
+    }
+
+    private static func nobodyWatching(screensaver: Bool) -> Bool {
         var locked = false
         var onConsole = true
         if let session = CGSessionCopyCurrentDictionary() as? [String: Any] {
@@ -73,8 +87,6 @@ final class PowerState: ObservableObject {
         // Alle Bildschirme schlafen (bei einem einzelnen wachen Bildschirm läuft alles weiter)
         let displays = NSScreen.screens.compactMap(\.displayID)
         let displaysAsleep = !displays.isEmpty && displays.allSatisfy { CGDisplayIsAsleep($0) != 0 }
-        let screensaver = NSWorkspace.shared.runningApplications
-            .contains { $0.bundleIdentifier == "com.apple.ScreenSaver.Engine" }
         return locked || !onConsole || displaysAsleep || screensaver
     }
 }
