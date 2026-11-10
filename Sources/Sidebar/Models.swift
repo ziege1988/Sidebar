@@ -258,6 +258,8 @@ struct SidebarSettings: Codable, Equatable {
     /// Interne Version der Einstellungen (für einmalige Anpassungen nach Updates)
     var revision: Int = 1
     var clockShowSeconds: Bool = true
+    /// Datum als Klapptafeln im unteren Teil der Uhr
+    var clockShowDate: Bool = true
     /// KI- und Google-Knopf oben in der Leiste
     var showSearch: Bool = true
     var aiTarget: AITarget = .sidePanel
@@ -350,6 +352,7 @@ extension SidebarSettings {
         clockSize = try c.decodeIfPresent(Double.self, forKey: .clockSize) ?? clockSize
         revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
+        clockShowDate = try c.decodeIfPresent(Bool.self, forKey: .clockShowDate) ?? clockShowDate
         showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
         aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget
         aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider) ?? aiProvider
