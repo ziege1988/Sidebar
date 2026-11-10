@@ -8,6 +8,11 @@ on:
       - 'docs/**'
   pull_request:
   workflow_dispatch:
+    inputs:
+      adhoc:
+        description: 'Testbau mit einfacher Signatur (ohne eigenes Zertifikat) als Vorabversion veröffentlichen'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,6 +32,7 @@ jobs:
       # Eigenes Signatur-Zertifikat (GitHub-Secret SIGNING_CERT_P12, base64-codierte .p12-Datei).
       # Fehlt es, wird wie bisher ad-hoc signiert.
       - name: Signatur-Zertifikat laden
+        if: ${{ !inputs.adhoc }}
         env:
           SIGNING_CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
         run: |
@@ -82,4 +88,16 @@ jobs:
           gh release create "v$VERSION" build/Sidebar.zip \
             --title "Sidebar $VERSION" \
             --notes "$NOTES" \
+            --target "$GITHUB_SHA"
+
+      # Testbau ohne eigenes Zertifikat: Vorabversion (erscheint nicht als „neueste“ Version, löst also keine Updates aus)
+      - name: Testbau (einfache Signatur) veröffentlichen
+        if: github.event_name == 'workflow_dispatch' && inputs.adhoc
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION-adhoc" build/Sidebar.zip \
+            --prerelease \
+            --title "Sidebar $VERSION (Test, einfache Signatur)" \
+            --notes "Testbau ohne eigenes Zertifikat, nur zum Prüfen." \
             --target "$GITHUB_SHA"
