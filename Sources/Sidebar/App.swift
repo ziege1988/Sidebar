@@ -91,6 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         CatBrain.shared.locate = { [weak self] in self?.sidebar?.catLocation() }
         // Gesperrt / Bildschirmschoner / Displays aus → pausieren, danach automatisch weiter
         PowerState.shared.start()
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil,
+                                                          queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemShutdown = true }
+        }
         setupStatusItem()
 
         Updater.shared.startAutomaticChecks { [weak self] in
@@ -149,10 +153,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var quitting = false
+    /// Mac fährt herunter, startet neu oder meldet ab → Rüdiger verabschiedet sich nicht
+    private var systemShutdown = false
 
     /// Beim Beenden verabschiedet sich Rüdiger noch abfällig – dann schließt die App.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if quitting || Updater.restarting { return .terminateNow }
+        // Abschied nur, wenn du die Sidebar selbst beendest – nicht beim Update, Herunterfahren, Neustart, Abmelden
+        if quitting || Updater.restarting || systemShutdown { return .terminateNow }
         guard CatBrain.shared.sayGoodbye() else { return .terminateNow }
         quitting = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) {

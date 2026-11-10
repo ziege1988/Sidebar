@@ -551,6 +551,10 @@ struct FavoriteCell: View {
             actions.open(item, nil)
         } label: {
             FaviconView(item: item, size: iconSize)
+                // Verblassen: entsättigen, in den Ton der Farbwelt färben, etwas durchsichtiger
+                .saturation(1 - store.config.settings.iconFade)
+                .colorMultiply(Palette.fadeTint(theme, scheme, amount: store.config.settings.iconFade))
+                .opacity(1 - 0.25 * store.config.settings.iconFade)
                 .overlay(alignment: .topTrailing) {
                     BadgeView(count: badges.count(for: item))
                         .offset(x: 6, y: -5)

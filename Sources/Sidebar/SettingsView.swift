@@ -239,6 +239,12 @@ struct GeneralSettingsView: View {
                     Text("0 % = deckend. Je höher, desto mehr scheint der Hintergrund unscharf durch – die Farbe der Sidebar bleibt immer erkennbar.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    LabeledContent("Icons verblassen: \(Int((store.config.settings.iconFade * 100).rounded())) %") {
+                        Slider(value: $store.config.settings.iconFade, in: 0...1, step: 0.05)
+                    }
+                    Text("Entsättigt die Favoriten-Icons und färbt sie im Ton der gewählten Farbwelt. Die roten Zahlen für neue Nachrichten bleiben farbig.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text("Hell: Pastellton der Farbwelt · Dunkel: Graphit mit Pastell-Akzent. „Automatisch“ wechselt mit dem macOS-Modus.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

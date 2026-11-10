@@ -144,6 +144,13 @@ struct Palette {
     }
 
     /// Mischt zwei Farben (0 = a, 1 = b).
+    /// Färbung für verblasste Icons: weiß, mit dem Ton der Farbwelt vermischt (wird mit dem entsättigten Icon multipliziert)
+    static func fadeTint(_ theme: ColorTheme, _ scheme: ColorScheme, amount: Double) -> Color {
+        let tones = theme.tones
+        let accent = scheme == .dark ? tones.darkAccent : tones.accent
+        return Color(hex: mix(0xFFFFFF, accent, min(max(amount, 0), 1) * 0.6))
+    }
+
     static func mix(_ a: UInt32, _ b: UInt32, _ t: Double) -> UInt32 {
         func channel(_ shift: UInt32) -> UInt32 {
             let ca = Double((a >> shift) & 0xFF)
