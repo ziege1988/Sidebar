@@ -44,8 +44,7 @@ struct ClockFace: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            AnalogClock(date: context.date, showSeconds: settings.clockShowSeconds,
-                        showDate: settings.clockShowDate, palette: palette)
+            AnalogClock(date: context.date, showSeconds: settings.clockShowSeconds, palette: palette)
         }
         .frame(width: CGFloat(settings.clockSize), height: CGFloat(settings.clockSize))
         .contentShape(Circle())
@@ -62,7 +61,6 @@ struct ClockFace: View {
 struct AnalogClock: View {
     let date: Date
     let showSeconds: Bool
-    var showDate = false
     let palette: Palette
 
     var body: some View {
@@ -137,55 +135,6 @@ struct AnalogClock: View {
                 let outer = point(fraction, radius * 0.87)
                 line(inner, outer, width: max(1.4, radius * 0.034), color: Palette.goldDark)
                 line(inner, outer, width: max(0.8, radius * 0.022), color: Palette.gold)
-            }
-
-            // Datum: drei kleine Klapptafeln (Tag / Monat / Jahr) zwischen Uhrmitte und unteren Stundenstrichen
-            if showDate && radius >= 40 {
-                let day = Calendar.current.dateComponents([.day, .month, .year], from: date)
-                let texts = [String(format: "%02d", day.day ?? 1), String(format: "%02d", day.month ?? 1),
-                             String(format: "%02d", (day.year ?? 2000) % 100)]
-                let h = radius * 0.18
-                let w = h * 0.98
-                let gap = h * 0.42
-                let total = w * 3 + gap * 2
-                let top = center.y + radius * 0.26
-                var x = center.x - total / 2
-                let fontSize = h * 0.66
-                let font = Font.custom("AvenirNextCondensed-Regular", size: fontSize)
-                let mid = top + h / 2
-                context.drawLayer { layer in
-                    layer.opacity = 0.78
-                    for (index, text) in texts.enumerated() {
-                        let r = h * 0.09
-                        let upper = Path(roundedRect: CGRect(x: x, y: top, width: w, height: h / 2), cornerRadius: r)
-                        let lower = Path(roundedRect: CGRect(x: x, y: mid, width: w, height: h / 2), cornerRadius: r)
-                        layer.fill(upper, with: .linearGradient(
-                            Gradient(colors: [Color(hex: 0x3B3C3F), Color(hex: 0x2D2E30)]),
-                            startPoint: CGPoint(x: x, y: top), endPoint: CGPoint(x: x, y: mid)))
-                        layer.fill(lower, with: .linearGradient(
-                            Gradient(colors: [Color(hex: 0x262729), Color(hex: 0x303134)]),
-                            startPoint: CGPoint(x: x, y: mid), endPoint: CGPoint(x: x, y: top + h)))
-                        layer.stroke(Path(roundedRect: CGRect(x: x, y: top, width: w, height: h), cornerRadius: r),
-                                     with: .color(Color(hex: 0x151618)), lineWidth: max(0.5, h * 0.025))
-                        layer.draw(context.resolve(Text(text).font(font).foregroundColor(Color(hex: 0xF1EFE9))),
-                                   at: CGPoint(x: x + w / 2, y: mid + h * 0.02), anchor: .center)
-                        line(CGPoint(x: x, y: mid), CGPoint(x: x + w, y: mid), width: max(0.5, h * 0.03),
-                             color: Color(hex: 0x141517))
-                        // Scharnier-Klammern an den Seiten
-                        let cw = h * 0.08, ch = h * 0.2
-                        for sx in [x - cw * 0.7, x + w - cw * 0.3] {
-                            layer.fill(Path(roundedRect: CGRect(x: sx, y: mid - ch / 2, width: cw, height: ch),
-                                            cornerRadius: cw * 0.4), with: .color(Color(hex: 0x1D1E20)))
-                        }
-                        x += w
-                        if index < 2 {
-                            layer.draw(context.resolve(Text("/").font(Font.custom("AvenirNextCondensed-Regular", size: h * 0.7))
-                                                        .foregroundColor(Color(hex: 0x3A3B3E))),
-                                       at: CGPoint(x: x + gap / 2, y: mid), anchor: .center)
-                            x += gap
-                        }
-                    }
-                }
             }
 
             // Zeiger

@@ -259,7 +259,6 @@ struct GeneralSettingsView: View {
                             Slider(value: $store.config.settings.clockSize, in: 64...220, step: 4)
                         }
                         Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
-                        Toggle("Datum als Klapptafeln", isOn: $store.config.settings.clockShowDate)
                     }
                     Text("Klick auf die Uhr öffnet den Kalender.")
                         .font(.caption)
