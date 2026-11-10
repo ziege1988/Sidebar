@@ -263,14 +263,28 @@ final class Updater: ObservableObject {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", script, "sidebar-update", target.path, staged.path, cleanup.path]
         try process.run()
+        // Sofort und sicher beenden: ohne Rüdigers Abschied, und falls das Beenden aus irgendeinem Grund
+        // hängen bleibt, nach 4 Sekunden hart – sonst wartet das Hilfsskript ewig („wird installiert“).
+        Self.restarting = true
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) { exit(0) }
         NSApp.terminate(nil)
     }
+
+    /// Die App wird gerade für ein Update beendet (kein Abschied, kein Warten)
+    nonisolated(unsafe) static var restarting = false
 
     nonisolated private static func run(_ path: String, _ arguments: [String]) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = arguments
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            // Bleibt ein Schritt hängen, nach 2 Minuten abbrechen – dann gibt es eine Fehlermeldung statt Stillstand
+            DispatchQueue.global().asyncAfter(deadline: .now() + 120) {
+                if process.isRunning { process.terminate() }
+            }
             process.terminationHandler = { proc in
                 if proc.terminationStatus == 0 {
                     continuation.resume()

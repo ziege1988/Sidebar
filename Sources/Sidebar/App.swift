@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Beim Beenden verabschiedet sich Rüdiger noch abfällig – dann schließt die App.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if quitting { return .terminateNow }
+        if quitting || Updater.restarting { return .terminateNow }
         guard CatBrain.shared.sayGoodbye() else { return .terminateNow }
         quitting = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) {
