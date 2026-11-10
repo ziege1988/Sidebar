@@ -317,6 +317,8 @@ final class HomeworkModel: ObservableObject {
     @Published var speech: String
     @Published var style: CatBubbleStyle = .normal
     @Published var language = "de"
+    /// Blatt ist aufgeklappt (steuert Auf- und Zuklappen)
+    @Published var shown = false
     var ignored: Set<String> = []
     weak var textView: TeacherTextView?
     private var recheckWork: DispatchWorkItem?
@@ -662,8 +664,6 @@ private struct HomeworkView: View {
     let onNote: () -> Void
     let onMove: (CGSize, Bool) -> Void
     @ObservedObject private var power = PowerState.shared
-    /// Blatt klappt aus Rüdigers Ecke auf
-    @State private var appeared = false
 
     private static let dateText: String = {
         let f = DateFormatter()
@@ -676,21 +676,29 @@ private struct HomeworkView: View {
         let paper = HomeworkLayout.paper
         let origin = layout.paperOrigin
         ZStack(alignment: .topLeading) {
+            // Das Blatt entfaltet sich langsam aus der Ecke bei Rüdiger: erst wächst es leicht gedreht heraus,
+            // dann blendet der Inhalt ein, zuletzt poppt die Sprechblase auf.
+            let corner: UnitPoint = layout.right ? .topTrailing : .topLeading
             sheet
                 .frame(width: paper.width, height: paper.height)
-                .scaleEffect(appeared ? 1 : 0.9, anchor: layout.right ? .topTrailing : .topLeading)
-                .opacity(appeared ? 1 : 0)
+                .scaleEffect(model.shown ? 1 : 0.4, anchor: corner)
+                .rotationEffect(.degrees(model.shown ? 0 : (layout.right ? 5 : -5)), anchor: corner)
+                .opacity(model.shown ? 1 : 0)
+                .animation(model.shown ? .spring(response: 0.62, dampingFraction: 0.8) : .easeIn(duration: 0.2),
+                           value: model.shown)
                 .offset(x: origin.x, y: origin.y)
             bubble
-                .opacity(appeared ? 1 : 0)
+                .scaleEffect(model.shown ? 1 : 0.5,
+                             anchor: UnitPoint(x: layout.catCenter.x / layout.size.width,
+                                               y: layout.catCenter.y / layout.size.height))
+                .opacity(model.shown ? 1 : 0)
+                .animation(model.shown ? .spring(response: 0.4, dampingFraction: 0.65).delay(0.42)
+                                       : .easeIn(duration: 0.12), value: model.shown)
             cat
                 .frame(width: HomeworkLayout.diameter, height: HomeworkLayout.diameter)
                 .position(layout.catCenter)
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
-        .onAppear {
-            withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) { appeared = true }
-        }
     }
 
     // Blatt
@@ -727,6 +735,8 @@ private struct HomeworkView: View {
             }
             footer
         }
+        .opacity(model.shown ? 1 : 0)
+        .animation(model.shown ? .easeOut(duration: 0.35).delay(0.28) : .easeIn(duration: 0.1), value: model.shown)
         .background(
             ZStack {
                 VisualEffectBlur()
@@ -1008,30 +1018,28 @@ final class HomeworkController {
         CatBubbleController.shared.hide()
         CatBrain.shared.teaching = true
         NSApp.activate()
-        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            panel.animator().alphaValue = 1
+        // Aufklappen starten, sobald das Fenster steht (sonst fehlt der Anfang der Animation)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak model] in
+            model?.shown = true
         }
     }
 
     func close() {
         guard let closing = panel else { return }
+        let closingModel = model
         panel = nil
         model = nil
         dragStart = nil
-        CatBrain.shared.teaching = false
-        // weich ausblenden, dann aufräumen
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.14
-            closing.animator().alphaValue = 0
-        }, completionHandler: {
+        // Blatt klappt wieder in Rüdigers Ecke zusammen, dann Fenster weg und Rüdiger zurück an seinen Platz
+        closingModel?.shown = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             MainActor.assumeIsolated {
                 closing.orderOut(nil)
                 closing.contentView = nil
+                if self?.panel == nil { CatBrain.shared.teaching = false }
             }
-        })
+        }
     }
 
     private func saveToNote() {
