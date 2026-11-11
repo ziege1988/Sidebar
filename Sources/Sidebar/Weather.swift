@@ -170,7 +170,7 @@ final class WeatherService: ObservableObject {
             .filter { !$0 }
             .dropFirst()
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { Task { await self?.refresh() } }
+                MainActor.assumeIsolated { self?.kick() }
             }
     }
 
@@ -198,23 +198,28 @@ final class WeatherService: ObservableObject {
     /// Nach dem Ändern des Schlüssels oder der Station
     func settingsChanged() {
         guard settings.weatherEnabled else { return }
-        Task { await refresh() }
+        kick()
+    }
+
+    /// Abruf im Hintergrund anstoßen
+    private func kick(stationOnly: Bool = false) {
+        Task { await self.refresh(stationOnly: stationOnly) }
     }
 
     private func start() {
         stop(keepStatus: true)
         let station = Timer(timeInterval: 600, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.refresh(stationOnly: true) } }
+            MainActor.assumeIsolated { self?.kick(stationOnly: true) }
         }
         let forecast = Timer(timeInterval: 900, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.refresh() } }
+            MainActor.assumeIsolated { self?.kick() }
         }
         RunLoop.main.add(station, forMode: .common)
         RunLoop.main.add(forecast, forMode: .common)
         stationTimer = station
         forecastTimer = forecast
         status = "Wetter wird geladen …"
-        Task { await refresh() }
+        kick()
     }
 
     private func stop(keepStatus: Bool = false) {
