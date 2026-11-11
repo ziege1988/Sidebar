@@ -548,6 +548,11 @@ final class CatBrain: ObservableObject {
            !AlertState.shared.quiet, now.timeIntervalSince(lastSpoke) > 20, locate?() != nil {
             store?.config.settings.catHomeworkHint = true
             remark("Neu: Ich korrigiere jetzt auch Texte. Fahr mit der Maus zu mir – dann siehst du das Heft.")
+        } else if settings.catHomeworkHint, !settings.catWeatherHint, !settings.weatherEnabled,
+                  now.timeIntervalSince(introStart) > 120, !sidebarBusy, !AlertState.shared.quiet,
+                  now.timeIntervalSince(lastSpoke) > 20, locate?() != nil {
+            store?.config.settings.catWeatherHint = true
+            remark("Neu: Ich kann das Wetter spiegeln. Einstellungen → Wetter – dort gibt's auch eine Vorschau.")
         }
 
         // Niemand am Mac → schlafen, beim Zurückkommen kurz kommentieren

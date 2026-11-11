@@ -325,6 +325,8 @@ struct SidebarSettings: Codable, Equatable {
     var catFloatOnTop: Bool = true
     /// Hinweis auf „Text prüfen“ schon gezeigt
     var catHomeworkHint: Bool = false
+    /// Hinweis auf das Wetter schon gezeigt
+    var catWeatherHint: Bool = false
     /// Favoriten-Icons verblassen: 0 = Originalfarben, 1 = ganz im Ton der Farbwelt
     var iconFade: Double = 0
     /// E-Mail: Posteingang (Microsoft 365) direkt abfragen
@@ -409,6 +411,7 @@ extension SidebarSettings {
         catFloatScreenID = try c.decodeIfPresent(UInt32.self, forKey: .catFloatScreenID)
         catFloatOnTop = try c.decodeIfPresent(Bool.self, forKey: .catFloatOnTop) ?? catFloatOnTop
         catHomeworkHint = try c.decodeIfPresent(Bool.self, forKey: .catHomeworkHint) ?? catHomeworkHint
+        catWeatherHint = try c.decodeIfPresent(Bool.self, forKey: .catWeatherHint) ?? catWeatherHint
         iconFade = try c.decodeIfPresent(Double.self, forKey: .iconFade) ?? iconFade
         mailEnabled = try c.decodeIfPresent(Bool.self, forKey: .mailEnabled) ?? mailEnabled
         mailClientID = try c.decodeIfPresent(String.self, forKey: .mailClientID) ?? mailClientID
