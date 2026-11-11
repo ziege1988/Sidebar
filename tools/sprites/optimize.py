@@ -4,7 +4,11 @@ import pathlib, sys
 from PIL import Image
 root = pathlib.Path(__file__).resolve().parents[2] / 'Resources' / 'Sprites'
 before = after = 0
+# optional: nur bestimmte Sequenzen verkleinern (python3 optimize.py wet cold …)
+only = sys.argv[1:]
 for f in sorted(root.glob('*/*.png')):
+    if only and f.parent.name not in only:
+        continue
     before += f.stat().st_size
     im = Image.open(f).convert('RGBA')
     q = im.quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)

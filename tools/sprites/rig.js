@@ -68,6 +68,10 @@ function eye(cx, cy, side, o) {
 
 function brows(kind, raise = 0) {
   if (!kind) return '';
+  // traurig / betröppelt: innen oben, außen unten
+  if (kind === 'sad') return `<g stroke="${OUT}" stroke-width="2.4" stroke-linecap="round" fill="none">
+    <path d="M28.5,${43 - raise} Q37,${41.5 - raise} 45.5,${38 - raise}"/>
+    <path d="M71.5,${43 - raise} Q63,${41.5 - raise} 54.5,${38 - raise}"/></g>`;
   // genervt: gerade, innen leicht tiefer, kräftig · wütend: steil nach innen
   const d = kind === 'angry' ? 5 : 2.4;
   return `<g stroke="${OUT}" stroke-width="2.4" stroke-linecap="round" fill="none">
@@ -84,6 +88,8 @@ function mouth(kind) {
     case 'wide': return `<path d="M43,67.5 Q43,79.5 50,80 Q57,79.5 57,67.5 Q50,70.5 43,67.5 Z" fill="#b8344f" stroke="${OUT}" stroke-width="1"/>
       <path d="M45.2,75.6 Q50,72.6 54.8,75.6 Q53.6,79 50,79.2 Q46.4,79 45.2,75.6 Z" fill="#f06d88"/>
       <path d="M44.6,68.4 l1.1,2.8 l1.1,-2.3 Z M55.4,68.4 l-1.1,2.8 l-1.1,-2.3 Z" fill="#fff"/>`;
+    case 'frown': return `<path d="M45,71.5 Q50,66.6 55,71.5" stroke="${OUT}" stroke-width="1.3" fill="none" stroke-linecap="round"/>`;
+    case 'chatter': return `<path d="M43.5,69.5 l2.1,2.2 l2.1,-2.2 l2.1,2.2 l2.1,-2.2 l2.1,2.2 l2.1,-2.2 l2.1,2.2" stroke="${OUT}" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
     case 'chew': return `<path d="M44.5,69 Q46.5,71.2 48.5,69.4 Q50.5,71.6 52.5,69.4 Q54.5,71.2 56,69" stroke="${OUT}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
     case 'blep': return `<path d="M47.6,69.2 Q47.4,75.2 50,75.6 Q52.6,75.2 52.4,69.2 Z" fill="#f06d88" stroke="${OUT}" stroke-width=".8"/><path d="M50,70 v3.6" stroke="#c84a64" stroke-width=".6" stroke-linecap="round"/>
       <path d="M45.5,68 Q47.8,70.6 50,68.2 Q52.2,70.6 54.5,68" stroke="${OUT}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
@@ -95,7 +101,8 @@ function headSVG(p) {
   let s = ear(true, p.earL || 0) + ear(false, p.earR || 0);
   const bristle = p.bristle ? 2.2 : 1;
   const puff = p.cheeks || 0;
-  s += `<path d="${fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9]])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  const furTufts = p.fur > 0 ? [[0, 360, 8.5 * p.fur, 10]] : [];
+  s += `<path d="${fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9], ...furTufts])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
   const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes };
   s += eye(37.5, 54, 1, eo) + eye(62.5, 54, -1, eo);
   s += brows(p.brows, p.browRaise || 0);
@@ -108,8 +115,8 @@ function headSVG(p) {
   return s;
 }
 
-function bodySVG() {
-  return `<path d="${fluffy(50, 98, 37, 24, [[180, 360, 1.2, 10]])}" fill="${FUR}" stroke="${OUT}" stroke-width="1.4"/>`;
+function bodySVG(p = {}) {
+  return `<path d="${fluffy(50, 98, 37, 24, [[180, 360, 1.2, 10], ...(p.fur > 0 ? [[180, 360, 6 * p.fur, 10]] : [])])}" fill="${FUR}" stroke="${OUT}" stroke-width="1.4"/>`;
 }
 
 function rimPaw(cx, cy, s = 1) {
@@ -167,7 +174,7 @@ function frameSVG(p, px, span) {
   const id = 'f' + (UID++);
   const T = `translate(50 100) scale(${f2(p.sc || 1)}) translate(-50 -100) translate(${f2(p.dx || 0)} ${f2(p.dy || 0)}) rotate(${f2(p.rot || 0)} 50 74)`;
   const H = `translate(0 ${f2(p.headDy || 0)}) rotate(${f2(p.headTilt || 0)} 50 74)`;
-  const cat = `${bodySVG()}<g transform="${H}">${headSVG(p)}</g>`;
+  const cat = `${bodySVG(p)}<g transform="${H}">${headSVG(p)}</g>`;
   const half = 50 * span, view = `${50 - half} ${50 - half} ${2 * half} ${2 * half}`;
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="${view}"><defs>${defs()}
     <clipPath id="${id}in"><circle cx="50" cy="50" r="47.4"/></clipPath>

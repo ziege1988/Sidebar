@@ -38,6 +38,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Selbsttest beim Bau (`Sidebar --selftest`): zeichnet alle Wetterzustände und die Uhr, prüft die Logik
+        // und beendet sich – so fällt ein Absturz beim Zeichnen vor der Veröffentlichung auf.
+        if CommandLine.arguments.contains("--selftest") {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 120) {
+                print("SELFTEST ZEITÜBERSCHREITUNG")
+                fflush(stdout)
+                exit(2)
+            }
+            let failures = WeatherSelfTest.run()
+            if failures.isEmpty {
+                print("SELFTEST OK")
+                exit(0)
+            }
+            failures.forEach { print("SELFTEST FEHLER: \($0)") }
+            fflush(stdout)
+            exit(1)
+        }
         store = ConfigStore.shared
         NSApp.setActivationPolicy(.accessory)
         installMainMenu()
@@ -90,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sidebar = SidebarController(store: store, updater: Updater.shared, actions: actions)
         // Rüdiger: Namen der Apps und Platz auf dem Bildschirm
         CatBrain.shared.store = store
+        WeatherService.shared.apply(store.config.settings)
         CatBrain.shared.locate = { [weak self] in self?.sidebar?.catLocation() }
         // Gesperrt / Bildschirmschoner / Displays aus → pausieren, danach automatisch weiter
         PowerState.shared.start()
@@ -139,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 MainActor.assumeIsolated {
                     AlertState.shared.apply(config.settings)
                     MailWatcher.shared.apply(config.settings)
+                    WeatherService.shared.apply(config.settings)
                     CatBrain.shared.apply(config.settings)
                     DockBadgeWatcher.shared.update(items: config.favorites + config.groups.flatMap(\.items),
                                                    enabled: config.settings.dockBadges)

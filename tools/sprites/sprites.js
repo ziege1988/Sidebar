@@ -152,6 +152,58 @@ const SEQUENCES = {
     p.fx = steam(t);
     return p;
   }},
+  // ----- Wetter -----
+  wet: { duration: 3.2, fps: 25, loop: true, pose(t) {
+    // Regen: Ohren hängen seitlich, betröppelter Blick nach unten, Kopf leicht gesenkt
+    const p = base();
+    p.earL = 52 + 2 * Math.sin(TAU * t / 3.2); p.earR = 52 + 2 * Math.sin(TAU * t / 3.2 + 1);
+    p.brows = 'sad'; p.slant = -1.8; p.lid = 0.32; p.low = 0.06; p.mouth = 'frown';
+    p.look = [0.8 * Math.sin(TAU * t / 3.2), 2.6];
+    p.dy = 4; p.headDy = 2.2; p.headTilt = 2 * Math.sin(TAU * t / 3.2);
+    p.sc = 0.92 * (1 + 0.01 * Math.sin(TAU * t / 1.6));
+    p.lid = Math.max(p.lid, bump(t, 1.9, 2.1));
+    return p;
+  }},
+  cold: { duration: 1.2, fps: 25, loop: true, pose(t) {
+    // Frost: er zittert, Zähne klappern, Ohren eng angelegt
+    const p = base();
+    p.dx = 1.1 * Math.sin(TAU * t / 0.2); p.headTilt = 1.6 * Math.sin(TAU * t / 0.24 + 0.7);
+    p.earL = 14; p.earR = 14; p.brows = 'sad'; p.slant = -1.2; p.lid = 0.24; p.mouth = 'chatter';
+    p.look = [0, 0.6]; p.sc = 0.9; p.dy = 3;
+    return p;
+  }},
+  shake: { duration: 2.6, fps: 25, loop: false, pose(t) {
+    // Schnee abschütteln: Kopf schüttelt schnell hin und her
+    const p = base();
+    const e = bump(t, 0.15, 1.95), k = Math.sin(TAU * t / 0.34);
+    p.headTilt = 16 * k * e; p.dx = 2.2 * k * e;
+    p.earL = 12 + 14 * Math.abs(k) * e; p.earR = 12 + 14 * Math.abs(Math.sin(TAU * t / 0.34 + 0.8)) * e;
+    p.lid = 0.06 + 0.5 * e; p.mouth = 'flat';
+    if (t >= 2.0) { p.closed = 'happy'; p.earL = 0; p.earR = 0; }
+    return p;
+  }},
+  struck: { duration: 4.0, fps: 25, loop: false, pose(t) {
+    // Blitzeinschlag: Fell steht in alle Richtungen ab, Augen weit auf, schlottert und schreit
+    const p = base();
+    const on = t < 0.08 ? 0 : (t < 2.6 ? easeOut((t - 0.08) / 0.12) : 1 - smooth((t - 2.6) / 1.0));
+    const jr = n => Math.sin(t * 131.7 + n * 17.3);
+    p.fur = on;
+    p.sc = 0.92 + 0.07 * on; p.dy = 2 - 2 * on;
+    p.dx = 1.8 * jr(1) * on; p.dy += 1.2 * jr(2) * on; p.headTilt = 3 * jr(3) * on;
+    p.lid = 0; p.pupil = 'round'; p.look = [1.2 * jr(4) * on, 1 * jr(5) * on];
+    p.earL = -10 * on; p.earR = -10 * on;
+    p.mouth = on > 0.3 ? 'wide' : 'smile';
+    if (t >= 2.6) { p.mouth = 'hiss'; p.lid = 0.3 * smooth((t - 2.6) / 0.8); }
+    return p;
+  }},
+  windy: { duration: 2.4, fps: 25, loop: true, pose(t) {
+    // Wind: Ohren flattern, Fell zerzaust, Blick zusammengekniffen zur Seite
+    const p = base();
+    p.earL = 10 + 8 * Math.sin(TAU * t / 0.4); p.earR = 10 + 8 * Math.sin(TAU * t / 0.4 + 1.2);
+    p.headTilt = 3 * Math.sin(TAU * t / 2.4); p.dx = 1.2 * Math.sin(TAU * t / 1.2);
+    p.lid = 0.3; p.look = [3, 0]; p.mouth = 'flat'; p.fur = 0.25;
+    return p;
+  }},
   intro: { duration: 3.6, fps: 30, loop: false, pose(t) {
     // taucht von unten in der Blase auf, schaut sich um und winkt
     const p = base();

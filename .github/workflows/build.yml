@@ -69,6 +69,11 @@ jobs:
       - name: App bauen
         run: ./build.sh
 
+      # Selbsttest: zeichnet alle Wetterzustände und die Uhr offscreen und prüft die Logik.
+      # Stürzt dabei etwas ab, bricht der Bau ab – es wird dann keine Version veröffentlicht.
+      - name: Selbsttest
+        run: ./build/Sidebar.app/Contents/MacOS/Sidebar --selftest
+
       - name: App zippen
         run: cd build && ditto -c -k --keepParent Sidebar.app Sidebar.zip
 

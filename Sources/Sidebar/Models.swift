@@ -260,6 +260,21 @@ struct SidebarSettings: Codable, Equatable {
     var clockShowSeconds: Bool = true
     /// Datum als Klapptafeln im unteren Teil der Uhr
     var clockShowDate: Bool = true
+    /// Wetter: Rüdiger spiegelt das Wetter am Standort
+    var weatherEnabled: Bool = false
+    /// eingegebener Ort bzw. Postleitzahl und das gefundene Ergebnis
+    var weatherPlace: String = ""
+    var weatherPlaceName: String = ""
+    var weatherLat: Double?
+    var weatherLon: Double?
+    /// eigene Wetterstation (Weather Underground) statt der Wetterdienst-Werte für Temperatur, Regen, Wind, UV
+    var weatherUseStation: Bool = false
+    var weatherStationID: String = ""
+    /// Schwellen
+    var weatherHot: Double = 25
+    var weatherFrost: Double = -3
+    var weatherWind: Double = 35
+    var weatherUV: Double = 5
     /// KI- und Google-Knopf oben in der Leiste
     var showSearch: Bool = true
     var aiTarget: AITarget = .sidePanel
@@ -353,6 +368,17 @@ extension SidebarSettings {
         revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         clockShowDate = try c.decodeIfPresent(Bool.self, forKey: .clockShowDate) ?? clockShowDate
+        weatherEnabled = try c.decodeIfPresent(Bool.self, forKey: .weatherEnabled) ?? weatherEnabled
+        weatherPlace = try c.decodeIfPresent(String.self, forKey: .weatherPlace) ?? weatherPlace
+        weatherPlaceName = try c.decodeIfPresent(String.self, forKey: .weatherPlaceName) ?? weatherPlaceName
+        weatherLat = try c.decodeIfPresent(Double.self, forKey: .weatherLat)
+        weatherLon = try c.decodeIfPresent(Double.self, forKey: .weatherLon)
+        weatherUseStation = try c.decodeIfPresent(Bool.self, forKey: .weatherUseStation) ?? weatherUseStation
+        weatherStationID = try c.decodeIfPresent(String.self, forKey: .weatherStationID) ?? weatherStationID
+        weatherHot = try c.decodeIfPresent(Double.self, forKey: .weatherHot) ?? weatherHot
+        weatherFrost = try c.decodeIfPresent(Double.self, forKey: .weatherFrost) ?? weatherFrost
+        weatherWind = try c.decodeIfPresent(Double.self, forKey: .weatherWind) ?? weatherWind
+        weatherUV = try c.decodeIfPresent(Double.self, forKey: .weatherUV) ?? weatherUV
         showSearch = try c.decodeIfPresent(Bool.self, forKey: .showSearch) ?? showSearch
         aiTarget = try c.decodeIfPresent(AITarget.self, forKey: .aiTarget) ?? aiTarget
         aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider) ?? aiProvider

@@ -90,6 +90,16 @@ final class CatBrain: ObservableObject {
         didSet { if carried && !oldValue { carriedStart = Date() } }
     }
     private var carriedStart = Date()
+    // Wetter: Ereignisse (Blitzeinschlag, Schnee abschütteln)
+    enum WeatherEventKind { case strike, shake }
+    private var weatherEvent: (kind: WeatherEventKind, start: Date)?
+    private var nextStrike = Date().addingTimeInterval(40)
+    private var nextShake = Date().addingTimeInterval(45)
+    private var lastShake: Date?
+    private var lastWeatherComment = Date.distantPast
+    private var lastCommentedWeather: WeatherMood = .normal
+    /// zeigt gerade ein Wetter (steuert, ob die Wetter-Ebene läuft)
+    @Published private(set) var weatherActive = false
     /// Rüdiger sitzt gerade am Lehrer-Blatt (sein normaler Platz ist so lange leer)
     @Published var teaching = false
     /// Knopf „Text prüfen“: sichtbar (Maus in der Nähe) und in welche Richtung (x/y je ±1, y nach unten)
@@ -175,6 +185,8 @@ final class CatBrain: ObservableObject {
         if feedHover { return .clip("eat_ready", date.timeIntervalSince(feedHoverStart)) }
         if snoozed || mood == .sleeping { return .sleep }
         if furious { return .angry }
+        // Wetter (nur im normalen Wachzustand – seine eigenen Reaktionen gehen vor)
+        if let weather = weatherPose(at: date) { return weather }
         // kleine Bewegung in der Ruhephase (Kopf neigen, Zunge raus, Blinzeln …)
         if mood == .awake, let clip = idleClip {
             let since = date.timeIntervalSince(clip.start)
@@ -185,6 +197,90 @@ final class CatBrain: ObservableObject {
         case .purring: return .purr
         case .annoyed(let level): return level >= 2 ? .angry : .annoyed
         default: return .grumpy
+        }
+    }
+
+    // MARK: Wetter
+
+    /// Welches Wetter Rüdiger gerade zeigt. Nur im normalen Wachzustand: Streicheln, Füttern, Wecker, Nachrichten,
+    /// Lehrer-Blatt, Genervtsein und Schlafen gehen vor – es läuft nie mehr als eine Animation.
+    func activeWeather() -> WeatherMood {
+        guard settings.weatherEnabled, introDone, !teaching, !carried, !feedHover, !snoozed, !furious,
+              mood == .awake, special == nil, gesturePose == nil else { return .normal }
+        return WeatherService.shared.mood
+    }
+
+    /// Wetter-Ebene für einen Zeitpunkt
+    func weatherFrame(at date: Date) -> WeatherFrame {
+        let weather = activeWeather()
+        var frame = WeatherFrame(mood: weather, t: date.timeIntervalSinceReferenceDate, strikeT: nil, shakeT: nil, snowCap: 1)
+        if let event = weatherEvent {
+            let since = date.timeIntervalSince(event.start)
+            if event.kind == .strike, weather == .thunder, since >= 0, since < 4 { frame.strikeT = since }
+            if event.kind == .shake, weather == .snow, since >= 0, since < 2.6 { frame.shakeT = since }
+        }
+        if weather == .snow, let shake = lastShake {
+            // nach dem Schütteln wächst die Schneehaube langsam nach
+            let since = date.timeIntervalSince(shake)
+            frame.snowCap = since < 0.5 ? 1 : min(1, max(0, (since - 2.6) / 40))
+        }
+        return frame
+    }
+
+    private func weatherPose(at date: Date) -> CatPose? {
+        let weather = activeWeather()
+        guard weather != .normal else { return nil }
+        if let event = weatherEvent {
+            let since = date.timeIntervalSince(event.start)
+            if event.kind == .strike, weather == .thunder, since >= 0, since < 4 { return .clip("struck", since) }
+            if event.kind == .shake, weather == .snow, since >= 0, since < 2.6 { return .clip("shake", since) }
+        }
+        if let clip = weather.clip { return .clip(clip, date.timeIntervalSinceReferenceDate) }
+        // normale Bilder – die Wetter-Ebene liegt darüber, keine kleinen Ruhebewegungen dazwischen
+        return .grumpy
+    }
+
+    /// Jede Sekunde: Gewitter weckt ihn, Blitzeinschlag und Schütteln auslösen, Sprüche beim Wetterwechsel
+    private func handleWeather(_ now: Date) {
+        guard settings.weatherEnabled else {
+            weatherEvent = nil
+            if weatherActive { weatherActive = false }
+            return
+        }
+        // Ein Gewitter holt ihn aus dem Schlaf
+        if WeatherService.shared.mood == .thunder, mood == .sleeping {
+            napUntil = nil
+            set(.awake)
+            activeSince = now
+        }
+        let weather = activeWeather()
+        let active = weather != .normal
+        if weatherActive != active { weatherActive = active }
+
+        if let event = weatherEvent, now.timeIntervalSince(event.start) > 5 { weatherEvent = nil }
+        if weatherEvent == nil, locate?() != nil {
+            if weather == .thunder, now >= nextStrike {
+                weatherEvent = (kind: .strike, start: now)
+                nextStrike = now.addingTimeInterval(.random(in: 180...480))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    MainActor.assumeIsolated {
+                        self?.say(WeatherLines.struck, style: .angry, force: true, raw: true)
+                    }
+                }
+            } else if weather == .snow, now >= nextShake {
+                weatherEvent = (kind: .shake, start: now)
+                lastShake = now
+                nextShake = now.addingTimeInterval(.random(in: 60...120))
+                if Double.random(in: 0..<1) < 0.4 { say(WeatherLines.shake) }
+            }
+        }
+        // Frecher Spruch beim Wetterwechsel – höchstens alle zwei Stunden
+        if weather != lastCommentedWeather {
+            lastCommentedWeather = weather
+            if weather != .normal, now.timeIntervalSince(lastWeatherComment) > 7200 {
+                lastWeatherComment = now
+                say(WeatherLines.lines(for: weather))
+            }
         }
     }
 
@@ -446,6 +542,7 @@ final class CatBrain: ObservableObject {
             if mood != .sleeping { set(.sleeping) }
             return
         }
+        handleWeather(now)
         // Einmalig nach dem Update: auf „Text prüfen“ hinweisen
         if !settings.catHomeworkHint, now.timeIntervalSince(introStart) > 90, !sidebarBusy,
            !AlertState.shared.quiet, now.timeIntervalSince(lastSpoke) > 20, locate?() != nil {
@@ -709,6 +806,18 @@ struct CatView: View {
                     }
                     .clipShape(Circle())
                 }
+            }
+            // Wetter-Ebene (Regen, Schnee, Sonnenbrille, Blitz …) – nur wenn gerade Wetter angezeigt wird
+            if brain.weatherActive {
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: power.paused)) { timeline in
+                    let weather = brain.weatherFrame(at: timeline.date)
+                    GeometryReader { proxy in
+                        WeatherCanvas(frame: weather)
+                            .frame(width: proxy.size.width * 1.3, height: proxy.size.height * 1.3)
+                            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                    }
+                }
+                .allowsHitTesting(false)
             }
         }
         .overlay {
