@@ -644,6 +644,16 @@ enum WeatherSelfTest {
         if CatPose.waiting(0).waitProgress != 1 { failures.append("Wartezeit: Ende nicht hell") }
         if CatPose.waiting(CatTiming.introDelay / 2).waitProgress != 0.5 { failures.append("Wartezeit: Mitte") }
         if CatPose.waiting(3).sprite != "sleep" || CatPose.absent.sprite != nil { failures.append("Wartezeit: Bilder") }
+        // Blase darf nicht in Rüdigers Kugel ragen
+        let area = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        for (c, b) in [(CGPoint(x: 330, y: 820), CGPoint(x: 300, y: 800)), (CGPoint(x: 300, y: 800), CGPoint(x: 300, y: 800)),
+                       (CGPoint(x: 700, y: 400), CGPoint(x: 640, y: 400))] {
+            let size = CGSize(width: 260, height: 90)
+            let moved = CatBubbleController.pushOut(center: c, size: size, ball: b, radius: 40, area: area)
+            let rect = CGRect(x: moved.x - 130, y: moved.y - 45, width: 260, height: 90)
+            let nearest = CGPoint(x: min(max(b.x, rect.minX), rect.maxX), y: min(max(b.y, rect.minY), rect.maxY))
+            if hypot(nearest.x - b.x, nearest.y - b.y) < 39.5 { failures.append("Blase ragt in die Kugel (\(c))") }
+        }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

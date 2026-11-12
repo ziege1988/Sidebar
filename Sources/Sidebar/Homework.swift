@@ -809,7 +809,7 @@ private struct HomeworkView: View {
         let cx = layout.right ? cat.x - gap - ew / 2 : cat.x + gap + ew / 2
         let cy = cat.y - 6
         let body = CGRect(x: cx - ew / 2, y: cy - eh / 2, width: ew, height: eh)
-        let tail = CGPoint(x: layout.right ? cat.x - HomeworkLayout.diameter / 2 + 2 : cat.x + HomeworkLayout.diameter / 2 - 2,
+        let tail = CGPoint(x: layout.right ? cat.x - HomeworkLayout.diameter / 2 - 3 : cat.x + HomeworkLayout.diameter / 2 + 3,
                            y: cat.y + 4)
         let textSize = CGSize(width: min(layoutText.textSize.width, ew - 2 * CatBubbleLayout.padX + 8),
                               height: min(layoutText.textSize.height, eh - 2 * CatBubbleLayout.padY + 6))

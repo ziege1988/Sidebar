@@ -443,6 +443,9 @@ final class CatBubbleController {
         }
         center.x = min(max(center.x, area.minX + ew / 2), area.maxX - ew / 2)
         center.y = min(max(center.y, area.minY + eh / 2), area.maxY - eh / 2)
+        // Die Blase ragt nie in Rüdigers Kugel: bei Überschneidung wegschieben (mit Luft für den Haken)
+        center = Self.pushOut(center: center, size: CGSize(width: ew, height: eh),
+                              ball: CGPoint(x: cat.midX, y: cat.midY), radius: cat.width / 2 + 16, area: area)
 
         let size = CGSize(width: ew + 2 * margin, height: eh + 2 * margin)
         let frame = NSRect(x: center.x - size.width / 2, y: center.y - size.height / 2,
@@ -458,7 +461,8 @@ final class CatBubbleController {
         // Abstand vom Mittelpunkt bis zum Rand des Rechtecks in Richtung Katze
         let rx = ew / 2, ry = eh / 2
         let edgeRadius = min(rx / max(abs(dx / distance), 0.001), ry / max(abs(dy / distance), 0.001))
-        let reach = min(distance - cat.width * 0.42, edgeRadius + 30)
+        // Die Spitze endet am Rand der Kugel, nicht in ihr
+        let reach = min(distance - cat.width / 2 - 3, edgeRadius + 30)
         var tail = CGPoint(x: c.x + dx / distance * max(reach, edgeRadius + 12),
                            y: c.y + dy / distance * max(reach, edgeRadius + 12))
         tail.x = min(max(tail.x, 2), size.width - 2)
@@ -482,6 +486,33 @@ final class CatBubbleController {
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    /// Schiebt eine Blase (Mittelpunkt `center`, Größe `size`) aus dem Kreis um `ball` heraus.
+    /// Alles in Bildschirmkoordinaten. Bleibt innerhalb von `area`.
+    static func pushOut(center: CGPoint, size: CGSize, ball: CGPoint, radius: CGFloat, area: CGRect) -> CGPoint {
+        var c = center
+        func clamp(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: min(max(p.x, area.minX + size.width / 2), area.maxX - size.width / 2),
+                    y: min(max(p.y, area.minY + size.height / 2), area.maxY - size.height / 2))
+        }
+        for _ in 0..<4 {
+            let rect = CGRect(x: c.x - size.width / 2, y: c.y - size.height / 2, width: size.width, height: size.height)
+            let nearest = CGPoint(x: min(max(ball.x, rect.minX), rect.maxX), y: min(max(ball.y, rect.minY), rect.maxY))
+            let dx = nearest.x - ball.x, dy = nearest.y - ball.y
+            let dist = (dx * dx + dy * dy).squareRoot()
+            if dist >= radius { break }
+            if dist < 0.5 {
+                // Mittelpunkt der Kugel liegt in der Blase: seitlich hinausschieben
+                c.x = ball.x + (c.x >= ball.x ? 1 : -1) * (size.width / 2 + radius)
+            } else {
+                let push = radius - dist
+                c.x += dx / dist * push
+                c.y += dy / dist * push
+            }
+            c = clamp(c)
+        }
+        return c
     }
 
     func hide() {
