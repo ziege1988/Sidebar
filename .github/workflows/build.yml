@@ -74,6 +74,18 @@ jobs:
       - name: Selbsttest
         run: ./build/Sidebar.app/Contents/MacOS/Sidebar --selftest
 
+      # Vorschaubilder der echten Ansichten (Sprechblase, Start, Leiste, Notizen) – blockiert den Bau nie
+      - name: Vorschaubilder
+        continue-on-error: true
+        run: ./build/Sidebar.app/Contents/MacOS/Sidebar --selftest --snapshots build/vorschau
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Vorschau
+          path: build/vorschau
+          if-no-files-found: ignore
+
       - name: App zippen
         run: cd build && ditto -c -k --keepParent Sidebar.app Sidebar.zip
 

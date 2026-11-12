@@ -183,7 +183,11 @@ final class CatBrain: ObservableObject {
 
     // MARK: Aussehen
 
+    /// Nur für die Vorschaubilder beim Bau: feste Haltung statt Ablauf
+    var overridePose: CatPose?
+
     func pose(at date: Date) -> CatPose {
+        if let overridePose { return overridePose }
         let since = date.timeIntervalSince(introStart)
         if since < 0 { return .waiting(-since) }
         // Auftritt: taucht in der Blase auf, schaut sich um und winkt

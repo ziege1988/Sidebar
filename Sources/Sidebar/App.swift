@@ -46,7 +46,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fflush(stdout)
                 exit(2)
             }
-            let failures = WeatherSelfTest.run()
+            var failures = WeatherSelfTest.run()
+            // Vorschaubilder (nur wenn verlangt): `--snapshots <Ordner>`
+            if let index = CommandLine.arguments.firstIndex(of: "--snapshots"), index + 1 < CommandLine.arguments.count {
+                failures += Snapshots.run(into: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+            }
             if failures.isEmpty {
                 print("SELFTEST OK")
                 exit(0)

@@ -7,50 +7,19 @@ import SwiftUI
 // Haken, Handschrift. Die Ränder sind für jeden Text etwas anders (aus dem Text abgeleitet, also stabil – kein Flackern).
 // Beim Erscheinen wird der Rahmen kurz „gezeichnet".
 
+/// Die Blase sieht immer gleich aus (leichtes Creme, schwarze Tusche) – auch wenn Rüdiger genervt ist oder schnurrt.
+/// Die Stimmung steckt allein im Text. (Die Fälle bleiben, weil die Aufrufer sie weiterhin mitgeben.)
 enum CatBubbleStyle {
-    /// ruhig: schwarze Tusche, doppelter Rahmen
     case normal
-    /// genervt, wütend: rote Tusche, dreifach, kräftiger
     case angry
-    /// Schnurren, Streicheln: rosa, weich, Herzchen
     case purr
 
-    var fill: Color {
-        switch self {
-        case .normal, .angry: return Color(red: 0.988, green: 0.973, blue: 0.933)
-        case .purr: return Color(red: 0.992, green: 0.965, blue: 0.933)
-        }
-    }
-    var ink: Color {
-        switch self {
-        case .normal: return Color(red: 0.10, green: 0.094, blue: 0.082)
-        case .angry: return Color(red: 0.69, green: 0.227, blue: 0.18)
-        case .purr: return Color(red: 0.79, green: 0.54, blue: 0.63)
-        }
-    }
-    /// Schriftfarbe: immer gut lesbar
-    var textColor: Color {
-        switch self {
-        case .normal: return Color(red: 0.10, green: 0.094, blue: 0.082)
-        case .angry: return Color(red: 0.50, green: 0.14, blue: 0.11)
-        case .purr: return Color(red: 0.42, green: 0.25, blue: 0.33)
-        }
-    }
-    var passes: Int {
-        switch self {
-        case .normal: return 2
-        case .angry: return 3
-        case .purr: return 1
-        }
-    }
-    var lineScale: CGFloat {
-        switch self {
-        case .normal: return 1
-        case .angry: return 1.25
-        case .purr: return 0.85
-        }
-    }
-    var hearts: Bool { self == .purr }
+    var fill: Color { Color(red: 0.988, green: 0.973, blue: 0.933) }
+    var ink: Color { Color(red: 0.10, green: 0.094, blue: 0.082) }
+    var textColor: Color { Color(red: 0.10, green: 0.094, blue: 0.082) }
+    var passes: Int { 2 }
+    var lineScale: CGFloat { 1 }
+    var hearts: Bool { false }
 }
 
 /// Kleiner fester Zufallsgenerator – gleicher Text, gleiche Ränder.
