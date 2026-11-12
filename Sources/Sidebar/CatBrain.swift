@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 enum CatPose: Equatable {
     /// noch nicht da (vor dem Auftritt)
     case absent
+    /// schläft im Halbdunkel, bis der Auftritt beginnt (Sekunden bis dahin)
+    case waiting(Double)
     case sleep, grumpy, ask, purr, angry
     /// genervt: Seitenblick, rollt mit den Augen, seufzt
     case annoyed
@@ -19,11 +21,17 @@ enum CatPose: Equatable {
     /// läuft durchs Fenster (x = Mitte im 100er-Feld) – nur noch Ersatzzeichnung
     case walk(x: CGFloat, facingRight: Bool)
 
+    /// Wartezeit vor dem Auftritt als Fortschritt 0 (gerade gestartet, dunkel) … 1 (gleich da)
+    var waitProgress: Double? {
+        if case .waiting(let left) = self { return 1 - min(1, max(0, left / CatTiming.introDelay)) }
+        return nil
+    }
+
     /// Name der Sprite-Animation
     var sprite: String? {
         switch self {
         case .absent, .walk: return nil
-        case .sleep: return "sleep"
+        case .sleep, .waiting: return "sleep"
         case .grumpy: return "idle"
         case .ask: return "ask"
         case .purr: return "purr"
@@ -33,6 +41,12 @@ enum CatPose: Equatable {
         case .clip(let name, _): return name
         }
     }
+}
+
+/// Zeiten, die auch außerhalb des Hauptakteurs gebraucht werden
+enum CatTiming {
+    /// Sekunden von Start der Sidebar bis Rüdiger auftaucht
+    static let introDelay: Double = 15
 }
 
 @MainActor
@@ -52,9 +66,8 @@ final class CatBrain: ObservableObject {
     /// Versteckter Schalter: erscheint nach 4 s mit der Maus auf Rüdiger
     @Published var showSnoozeControl = false
 
-    /// Auftritt beim Start: 3 Minuten nach dem Start läuft er durchs Fenster, kommt zurück und winkt
-    /// 30 Sekunden nach dem Öffnen der Sidebar taucht er auf und begrüßt dich.
-    let introStart = Date().addingTimeInterval(30)
+    /// So lange schläft Rüdiger im Halbdunkel, bis er nach dem Start der Sidebar auftaucht und dich begrüßt.
+    let introStart = Date().addingTimeInterval(CatTiming.introDelay)
     static let introLength: Double = 3.6
     private(set) var introDone = false
 
@@ -66,7 +79,7 @@ final class CatBrain: ObservableObject {
     private var settings = SidebarSettings()
     private var timer: Timer?
     private var moodSince = Date()
-    private var nextEventAt = Date().addingTimeInterval(30 + 600)
+    private var nextEventAt = Date().addingTimeInterval(CatTiming.introDelay + 600)
     private var napUntil: Date?
     private var away = false
     private var lastSpoke = Date.distantPast
@@ -172,7 +185,7 @@ final class CatBrain: ObservableObject {
 
     func pose(at date: Date) -> CatPose {
         let since = date.timeIntervalSince(introStart)
-        if since < 0 { return .absent }
+        if since < 0 { return .waiting(-since) }
         // Auftritt: taucht in der Blase auf, schaut sich um und winkt
         if since < Self.introLength { return CatSprites.shared.has("intro") ? .intro(since) : .ask }
         if carried { return .clip("eat_ready", date.timeIntervalSince(carriedStart)) }
@@ -792,15 +805,24 @@ struct CatView: View {
             TimelineView(.animation(minimumInterval: (brain.snoozed || brain.mood == .sleeping) ? 1.0 / 12.0 : 1.0 / 30.0,
                                     paused: power.paused)) { timeline in
                 let pose = brain.pose(at: timeline.date)
+                // Vor dem Auftritt: Kugel im Halbdunkel, Rüdiger schläft kaum sichtbar und wird nach und nach heller
+                let waiting = pose.waitProgress
                 if let name = pose.sprite, let image = CatSprites.shared.frame(name, pose: pose, at: timeline.date) {
                     // Das Bild ist etwas größer als die Blase, damit Ohrenspitzen herausragen können
-                    GeometryReader { proxy in
-                        let side = proxy.size.width * CGFloat(CatSprites.shared.span(name))
-                        Image(nsImage: image)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: side, height: side)
-                            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                    ZStack {
+                        if let waiting {
+                            Circle().fill(Color.black.opacity(0.42 * (1 - waiting)))
+                        }
+                        GeometryReader { proxy in
+                            let side = proxy.size.width * CGFloat(CatSprites.shared.span(name))
+                            Image(nsImage: image)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: side, height: side)
+                                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                                .opacity(waiting.map { 0.3 + 0.7 * $0 } ?? 1)
+                                .brightness(waiting.map { -0.35 * (1 - $0) } ?? 0)
+                        }
                     }
                 } else {
                     // Ersatz, falls die Bilder fehlen

@@ -639,6 +639,11 @@ enum WeatherSelfTest {
                 }
             }
         }
+        // Wartezeit vor dem Auftritt (Kugel im Halbdunkel)
+        if CatPose.waiting(CatTiming.introDelay).waitProgress != 0 { failures.append("Wartezeit: Start nicht dunkel") }
+        if CatPose.waiting(0).waitProgress != 1 { failures.append("Wartezeit: Ende nicht hell") }
+        if CatPose.waiting(CatTiming.introDelay / 2).waitProgress != 0.5 { failures.append("Wartezeit: Mitte") }
+        if CatPose.waiting(3).sprite != "sleep" || CatPose.absent.sprite != nil { failures.append("Wartezeit: Bilder") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {
