@@ -800,37 +800,23 @@ private struct HomeworkView: View {
         .overlay(alignment: .top) { Rectangle().fill(Color(nsColor: HomeworkStyle.nsLine)).frame(height: 1) }
     }
 
-    // Sprechblase (gezackt wie immer) – ragt über den Kopf des Blatts
+    // Sprechblase (Skizzen-Stil) – ragt über den Kopf des Blatts
     private var bubble: some View {
         let layoutText = CatBubbleLayout.make(model.speech, style: model.style, maxSize: CGSize(width: 300, height: 140))
-        let ew = layoutText.ellipseSize.width, eh = layoutText.ellipseSize.height
+        let ew = layoutText.bubbleSize.width, eh = layoutText.bubbleSize.height
         let cat = layout.catCenter
         let gap = HomeworkLayout.diameter / 2 + 14
         let cx = layout.right ? cat.x - gap - ew / 2 : cat.x + gap + ew / 2
         let cy = cat.y - 6
-        let ellipse = CGRect(x: cx - ew / 2, y: cy - eh / 2, width: ew, height: eh)
+        let body = CGRect(x: cx - ew / 2, y: cy - eh / 2, width: ew, height: eh)
         let tail = CGPoint(x: layout.right ? cat.x - HomeworkLayout.diameter / 2 + 2 : cat.x + HomeworkLayout.diameter / 2 - 2,
                            y: cat.y + 4)
-        let grow = 2.squareRoot() / (1 - model.style.amplitude)
-        let textSize = CGSize(width: min(layoutText.textSize.width, ew / grow - 6),
-                              height: min(layoutText.textSize.height, eh / grow - 4))
-        let shape = SpikyBubble(ellipse: ellipse, tail: tail, spikes: model.style.spikes, amplitude: model.style.amplitude)
-        return ZStack(alignment: .topLeading) {
-            shape.fill(Color.white)
-            shape.stroke(Color.black.opacity(0.85), style: StrokeStyle(lineWidth: 2.1, lineJoin: .round))
-            Text(model.speech)
-                .font(Font(CatBubbleView.font(layoutText.fontSize) as CTFont))
-                .foregroundColor(Color(white: 0.08))
-                .multilineTextAlignment(.center)
-                .lineSpacing(CatBubbleLayout.lineSpacing)
-                .minimumScaleFactor(0.6)
-                .frame(width: textSize.width, height: textSize.height)
-                .position(x: ellipse.midX, y: ellipse.midY)
-        }
-        .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
-        .shadow(color: .black.opacity(0.22), radius: 8, y: 6)
-        .allowsHitTesting(false)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.speech)
+        let textSize = CGSize(width: min(layoutText.textSize.width, ew - 2 * CatBubbleLayout.padX + 8),
+                              height: min(layoutText.textSize.height, eh - 2 * CatBubbleLayout.padY + 6))
+        return SketchBubbleView(text: model.speech, style: model.style, body: body, tail: tail,
+                                size: layout.size, fontSize: layoutText.fontSize, textSize: textSize, drawIn: false)
+            .id(model.speech)
+            .allowsHitTesting(false)
     }
 
     // Rüdiger in seiner Glasblase

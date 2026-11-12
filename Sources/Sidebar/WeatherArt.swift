@@ -618,6 +618,27 @@ enum WeatherSelfTest {
             render("Uhr klein \(scheme)", AnalogClock(date: Date(), showSeconds: false, showDate: true, palette: palette)
                 .frame(width: 64, height: 64))
         }
+        // Sprechblasen (alle Stimmungen, Haken in alle Richtungen)
+        let samples = ["Na toll. Regen. Und ich hab keinen Schirm.", "Hallo!", "Das ist jetzt schon die dritte Mail von Frau Meier heute und es ist erst Mittag, wirklich."]
+        for style in [CatBubbleStyle.normal, .angry, .purr] {
+            for text in samples {
+                let layout = CatBubbleLayout.make(text, style: style, maxSize: CGSize(width: 400, height: 200))
+                if layout.bubbleSize.width > 400 || layout.bubbleSize.height > 200 {
+                    failures.append("Blase zu groß: \(text.prefix(12))")
+                }
+                let margin: CGFloat = 46
+                let size = CGSize(width: layout.bubbleSize.width + 2 * margin, height: layout.bubbleSize.height + 2 * margin)
+                let body = CGRect(x: margin, y: margin, width: layout.bubbleSize.width, height: layout.bubbleSize.height)
+                let tails = [CGPoint(x: 20, y: size.height - 6), CGPoint(x: size.width - 20, y: size.height - 6),
+                             CGPoint(x: 8, y: size.height / 2), CGPoint(x: size.width - 8, y: size.height / 2),
+                             CGPoint(x: size.width / 2, y: 6)]
+                for (i, tail) in tails.enumerated() {
+                    render("Blase \(style) \(text.prefix(6)) \(i)",
+                           SketchBubbleView(text: text, style: style, body: body, tail: tail, size: size,
+                                            fontSize: layout.fontSize, textSize: layout.textSize, drawIn: false))
+                }
+            }
+        }
         return failures
     }
 }
