@@ -61,14 +61,14 @@ enum Snapshots {
             return ZStack(alignment: .topLeading) {
                 SketchBubbleView(text: text, style: style, body: body, tail: tail, size: size,
                                  fontSize: layout.fontSize, textSize: layout.textSize, drawIn: false)
-                CatView(palette: palette).frame(width: 96, height: 96).offset(x: 24, y: size.height - 50)
+                CatView(palette: palette).frame(width: 96, height: 96).offset(x: 22, y: body.maxY + 40)
             }
-            .frame(width: size.width, height: size.height + 60, alignment: .topLeading)
+            .frame(width: size.width, height: body.maxY + 40 + 96 + 10, alignment: .topLeading)
         }
         CatBrain.shared.overridePose = .grumpy
         for (name, dark) in [("blase-dunkel", true), ("blase-hell", false)] {
-            save(name, size: CGSize(width: 900, height: 330), dark: dark) {
-                HStack(alignment: .top, spacing: 10) {
+            save(name, size: CGSize(width: 1100, height: 300), dark: dark) {
+                HStack(alignment: .top, spacing: 24) {
                     bubble("Na toll. Regen. Und ich hab keinen Schirm.")
                     bubble("Das ist jetzt schon die dritte Mail!", style: .angry)
                     bubble("Mehr davon. Bitte.", style: .purr)
@@ -76,7 +76,7 @@ enum Snapshots {
                 .padding(10)
             }
         }
-        save("blase-lang", size: CGSize(width: 520, height: 330)) {
+        save("blase-lang", size: CGSize(width: 560, height: 360)) {
             bubble("Das ist jetzt schon die dritte Mail von Frau Meier heute und es ist erst Mittag, wirklich.").padding(10)
         }
 
