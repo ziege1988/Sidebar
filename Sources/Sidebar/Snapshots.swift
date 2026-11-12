@@ -66,7 +66,7 @@ enum Snapshots {
             let dx = ballRect.midX - c.x, dy = ballRect.midY - c.y
             let distance = max((dx * dx + dy * dy).squareRoot(), 1)
             let edgeRadius = min(bw / 2 / max(abs(dx / distance), 0.001), bh / 2 / max(abs(dy / distance), 0.001))
-            let reach = min(distance - ball / 2 - 3, edgeRadius + 30)
+            let reach = min(distance - ball / 2 - 3, edgeRadius + 40)
             let tail = CGPoint(x: c.x + dx / distance * max(reach, edgeRadius + 12),
                                y: c.y + dy / distance * max(reach, edgeRadius + 12))
             return ZStack(alignment: .topLeading) {

@@ -462,7 +462,7 @@ final class CatBubbleController {
         let rx = ew / 2, ry = eh / 2
         let edgeRadius = min(rx / max(abs(dx / distance), 0.001), ry / max(abs(dy / distance), 0.001))
         // Die Spitze endet am Rand der Kugel, nicht in ihr
-        let reach = min(distance - cat.width / 2 - 3, edgeRadius + 30)
+        let reach = min(distance - cat.width / 2 - 3, edgeRadius + 40)
         var tail = CGPoint(x: c.x + dx / distance * max(reach, edgeRadius + 12),
                            y: c.y + dy / distance * max(reach, edgeRadius + 12))
         tail.x = min(max(tail.x, 2), size.width - 2)
