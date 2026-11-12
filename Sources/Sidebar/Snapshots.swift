@@ -55,20 +55,31 @@ enum Snapshots {
         func bubble(_ text: String, style: CatBubbleStyle = .normal) -> some View {
             let layout = CatBubbleLayout.make(text, style: style, maxSize: CGSize(width: 360, height: 200))
             let margin: CGFloat = 46
-            let size = CGSize(width: layout.bubbleSize.width + 2 * margin, height: layout.bubbleSize.height + 2 * margin)
-            let body = CGRect(x: margin, y: margin, width: layout.bubbleSize.width, height: layout.bubbleSize.height)
-            let tail = CGPoint(x: margin + 18, y: body.maxY + 30)
+            let bw = layout.bubbleSize.width, bh = layout.bubbleSize.height
+            // Kugel links unten; die Blase sitzt seitlich oberhalb (wie in der App: 22 pt Abstand, etwas höher)
+            let ball: CGFloat = 96
+            let ballRect = CGRect(x: 6, y: bh * 0.7, width: ball, height: ball)
+            let body = CGRect(x: ballRect.maxX + 22 + margin, y: margin, width: bw, height: bh)
+            let size = CGSize(width: body.maxX + margin, height: ballRect.maxY + 14)
+            // Spitze: wie in der App – vom Mittelpunkt der Blase zur Kugel, endet am Kugelrand
+            let c = CGPoint(x: body.midX, y: body.midY)
+            let dx = ballRect.midX - c.x, dy = ballRect.midY - c.y
+            let distance = max((dx * dx + dy * dy).squareRoot(), 1)
+            let edgeRadius = min(bw / 2 / max(abs(dx / distance), 0.001), bh / 2 / max(abs(dy / distance), 0.001))
+            let reach = min(distance - ball / 2 - 3, edgeRadius + 30)
+            let tail = CGPoint(x: c.x + dx / distance * max(reach, edgeRadius + 12),
+                               y: c.y + dy / distance * max(reach, edgeRadius + 12))
             return ZStack(alignment: .topLeading) {
                 SketchBubbleView(text: text, style: style, body: body, tail: tail, size: size,
                                  fontSize: layout.fontSize, textSize: layout.textSize, drawIn: false)
-                CatView(palette: palette).frame(width: 96, height: 96).offset(x: 22, y: body.maxY + 40)
+                CatView(palette: palette).frame(width: ball, height: ball).offset(x: ballRect.minX, y: ballRect.minY)
             }
-            .frame(width: size.width, height: body.maxY + 40 + 96 + 10, alignment: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
         }
         CatBrain.shared.overridePose = .grumpy
         for (name, dark) in [("blase-dunkel", true), ("blase-hell", false)] {
-            save(name, size: CGSize(width: 1100, height: 300), dark: dark) {
-                HStack(alignment: .top, spacing: 24) {
+            save(name, size: CGSize(width: 1240, height: 300), dark: dark) {
+                HStack(alignment: .top, spacing: 8) {
                     bubble("Na toll. Regen. Und ich hab keinen Schirm.")
                     bubble("Das ist jetzt schon die dritte Mail!", style: .angry)
                     bubble("Mehr davon. Bitte.", style: .purr)
@@ -76,7 +87,7 @@ enum Snapshots {
                 .padding(10)
             }
         }
-        save("blase-lang", size: CGSize(width: 560, height: 360)) {
+        save("blase-lang", size: CGSize(width: 640, height: 340)) {
             bubble("Das ist jetzt schon die dritte Mail von Frau Meier heute und es ist erst Mittag, wirklich.").padding(10)
         }
 

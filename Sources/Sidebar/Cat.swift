@@ -431,14 +431,14 @@ final class CatBubbleController {
                 center = room.max(by: { $0.1 < $1.1 })?.0 ?? CGPoint(x: cat.midX, y: cat.maxY + eh / 2)
             }
         } else {
-            // In der Sidebar: über der Leiste, neben der Katze
+            // In der Sidebar: seitlich neben der Kugel und etwas höher – nie direkt darüber
+            let side: CGFloat = 22
+            let up = eh * 0.32
             switch location.edge {
-            case .top, .bottom:
-                center = CGPoint(x: cat.midX + cat.width * 0.25 + ew / 2, y: strip.midY)
-            case .left:
-                center = CGPoint(x: strip.midX + ew / 2 - 12, y: cat.minY - eh / 2 - 8)
             case .right:
-                center = CGPoint(x: strip.midX - ew / 2 + 12, y: cat.minY - eh / 2 - 8)
+                center = CGPoint(x: cat.minX - side - ew / 2, y: cat.midY + up)
+            default:
+                center = CGPoint(x: cat.maxX + side + ew / 2, y: cat.midY + up)
             }
         }
         center.x = min(max(center.x, area.minX + ew / 2), area.maxX - ew / 2)
