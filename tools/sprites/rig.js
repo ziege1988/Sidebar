@@ -1,6 +1,9 @@
 // Rüdiger – Figur aus Einzelteilen (Stil nach Vorlage). Koordinaten: Glasblase 100 × 100, Mitte 50/50.
 // Alles hier ist reine Zeichnung; die Bewegungen stehen in sprites.js.
 const OUT = '#050506', FUR = '#151518', FUR2 = '#2a2a31', PINK = '#f48aa0';
+// Rüdigers Fell: schwarz mit weißer Blesse (schräg an einem Auge vorbei), weißer Schnauze, weißem Latz und weißen Pfoten
+const DEFAULT_COAT = { kind: 'V1', irisId: 'irisMid' };
+const WHITE = '#f4f2ed';
 let UID = 0;
 const f2 = v => (+v).toFixed(2);
 
@@ -21,8 +24,11 @@ function defs() {
   return `<radialGradient id="headShade" cx="50" cy="38" r="42" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${FUR2}"/><stop offset="1" stop-color="${FUR}"/></radialGradient>
   <radialGradient id="iris" cx="45%" cy="62%" r="66%"><stop offset="0" stop-color="#ffec94"/><stop offset=".55" stop-color="#ffc828"/><stop offset="1" stop-color="#e08600"/></radialGradient>
   <radialGradient id="irisAngry" cx="45%" cy="62%" r="66%"><stop offset="0" stop-color="#ffd36a"/><stop offset=".55" stop-color="#f6a019"/><stop offset="1" stop-color="#cf5d00"/></radialGradient>
+  <radialGradient id="irisMid" cx="45%" cy="62%" r="66%"><stop offset="0" stop-color="#f9ee9b"/><stop offset=".55" stop-color="#edca30"/><stop offset="1" stop-color="#c8890a"/></radialGradient>
+  <radialGradient id="whiteFur" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dcd9d1"/></radialGradient>
   <radialGradient id="pad" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ffb3c2"/><stop offset="1" stop-color="#e3708a"/></radialGradient>
   <linearGradient id="claw" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#dcd7cc"/><stop offset="1" stop-color="#fffdf7"/></linearGradient>
+  <linearGradient id="armWhite" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#dcd9d1"/><stop offset=".5" stop-color="#fbfaf7"/><stop offset="1" stop-color="#c9c6be"/></linearGradient>
   <linearGradient id="armShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2d2d34"/><stop offset=".5" stop-color="${FUR}"/><stop offset="1" stop-color="#0a0a0c"/></linearGradient>`;
 }
 
@@ -54,7 +60,7 @@ function eye(cx, cy, side, o) {
   const xi = cx + side * rx, xo = cx - side * rx;                 // side 1 = linkes Auge (innen rechts)
   const pw = o.pupil === 'slit' ? 1.6 : (o.pupil === 'round' ? 5 : 3.5), ph = o.pupil === 'round' ? 7.6 : 7.8;
   let s = `<defs><clipPath id="${id}"><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/></clipPath></defs>
-  <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${o.angry ? 'irisAngry' : 'iris'})"/>
+  <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${o.angry ? 'irisAngry' : (o.irisId || 'iris')})"/>
   <g clip-path="url(#${id})">
     <ellipse cx="${f2(cx + look[0])}" cy="${f2(cy + 0.6 + look[1])}" rx="${pw}" ry="${ph}" fill="#0b0b0c"/>
     <circle cx="${f2(cx + look[0] * 0.6 + 3)}" cy="${f2(cy - 4.2 + look[1] * 0.5)}" r="2.7" fill="#fff"/>
@@ -102,11 +108,25 @@ function headSVG(p) {
   const bristle = p.bristle ? 2.2 : 1;
   const puff = p.cheeks || 0;
   const furTufts = p.fur > 0 ? [[0, 360, 8.5 * p.fur, 10]] : [];
-  s += `<path d="${fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9], ...furTufts])}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
-  const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes };
+  const headD = fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9], ...furTufts]);
+  s += `<path d="${headD}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  if (p.coat) {
+    const cid = 'hc' + (UID++), c = p.coat;
+    const W = 'fill="url(#whiteFur)"';
+    // Blesse: schräg an einem Auge vorbei in die weiße Schnauze
+    const blaze1 = `<path d="M44.5,27.5 Q50,24 56,27.5 Q57.5,34 55.2,41 Q52.6,48 49.8,54 Q47.5,59 46,63 L41,63 Q41.5,57 44.5,52 Q46.5,46 46,40 Q44,33 44.5,27.5 Z" ${W}/>`;
+    // weiße Schnauze: links höher, die Nase sitzt mitten im Weiß
+    const muzzle = `<path d="M17,67 Q19,58 29,56 Q38,55.5 44,59.5 Q47,61.5 48.6,66 L51.4,66 Q53,61.5 57,60.5 Q64,59 71,63 Q79,67 80,72 Q76,84 62,83 Q50,81 38,83 Q22,80 17,67 Z" ${W}/>`;
+    const lowerChin = `<path d="M38,74 Q50,80 62,74 L64,90 L36,90 Z" ${W}/>`;
+    let patch = muzzle + lowerChin;
+    if (c.kind === 'V1') patch += blaze1;
+    s += `<clipPath id="${cid}"><path d="${headD}"/></clipPath><g clip-path="url(#${cid})">${patch}</g>`;
+  }
+  const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes, irisId: p.coat && p.coat.irisId };
   s += eye(37.5, 54, 1, eo) + eye(62.5, 54, -1, eo);
   s += brows(p.brows, p.browRaise || 0);
-  s += `<path d="M47.6,64 Q50,62.8 52.4,64 Q51.4,66 50,66.6 Q48.6,66 47.6,64 Z" fill="${PINK}" stroke="${OUT}" stroke-width=".5"/>`;
+  s += `<path d="M47.6,64 Q50,62.8 52.4,64 Q51.4,66 50,66.6 Q48.6,66 47.6,64 Z" fill="${p.coat && p.coat.darkNose ? '#222225' : PINK}" stroke="${OUT}" stroke-width=".5"/>`;
+  if (p.coat && p.coat.darkNose) s += `<ellipse cx="49.2" cy="63.9" rx="1.5" ry=".7" fill="#fff" opacity=".35"/>`;
   s += mouth(p.mouth);
   s += `<g stroke="#dadadd" stroke-width=".55" stroke-linecap="round" opacity=".9" fill="none">
     <path d="M30,64 Q18,61 6,60"/><path d="M30,66.5 Q18,66.5 7,68"/><path d="M31,69 Q20,71 10,75"/>
@@ -116,19 +136,25 @@ function headSVG(p) {
 }
 
 function bodySVG(p = {}) {
-  return `<path d="${fluffy(50, 98, 37, 24, [[180, 360, 1.2, 10], ...(p.fur > 0 ? [[180, 360, 6 * p.fur, 10]] : [])])}" fill="${FUR}" stroke="${OUT}" stroke-width="1.4"/>`;
+  const d = fluffy(50, 98, 37, 24, [[180, 360, 1.2, 10], ...(p.fur > 0 ? [[180, 360, 6 * p.fur, 10]] : [])]);
+  let s = `<path d="${d}" fill="${FUR}" stroke="${OUT}" stroke-width="1.4"/>`;
+  if (p.coat) {
+    const cid = 'bc' + (UID++);
+    s += `<clipPath id="${cid}"><path d="${d}"/></clipPath><g clip-path="url(#${cid})"><path d="M30,80 Q50,74 70,80 Q76,96 66,116 L34,116 Q24,96 30,80 Z" fill="url(#whiteFur)"/></g>`;
+  }
+  return s;
 }
 
-function rimPaw(cx, cy, s = 1) {
+function rimPaw(cx, cy, s = 1, white = false) {
   return `<g transform="translate(${f2(cx)} ${f2(cy)}) scale(${s})">
-    <path d="${fluffy(0, 0, 10, 7, [[200, 340, 1.1, 12]])}" fill="${FUR2}" stroke="${OUT}" stroke-width="1.2"/>
-    <path d="M-3.4,-0.5 v4 M0.2,-1.2 v4.5 M3.8,-0.5 v4" stroke="#44444c" stroke-width="1" stroke-linecap="round"/></g>`;
+    <path d="${fluffy(0, 0, 10, 7, [[200, 340, 1.1, 12]])}" fill="${white ? 'url(#whiteFur)' : FUR2}" stroke="${OUT}" stroke-width="1.2"/>
+    <path d="M-3.4,-0.5 v4 M0.2,-1.2 v4.5 M3.8,-0.5 v4" stroke="${white ? '#b9b5ad' : '#44444c'}" stroke-width="1" stroke-linecap="round"/></g>`;
 }
 
 /** Erhobene Pfote, Ballen zum Betrachter, Krallen oben */
-function raisedPaw(x, y, rot, s, claws) {
+function raisedPaw(x, y, rot, s, claws, white = false) {
   let o = `<g transform="translate(${f2(x)} ${f2(y)}) rotate(${f2(rot)}) scale(${f2(s)})">
-    <path d="${fluffy(0, 0, 11.5, 10.5, [[190, 350, 1.3, 12]])}" fill="${FUR}" stroke="${OUT}" stroke-width="1.3"/>
+    <path d="${fluffy(0, 0, 11.5, 10.5, [[190, 350, 1.3, 12]])}" fill="${white ? 'url(#whiteFur)' : FUR}" stroke="${OUT}" stroke-width="1.3"/>
     <path d="M-6,3.5 C-7.5,0 -5,-3 -2.5,-2.2 C-1.4,-4.2 1.4,-4.2 2.5,-2.2 C5,-3 7.5,0 6,3.5 C4.5,6.2 -4.5,6.2 -6,3.5 Z" fill="url(#pad)" stroke="${OUT}" stroke-width=".6"/>
     <ellipse cx="-1.6" cy="-0.6" rx="1.6" ry=".8" fill="#fff" opacity=".45"/>`;
   [[-7.4, -5.8], [-2.6, -9], [2.6, -9], [7.4, -5.8]].forEach(([tx, ty]) => {
@@ -139,7 +165,7 @@ function raisedPaw(x, y, rot, s, claws) {
 }
 
 /** Arm von der Schulter zur Pfote, Ellbogen leicht nach außen */
-function armSVG(sx, sy, px, py, w0 = 10, w1 = 7.5, bendDir = 1) {
+function armSVG(sx, sy, px, py, w0 = 10, w1 = 7.5, bendDir = 1, white = false) {
   const dx = px - sx, dy = py - sy, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
   const c = [(sx + px) / 2 + nx * 5 * bendDir, (sy + py) / 2 + ny * 5 * bendDir];
   const A = [], B = [];
@@ -149,7 +175,7 @@ function armSVG(sx, sy, px, py, w0 = 10, w1 = 7.5, bendDir = 1) {
     const w = w0 + (w1 - w0) * q + Math.sin(q * Math.PI) * 1.2;
     A.push([x - ty / tl * w, y + tx / tl * w]); B.push([x + ty / tl * w, y - tx / tl * w]);
   }
-  return `<path d="M${[...A, ...B.reverse()].map(p => f2(p[0]) + ',' + f2(p[1])).join(' L')} Z" fill="url(#armShade)" stroke="${OUT}" stroke-width="1.3"/>`;
+  return `<path d="M${[...A, ...B.reverse()].map(p => f2(p[0]) + ',' + f2(p[1])).join(' L')} Z" fill="url(#${white ? 'armWhite' : 'armShade'})" stroke="${OUT}" stroke-width="1.3"/>`;
 }
 
 function heart(x, y, s, o) {
@@ -170,6 +196,7 @@ function glassFront() {
  * Die Blase selbst (Glasfarbe, Leuchten) zeichnet die App darunter.
  */
 function frameSVG(p, px, span) {
+  if (!p.coat) p = Object.assign({}, p, { coat: DEFAULT_COAT });
   const wide = span > 1;
   const id = 'f' + (UID++);
   const T = `translate(50 100) scale(${f2(p.sc || 1)}) translate(-50 -100) translate(${f2(p.dx || 0)} ${f2(p.dy || 0)}) rotate(${f2(p.rot || 0)} 50 74)`;
@@ -190,14 +217,14 @@ function frameSVG(p, px, span) {
     s += glassFront();
     // 3. Pfoten auf dem Rand (vor dem Glas)
     let paws = '';
-    if (p.rimL !== false) paws += rimPaw(p.rimLx || 33, p.rimLy || 85, 1.05);
-    if (p.rimR !== false) paws += rimPaw(p.rimRx || 67, p.rimRy || 85, 1.05);
+    if (p.rimL !== false) paws += rimPaw(p.rimLx || 33, p.rimLy || 85, 1.05, !!p.coat);
+    if (p.rimR !== false) paws += rimPaw(p.rimRx || 67, p.rimRy || 85, 1.05, !!p.coat);
     s += `<g clip-path="url(#${id}rim)"><g transform="${T}">${paws}</g></g>`;
     // 4. was aus der Blase ragt (vor Glas und Rand)
     if (wide) s += `<g mask="url(#${id}out)" filter="url(#${id}sh)"><g transform="${T}"><g clip-path="url(#${id}head)"><g transform="${H}">${headSVG(p)}</g></g></g></g>`;
     // 5. winkende Pfote / Arm
-    if (p.wave) s += `<g transform="${T}">${armSVG(36, 86, p.wave.x, p.wave.y + 7, 8.5, 6.8, -1)}${raisedPaw(p.wave.x, p.wave.y, p.wave.rot, 0.82, 0)}</g>`;
-    if (p.arm) s += `<g transform="${T}" filter="url(#${id}sh)">${armSVG(64, 84, p.arm.x - 4, p.arm.y + 8)}${raisedPaw(p.arm.x, p.arm.y, p.arm.rot, p.arm.s || 1, p.arm.claws || 0)}</g>`;
+    if (p.wave) s += `<g transform="${T}">${armSVG(36, 86, p.wave.x, p.wave.y + 7, 8.5, 6.8, -1, true)}${raisedPaw(p.wave.x, p.wave.y, p.wave.rot, 0.82, 0, true)}</g>`;
+    if (p.arm) s += `<g transform="${T}" filter="url(#${id}sh)">${armSVG(64, 84, p.arm.x - 4, p.arm.y + 8, 10, 7.5, 1, true)}${raisedPaw(p.arm.x, p.arm.y, p.arm.rot, p.arm.s || 1, p.arm.claws || 0, true)}</g>`;
   }
   if (p.fx) s += p.fx;
   return s + `</svg>`;
