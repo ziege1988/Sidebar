@@ -639,6 +639,23 @@ enum WeatherSelfTest {
                 }
             }
         }
+        // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
+        let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
+        for scheme in [ColorScheme.light, ColorScheme.dark] {
+            let palette = Palette.resolve(.sage, scheme)
+            for editing in [nil, sample[1].id] as [UUID?] {
+                render("Notizen \(scheme) \(editing == nil ? "Raster" : "bearbeitet")",
+                       NotesBoard(notes: sample, editingID: .constant(editing), palette: palette, actions: NotesBoardActions())
+                    .frame(width: 580, height: 480))
+            }
+            render("Notizen leer \(scheme)", NotesBoard(notes: [], editingID: .constant(nil), palette: palette,
+                                                        actions: NotesBoardActions()).frame(width: 580, height: 300))
+        }
+        let stored = NSMutableAttributedString(string: "weiß", attributes: [.foregroundColor: NSColor.white])
+        stored.append(NSAttributedString(string: "rot", attributes: [.foregroundColor: NSColor(srgbRed: 0.75, green: 0.27, blue: 0.25, alpha: 1)]))
+        RichTextEditor.dropPaleInk(stored)
+        if stored.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil { failures.append("Weiße Schrift bleibt in Notizen stehen") }
+        if stored.attribute(.foregroundColor, at: 4, effectiveRange: nil) == nil { failures.append("Farbige Schrift ging verloren") }
         return failures
     }
 }

@@ -236,10 +236,16 @@ struct NotesView: View {
     let theme: ColorTheme
     let onClose: () -> Void
     @Environment(\.colorScheme) private var scheme
-    @State private var newNoteID: UUID?
+    @State private var editingID: UUID?
+    @State private var query = ""
 
     static let size = CGSize(width: 580, height: 560)
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    private var filtered: [QuickNote] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return store.config.notes }
+        return store.config.notes.filter { $0.text.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         let palette = Palette.resolve(theme, scheme)
@@ -251,30 +257,22 @@ struct NotesView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
             Rectangle().fill(palette.border).frame(height: 1)
-
-            if store.config.notes.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 26))
-                        .foregroundStyle(palette.accent.opacity(0.6))
-                    Text("Noch keine Notizen.\nMit „+“ eine neue Kachel anlegen.")
-                        .font(.system(size: 12))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(palette.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(store.config.notes) { note in
-                            NoteTile(note: note, store: store, palette: palette,
-                                     focusOnAppear: note.id == newNoteID)
-                                .id(note.id)
-                        }
-                    }
-                    .padding(14)
-                }
-            }
+            searchField(palette)
+            NotesBoard(notes: filtered, searching: !query.trimmingCharacters(in: .whitespaces).isEmpty,
+                       editingID: $editingID, palette: palette,
+                       actions: NotesBoardActions(
+                        add: { addNote() },
+                        update: { id, text, rtf in store.updateNote(id: id, text: text, rtf: rtf) },
+                        cycleTint: { store.cycleNoteTint(id: $0) },
+                        copy: { note in
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(note.text, forType: .string)
+                            if let rtf = note.rtf { NSPasteboard.general.setData(rtf, forType: .rtf) }
+                        },
+                        delete: { id in
+                            if editingID == id { editingID = nil }
+                            store.deleteNote(id: id)
+                        }))
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .background(GlassFill(fill: palette.panelFill(gradient: true),
@@ -283,6 +281,38 @@ struct NotesView: View {
         .clipShape(shape)
         .overlay(shape.stroke(palette.border, lineWidth: 1))
         .overlay(GlassRim(shape: shape, intensity: store.config.settings.glassIntensity))
+    }
+
+    private func addNote() {
+        query = ""
+        let note = store.addNote("")
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { editingID = note.id }
+    }
+
+    private func searchField(_ palette: Palette) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(palette.secondary)
+            TextField("In Notizen suchen …", text: $query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(palette.text)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.surface))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(palette.border, lineWidth: 1))
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
     }
 
     private func header(_ palette: Palette) -> some View {
@@ -301,10 +331,7 @@ struct NotesView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(palette.secondary)
             Spacer()
-            Button {
-                let note = store.addNote("")
-                newNoteID = note.id
-            } label: {
+            Button(action: addNote) {
                 Label("Neue Notiz", systemImage: "plus")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(palette.onAccent)
@@ -389,60 +416,209 @@ struct FormatBar: View {
     }
 }
 
-/// Eine Notiz als Kachel in einem gedeckten Farbton.
-struct NoteTile: View {
-    let note: QuickNote
-    let store: ConfigStore
+// MARK: - Kachelsystem
+
+/// Was eine Kachel tun darf (vom Fenster übergeben – so lässt sich das Raster auch ohne Konfiguration zeichnen).
+struct NotesBoardActions {
+    var add: () -> Void = {}
+    var update: (UUID, String, Data?) -> Void = { _, _, _ in }
+    var cycleTint: (UUID) -> Void = { _ in }
+    var copy: (QuickNote) -> Void = { _ in }
+    var delete: (UUID) -> Void = { _ in }
+}
+
+/// Notizen als Zettel-Kacheln im Raster: zwei Spalten, vorne „+ Neue Notiz".
+/// Ein Klick öffnet eine Kachel zum Bearbeiten – sie wird zwei Spalten breit, die übrigen rücken nach.
+struct NotesBoard: View {
+    let notes: [QuickNote]
+    var searching = false
+    @Binding var editingID: UUID?
     let palette: Palette
-    var focusOnAppear = false
-    @Environment(\.colorScheme) private var scheme
+    let actions: NotesBoardActions
+
+    private enum Entry {
+        case add
+        case note(QuickNote)
+        var key: String {
+            switch self {
+            case .add: return "add"
+            case .note(let note): return note.id.uuidString
+            }
+        }
+    }
+
+    /// Zeilen: Normalerweise zwei Kacheln nebeneinander; die gerade bearbeitete Kachel bekommt eine ganze Zeile.
+    private var rows: [[Entry]] {
+        var rows: [[Entry]] = []
+        var current: [Entry] = []
+        let entries: [Entry] = (searching ? [] : [.add]) + notes.map(Entry.note)
+        for entry in entries {
+            if case .note(let note) = entry, note.id == editingID {
+                if !current.isEmpty { rows.append(current); current = [] }
+                rows.append([entry])
+            } else {
+                current.append(entry)
+                if current.count == 2 { rows.append(current); current = [] }
+            }
+        }
+        if !current.isEmpty { rows.append(current) }
+        return rows
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            RichTextEditor(initialText: note.text, initialRTF: note.rtf, focusOnAppear: focusOnAppear) { plain, rtf in
-                store.updateNote(id: note.id, text: plain, rtf: rtf)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                ForEach(rows, id: \.first!.key) { row in
+                    HStack(alignment: .top, spacing: 16) {
+                        ForEach(row, id: \.key) { entry in
+                            cell(entry)
+                        }
+                        if row.count == 1, !isEditingRow(row) { Color.clear.frame(maxWidth: .infinity) }
+                    }
+                }
+                if searching && notes.isEmpty {
+                    Text("Keine Treffer.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(palette.secondary)
+                        .padding(.top, 30)
+                }
             }
-            .frame(height: 118)
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
+            .padding(.bottom, 18)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: editingID)
+        }
+    }
+
+    private func isEditingRow(_ row: [Entry]) -> Bool {
+        if case .note(let note)? = row.first { return note.id == editingID }
+        return false
+    }
+
+    @ViewBuilder
+    private func cell(_ entry: Entry) -> some View {
+        switch entry {
+        case .add:
+            Button(action: actions.add) {
+                VStack(spacing: 4) {
+                    Image(systemName: "plus").font(.system(size: 20, weight: .light))
+                    Text("Neue Notiz").font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(palette.secondary)
+                .frame(maxWidth: .infinity, minHeight: NoteCard.height)
+                .background(RoundedRectangle(cornerRadius: 4).fill(palette.surface.opacity(0.5)))
+                .overlay(RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(palette.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        case .note(let note):
+            NoteCard(note: note, editing: note.id == editingID, palette: palette, actions: actions,
+                     onOpen: { editingID = note.id },
+                     onDone: { editingID = nil })
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+/// Eine Notiz als Zettel: Papierton mit Klebeband, leicht schräg. Zeigt die Notiz mit ihrer Formatierung.
+struct NoteCard: View {
+    static let height: CGFloat = 150
+    let note: QuickNote
+    let editing: Bool
+    let palette: Palette
+    let actions: NotesBoardActions
+    let onOpen: () -> Void
+    let onDone: () -> Void
+
+    private static let tape: [Color] = [
+        Color(red: 0.62, green: 0.60, blue: 0.56), Color(red: 0.36, green: 0.58, blue: 0.40),
+        Color(red: 0.30, green: 0.52, blue: 0.80), Color(red: 0.82, green: 0.40, blue: 0.40),
+        Color(red: 0.55, green: 0.46, blue: 0.78), Color(red: 0.77, green: 0.62, blue: 0.29),
+    ]
+
+    private var tint: Int { ((note.tint ?? 0) % NoteTint.count + NoteTint.count) % NoteTint.count }
+    /// Leichte, für jede Notiz feste Schräglage (−1,1° … +1,1°)
+    private var tilt: Double { (Double(note.id.uuid.0 % 21) - 10) / 10 * 1.1 }
+    private let ink = Color(red: 0.18, green: 0.16, blue: 0.10)
+
+    var body: some View {
+        let paper = NoteTint.color(tint, scheme: .light)
+        VStack(alignment: .leading, spacing: 2) {
+            ZStack {
+                RichTextEditor(initialText: note.text, initialRTF: note.rtf, focusOnAppear: editing) { plain, rtf in
+                    actions.update(note.id, plain, rtf)
+                }
+                .id(editing)
+                .allowsHitTesting(editing)
+                if !editing {
+                    // Klick auf den Zettel öffnet ihn zum Bearbeiten
+                    Color.clear.contentShape(Rectangle()).onTapGesture(perform: onOpen)
+                }
+            }
+            .frame(height: editing ? 230 : Self.height - 56)
+            .mask(
+                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: editing ? 1 : 0.86),
+                                       .init(color: .black.opacity(editing ? 1 : 0), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            )
             HStack(spacing: 10) {
                 Text(note.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.system(size: 10))
-                    .foregroundStyle(palette.secondary)
+                    .foregroundStyle(ink.opacity(0.55))
                 Spacer()
-                Button {
-                    store.cycleNoteTint(id: note.id)
-                } label: {
-                    Image(systemName: "paintpalette").font(.system(size: 10))
+                icon("paintpalette", "Farbe wechseln") { actions.cycleTint(note.id) }
+                icon("doc.on.doc", "Kopieren (mit Formatierung)") { actions.copy(note) }
+                icon("trash", "Löschen") { actions.delete(note.id) }
+                if editing {
+                    Button(action: onDone) {
+                        Label("Fertig", systemImage: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(palette.onAccent)
+                            .padding(.horizontal, 8)
+                            .frame(height: 20)
+                            .background(Capsule().fill(palette.accent))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(palette.secondary)
-                .help("Kachelfarbe wechseln")
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(note.text, forType: .string)
-                    if let rtf = note.rtf { NSPasteboard.general.setData(rtf, forType: .rtf) }
-                } label: {
-                    Image(systemName: "doc.on.doc").font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(palette.secondary)
-                .help("Kopieren (mit Formatierung)")
-                Button {
-                    store.deleteNote(id: note.id)
-                } label: {
-                    Image(systemName: "trash").font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(palette.secondary)
-                .help("Löschen")
             }
         }
-        .padding(10)
-        .frame(height: 160)
+        .padding(.horizontal, 12)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+        .frame(minHeight: editing ? 0 : Self.height, alignment: .top)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(NoteTint.color(note.tint, scheme: scheme))
-                .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+            ZStack {
+                Rectangle().fill(paper)
+                Rectangle().fill(LinearGradient(colors: [Color.white.opacity(0.4), Color.white.opacity(0)],
+                                                startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.4)))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .shadow(color: .black.opacity(editing ? 0.42 : 0.3), radius: editing ? 12 : 6, y: editing ? 7 : 3)
         )
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(palette.border, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .stroke(palette.accent, lineWidth: editing ? 2 : 0))
+        .overlay(alignment: .top) {
+            // Klebeband
+            Rectangle()
+                .fill(Self.tape[tint].opacity(0.55))
+                .overlay(HStack { Rectangle().stroke(Color.white.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [2, 2])).frame(width: 1); Spacer(); Rectangle().stroke(Color.white.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [2, 2])).frame(width: 1) })
+                .frame(width: 46, height: 14)
+                .rotationEffect(.degrees(-3))
+                .offset(y: -7)
+                .allowsHitTesting(false)
+        }
+        .rotationEffect(.degrees(editing ? 0 : tilt))
+    }
+
+    private func icon(_ name: String, _ help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name).font(.system(size: 10))
+                .foregroundStyle(ink.opacity(0.6))
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

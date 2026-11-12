@@ -209,6 +209,8 @@ struct RichTextEditor: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
+        // Notizen liegen auf hellem Papier: Text immer dunkel, auch im Dunkelmodus
+        scroll.appearance = NSAppearance(named: .aqua)
 
         let textView = NoteTextView(frame: .zero)
         textView.isRichText = true
@@ -226,7 +228,9 @@ struct RichTextEditor: NSViewRepresentable {
         textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
 
         if let initialRTF, let attributed = NSAttributedString(rtf: initialRTF, documentAttributes: nil) {
-            textView.textStorage?.setAttributedString(attributed)
+            let fixed = NSMutableAttributedString(attributedString: attributed)
+            Self.dropPaleInk(fixed)
+            textView.textStorage?.setAttributedString(fixed)
         } else {
             textView.string = initialText
         }
@@ -245,6 +249,19 @@ struct RichTextEditor: NSViewRepresentable {
         context.coordinator.onChange = onChange
     }
 
+    /// Ältere Notizen, die im Dunkelmodus gespeichert wurden, haben weiße Schrift – auf Papier unlesbar. Die
+    /// „Standardfarbe" (fast weiß, kaum Farbe, ohne Textmarker) wird entfernt, dann gilt wieder dunkle Tinte.
+    static func dropPaleInk(_ text: NSMutableAttributedString) {
+        let whole = NSRange(location: 0, length: text.length)
+        text.enumerateAttribute(.foregroundColor, in: whole) { value, range, _ in
+            guard let color = (value as? NSColor)?.usingColorSpace(.sRGB) else { return }
+            let pale = color.brightnessComponent > 0.78 && color.saturationComponent < 0.25
+            if pale, text.attribute(.backgroundColor, at: range.location, effectiveRange: nil) == nil {
+                text.removeAttribute(.foregroundColor, range: range)
+            }
+        }
+    }
+
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onChange: @MainActor (String, Data?) -> Void
 
@@ -255,7 +272,9 @@ struct RichTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             let range = NSRange(location: 0, length: (textView.string as NSString).length)
-            let rtf = textView.rtf(from: range)
+            // Mit hellem Erscheinungsbild speichern, damit „Standardfarbe" nicht als Weiß im RTF landet
+            var rtf: Data?
+            NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance { rtf = textView.rtf(from: range) }
             let plain = textView.string
             MainActor.assumeIsolated { onChange(plain, rtf) }
         }
