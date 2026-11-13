@@ -5,6 +5,8 @@ const OUT = '#050506', FUR = '#151518', FUR2 = '#2a2a31', PINK = '#f48aa0';
 const DEFAULT_COAT = { kind: 'V1', irisId: 'irisMid' };
 const WHITE = '#f4f2ed';
 let UID = 0;
+// Rüdiger ist ein Moppel: breiter, runder Kopf, kleine Ohren weit außen, schwere Lider, Doppelkinn, rundere Schultern, dicke Pfoten.
+const C = { hw: 1.2, hh: 1.08, ear: 0.86, lid: 0.36, body: 1.2, paw: 1.22, chin: 0.7, eyeX: 2.2, eyeY: 2 };
 const f2 = v => (+v).toFixed(2);
 
 function fluffy(cx, cy, rx, ry, tufts, step = 2) {
@@ -104,11 +106,17 @@ function mouth(kind) {
 }
 
 function headSVG(p) {
-  let s = ear(true, p.earL || 0) + ear(false, p.earR || 0);
+  let s = '';
+  // Doppelkinn (schaut unter dem Kopf hervor)
+  s += `<ellipse cx="50" cy="${f2(80 + (C.hh - 1) * 8)}" rx="${f2(13 + C.chin * 9)}" ry="${f2(5 + C.chin * 5)}" fill="url(#whiteFur)" stroke="${OUT}" stroke-width="1.3"/>`;
+  // kleinere Ohren, weiter außen und etwas tiefer
+  const ex = (C.hw - 1) * 12, ey = (C.hh - 1) * 14 + 4;
+  s += `<g transform="translate(${f2(-ex)} ${f2(ey)}) translate(32 40) scale(${C.ear}) translate(-32 -40)">${ear(true, p.earL || 0)}</g>`;
+  s += `<g transform="translate(${f2(ex)} ${f2(ey)}) translate(68 40) scale(${C.ear}) translate(-68 -40)">${ear(false, p.earR || 0)}</g>`;
   const bristle = p.bristle ? 2.2 : 1;
   const puff = p.cheeks || 0;
   const furTufts = p.fur > 0 ? [[0, 360, 8.5 * p.fur, 10]] : [];
-  const headD = fluffy(50, 53 + puff * 0.6, 33 + puff * 2.2, 27.5 + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9], ...furTufts]);
+  const headD = fluffy(50, 53 + puff * 0.6 + (C.hh - 1) * 10, 33 * C.hw + puff * 2.2, 27.5 * C.hh + puff * 0.6, [[146, 214, 2.6 * bristle], [326, 358, 2.6 * bristle], [0, 34, 2.6 * bristle], [242, 298, 1.5 * bristle * 1.4], [200, 340, p.bristle ? 2.2 : 0, 9], ...furTufts]);
   s += `<path d="${headD}" fill="url(#headShade)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
   if (p.coat) {
     const cid = 'hc' + (UID++), c = p.coat;
@@ -122,11 +130,12 @@ function headSVG(p) {
     if (c.kind === 'V1') patch += blaze1;
     s += `<clipPath id="${cid}"><path d="${headD}"/></clipPath><g clip-path="url(#${cid})">${patch}</g>`;
   }
-  const eo = { look: p.look, lid: p.lid, low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes, irisId: p.coat && p.coat.irisId };
-  s += eye(37.5, 54, 1, eo) + eye(62.5, 54, -1, eo);
+  const eo = { look: p.look, lid: (p.closed || !(p.lid > 0.001)) ? p.lid : Math.max(p.lid, C.lid), low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes, irisId: p.coat && p.coat.irisId };
+  s += eye(37.5 - C.eyeX, 54 + C.eyeY, 1, eo) + eye(62.5 + C.eyeX, 54 + C.eyeY, -1, eo);
   s += brows(p.brows, p.browRaise || 0);
   s += `<path d="M47.6,64 Q50,62.8 52.4,64 Q51.4,66 50,66.6 Q48.6,66 47.6,64 Z" fill="${p.coat && p.coat.darkNose ? '#222225' : PINK}" stroke="${OUT}" stroke-width=".5"/>`;
   if (p.coat && p.coat.darkNose) s += `<ellipse cx="49.2" cy="63.9" rx="1.5" ry=".7" fill="#fff" opacity=".35"/>`;
+  s += `<g fill="#000" opacity=".10"><ellipse cx="${f2(50 - 27 * C.hw)}" cy="66" rx="7" ry="9"/><ellipse cx="${f2(50 + 27 * C.hw)}" cy="66" rx="7" ry="9"/></g>`;
   s += mouth(p.mouth);
   s += `<g stroke="#dadadd" stroke-width=".55" stroke-linecap="round" opacity=".9" fill="none">
     <path d="M30,64 Q18,61 6,60"/><path d="M30,66.5 Q18,66.5 7,68"/><path d="M31,69 Q20,71 10,75"/>
@@ -136,11 +145,11 @@ function headSVG(p) {
 }
 
 function bodySVG(p = {}) {
-  const d = fluffy(50, 98, 37, 24, [[180, 360, 1.2, 10], ...(p.fur > 0 ? [[180, 360, 6 * p.fur, 10]] : [])]);
+  const d = fluffy(50, 98 - (C.body - 1) * 12, 37 * C.body, 24 * C.body, [[180, 360, 1.2, 10], ...(p.fur > 0 ? [[180, 360, 6 * p.fur, 10]] : [])]);
   let s = `<path d="${d}" fill="${FUR}" stroke="${OUT}" stroke-width="1.4"/>`;
   if (p.coat) {
     const cid = 'bc' + (UID++);
-    s += `<clipPath id="${cid}"><path d="${d}"/></clipPath><g clip-path="url(#${cid})"><path d="M30,80 Q50,74 70,80 Q76,96 66,116 L34,116 Q24,96 30,80 Z" fill="url(#whiteFur)"/></g>`;
+    s += `<clipPath id="${cid}"><path d="${d}"/></clipPath><g clip-path="url(#${cid})"><path d="M${f2(50 - 20 * C.body)},80 Q50,${f2(74 - (C.body - 1) * 8)} ${f2(50 + 20 * C.body)},80 Q${f2(50 + 26 * C.body)},96 ${f2(50 + 16 * C.body)},116 L${f2(50 - 16 * C.body)},116 Q${f2(50 - 26 * C.body)},96 ${f2(50 - 20 * C.body)},80 Z" fill="url(#whiteFur)"/></g>`;
   }
   return s;
 }
@@ -217,8 +226,8 @@ function frameSVG(p, px, span) {
     s += glassFront();
     // 3. Pfoten auf dem Rand (vor dem Glas)
     let paws = '';
-    if (p.rimL !== false) paws += rimPaw(p.rimLx || 33, p.rimLy || 85, 1.05, !!p.coat);
-    if (p.rimR !== false) paws += rimPaw(p.rimRx || 67, p.rimRy || 85, 1.05, !!p.coat);
+    if (p.rimL !== false) paws += rimPaw((p.rimLx || 33) - (C.body - 1) * 16, p.rimLy || 85, 1.05 * C.paw, !!p.coat);
+    if (p.rimR !== false) paws += rimPaw((p.rimRx || 67) + (C.body - 1) * 16, p.rimRy || 85, 1.05 * C.paw, !!p.coat);
     s += `<g clip-path="url(#${id}rim)"><g transform="${T}">${paws}</g></g>`;
     // 4. was aus der Blase ragt (vor Glas und Rand)
     if (wide) s += `<g mask="url(#${id}out)" filter="url(#${id}sh)"><g transform="${T}"><g clip-path="url(#${id}head)"><g transform="${H}">${headSVG(p)}</g></g></g></g>`;

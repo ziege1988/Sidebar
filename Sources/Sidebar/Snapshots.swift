@@ -137,6 +137,44 @@ enum Snapshots {
                 NotesView(store: store, theme: settings.colorTheme, onClose: {}).padding(20)
             }
         }
+        // 5 · Alle Animationen (Standbilder) und alle Wetterzustände mit dem Moppel
+        let sprites = ["idle", "annoyed", "angry", "ask", "purr", "sleep", "wet", "cold", "windy", "eat_ready",
+                       "eat", "intro", "struck", "shake", "alarm", "idle_tongue", "idle_stretch", "idle_look", "idle_tilt", "idle_slowblink"]
+        func midTime(_ name: String) -> Double { (CatSprites.shared.sequence(name)?.duration ?? 1) * 0.45 }
+        let spriteColumns = 5
+        save("animationen", size: CGSize(width: 150 * CGFloat(spriteColumns) + 20, height: 150 * CGFloat((sprites.count + spriteColumns - 1) / spriteColumns) + 20), wallpaper: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(0..<((sprites.count + spriteColumns - 1) / spriteColumns), id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<spriteColumns, id: \.self) { col in
+                            let i = row * spriteColumns + col
+                            if i < sprites.count { CatStill(palette: palette, pose: .clip(sprites[i], midTime(sprites[i]))).frame(width: 150, height: 150) }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+        let moods: [WeatherMood] = [.rain, .hot, .sweat, .wind, .thunder, .frost, .snow]
+        save("wetter", size: CGSize(width: 150 * 4 + 20, height: 150 * 2 + 20)) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(0..<2, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<4, id: \.self) { col in
+                            let i = row * 4 + col
+                            if i < moods.count {
+                                WeatherPreviewScript.art(mood: moods[i], kindIndex: 0, local: 2, now: 2.3, accent: palette.accent)
+                                    .frame(width: 96, height: 96).padding(27)
+                            } else if i == 7 {
+                                WeatherPreviewScript.art(mood: .thunder, kindIndex: 1, local: 1.6, now: 2.3, accent: palette.accent)
+                                    .frame(width: 96, height: 96).padding(27)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
         CatBrain.shared.overridePose = nil
         return failures
     }
@@ -155,7 +193,12 @@ struct CatStill: View {
                                          center: UnitPoint(x: 0.45, y: 0.36), startRadius: 2, endRadius: 60))
             if let waiting { Circle().fill(Color.black.opacity(0.42 * (1 - waiting))) }
             if let name = pose.sprite {
-                let since: Double = { if case .intro(let s) = pose { return s }; return 0.5 }()
+                let since: Double = {
+                    switch pose {
+                    case .intro(let s), .clip(_, let s): return s
+                    default: return 0.5
+                    }
+                }()
                 if let image = CatSprites.shared.image(name, at: since) {
                     GeometryReader { proxy in
                         let side = proxy.size.width * CGFloat(CatSprites.shared.span(name))
