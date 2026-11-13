@@ -88,7 +88,7 @@ jobs:
 
       # Nur auf dem Vorschau-Zweig: Bilder zusätzlich auf einen Hilfszweig legen (zum Ansehen)
       - name: Vorschaubilder ablegen
-        if: always() && github.ref_name == 'claude/vorschau'
+        if: always() && startsWith(github.ref_name, 'claude/vorschau')
         continue-on-error: true
         run: |
           mkdir -p /tmp/bilder && cp build/vorschau/*.png /tmp/bilder/
