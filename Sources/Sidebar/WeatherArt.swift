@@ -654,6 +654,35 @@ enum WeatherSelfTest {
             let nearest = CGPoint(x: min(max(b.x, rect.minX), rect.maxX), y: min(max(b.y, rect.minY), rect.maxY))
             if hypot(nearest.x - b.x, nearest.y - b.y) < 39.5 { failures.append("Blase ragt in die Kugel (\(c))") }
         }
+        // Server-Verknüpfungen und Fenster außerhalb der Sidebar
+        for (text, expected) in [("smb://nas.local/Daten", true), ("afp://nas/Freigabe", true), ("https://example.com", false),
+                                 ("/Applications/Safari.app", false)] {
+            if let url = LinkItem.normalizedURL(from: text), LinkOpener.isServerAddress(url) != expected {
+                failures.append("Server-Adresse falsch erkannt: \(text)")
+            }
+        }
+        let screenArea = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        for edge in [ScreenEdge.top, .bottom, .left, .right] {
+            let thickness: CGFloat = 56
+            let strip: CGRect, clock: CGRect
+            switch edge {
+            case .top: strip = CGRect(x: 0, y: screenArea.maxY - thickness, width: screenArea.width, height: thickness); clock = CGRect(x: 0, y: screenArea.maxY - 150, width: 150, height: 150)
+            case .bottom: strip = CGRect(x: 0, y: 0, width: screenArea.width, height: thickness); clock = CGRect(x: 0, y: 0, width: 150, height: 150)
+            case .left: strip = CGRect(x: 0, y: 0, width: thickness, height: screenArea.height); clock = CGRect(x: 0, y: screenArea.maxY - 150, width: 150, height: 150)
+            case .right: strip = CGRect(x: screenArea.maxX - thickness, y: 0, width: thickness, height: screenArea.height); clock = CGRect(x: screenArea.maxX - 150, y: screenArea.maxY - 150, width: 150, height: 150)
+            }
+            for frame in [CGRect(x: 80, y: 60, width: 1280, height: 820), CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 300, y: 200, width: 600, height: 400),
+                          CGRect(x: 1000, y: 800, width: 400, height: 300)] {
+                let moved = SidebarKeepOut.adjust(frame, strip: strip, clock: clock, edge: edge, area: screenArea)
+                if moved.intersects(strip) { failures.append("Fenster berührt die Leiste (\(edge.rawValue), \(frame))") }
+                if moved.intersects(clock) { failures.append("Fenster berührt die Uhr (\(edge.rawValue), \(frame))") }
+                if moved.width < 100 || moved.height < 100 { failures.append("Fenster zu klein gemacht (\(edge.rawValue), \(frame))") }
+            }
+            let free = CGRect(x: 400, y: 200, width: 500, height: 300)
+            if SidebarKeepOut.adjust(free, strip: strip, clock: clock, edge: edge, area: screenArea) != free {
+                failures.append("Freies Fenster wurde verschoben (\(edge.rawValue))")
+            }
+        }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

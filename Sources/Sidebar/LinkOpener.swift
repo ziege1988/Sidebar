@@ -7,14 +7,27 @@ enum LinkOpener {
             NSSound.beep()
             return
         }
+        // Server-Adressen (smb://, afp:// …): gehören dem System – der Finder verbindet, fragt das Passwort ab
+        // und öffnet den Ordner. (Nicht im Browser-Fenster: dort passiert damit nichts.)
+        if isServerAddress(url) {
+            openWithSystem(url, name: item.displayName)
+            return
+        }
         // Programm, Datei oder Ordner auf dem Mac → mit macOS öffnen
         if url.isFileURL {
-            if FileManager.default.fileExists(atPath: url.path) {
+            if isServerShortcut(url) {
+                // Verknüpfung zu einem Server (Alias, .inetloc …): wie ein Doppelklick im Finder – verbindet bei Bedarf
+                // erst den Server (mit Passwortabfrage) und öffnet ihn dann
+                openServerShortcut(url, name: item.displayName)
+            } else if FileManager.default.fileExists(atPath: url.path) {
                 NSWorkspace.shared.open(url)
             } else {
                 let alert = NSAlert()
                 alert.messageText = "„\(item.displayName)“ wurde nicht gefunden"
-                alert.informativeText = "Das Programm bzw. die Datei liegt nicht mehr unter \(url.path). Wurde sie verschoben oder gelöscht?"
+                let onServer = url.path.hasPrefix("/Volumes/")
+                alert.informativeText = onServer
+                    ? "Das Laufwerk „\(url.pathComponents.dropFirst(2).first ?? "")“ ist nicht verbunden. Trage als Adresse besser den Server ein (z. B. smb://server/freigabe) – dann verbindet die Sidebar ihn selbst."
+                    : "Das Programm bzw. die Datei liegt nicht mehr unter \(url.path). Wurde sie verschoben oder gelöscht?"
                 alert.addButton(withTitle: "OK")
                 NSApp.activate()
                 alert.runModal()
@@ -33,6 +46,70 @@ enum LinkOpener {
         case .chromiumApp:
             openChromiumApp(url: url, bundleID: settings.chromiumBundleID)
         }
+    }
+
+    // MARK: Server (NAS)
+
+    /// Adressen, die das System öffnet (Netzwerk-Server u. a.) – nie im eingebauten Browser-Fenster
+    private static let serverSchemes: Set<String> = ["smb", "cifs", "afp", "nfs", "ftp", "sftp", "vnc", "webdav", "webdavs"]
+
+    static func isServerAddress(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return serverSchemes.contains(scheme)
+    }
+
+    /// Verknüpfungen, die der Finder auflösen muss (Alias auf einen Server, Internetadress-Dateien)
+    static func isServerShortcut(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let ext = url.pathExtension.lowercased()
+        if ["inetloc", "smbloc", "afploc", "ftploc", "nfsloc", "vncloc"].contains(ext) { return true }
+        return (try? url.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile) == true
+    }
+
+    /// Mit dem System öffnen und bei Fehlern eine verständliche Meldung zeigen
+    private static func openWithSystem(_ url: URL, name: String) {
+        NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            guard let error else { return }
+            Task { @MainActor in showOpenError(name: name, detail: error.localizedDescription) }
+        }
+    }
+
+    /// Wie ein Doppelklick im Finder: Alias auflösen (verbindet den Server, fragt ggf. das Passwort) und öffnen.
+    /// Die Auflösung kann beim Verbinden dauern, deshalb im Hintergrund.
+    private static func openServerShortcut(_ url: URL, name: String) {
+        Task.detached {
+            // Zuerst wie der Finder auflösen (mit Oberfläche, also mit Passwortfenster)
+            let resolved = try? URL(resolvingAliasFileAt: url, options: [])
+            await MainActor.run {
+                if let resolved, resolved != url, FileManager.default.fileExists(atPath: resolved.path) {
+                    NSWorkspace.shared.open(resolved)
+                } else {
+                    // Sonst den Finder selbst bitten – er öffnet die Datei wie bei einem Doppelklick
+                    openViaFinder(url, name: name)
+                }
+            }
+        }
+    }
+
+    private static func openViaFinder(_ url: URL, name: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "Finder", url.path]
+        process.terminationHandler = { proc in
+            if proc.terminationStatus != 0 {
+                Task { @MainActor in NSWorkspace.shared.open(url) }
+            }
+        }
+        do { try process.run() } catch { NSWorkspace.shared.open(url) }
+    }
+
+    private static func showOpenError(name: String, detail: String) {
+        let alert = NSAlert()
+        alert.messageText = "„\(name)“ konnte nicht geöffnet werden"
+        alert.informativeText = detail
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
     }
 
     /// Öffnet die Seite als eigenständiges App-Fenster (ohne Tabs/Adressleiste)

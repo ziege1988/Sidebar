@@ -199,7 +199,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
 
-        window = NSWindow(
+        window = KeepOutWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -260,6 +260,9 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
 
     func show() {
         if window.isMiniaturized { window.deminiaturize(nil) }
+        // Nie unter der Sidebar öffnen (sonst liegen Schließen-Knopf und Symbolleiste hinter ihr)
+        let clear = SidebarKeepOut.adjustedForCurrentSidebar(window.frame)
+        if clear != window.frame { window.setFrame(clear, display: true) }
         DockPresence.present(window)
         // Gesehen: nur noch den Zähler aus dem Seitentitel anzeigen
         BadgeStore.shared.set(titleCount, for: item)
@@ -523,7 +526,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         popup.navigationDelegate = self
         popup.uiDelegate = self
 
-        let popupWindow = NSWindow(
+        let popupWindow = KeepOutWindow(
             contentRect: rect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -534,6 +537,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         popupWindow.contentView = popup
         popupWindow.delegate = self
         popupWindow.center()
+        popupWindow.setFrame(SidebarKeepOut.adjustedForCurrentSidebar(popupWindow.frame), display: false)
         popupWindow.makeKeyAndOrderFront(nil)
         popupWindows.append(popupWindow)
         return popup

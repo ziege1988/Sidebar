@@ -22,6 +22,8 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// funktioniert auch während Drag & Drop aus dem Browser und kostet praktisch keine Leistung.
 @MainActor
 final class SidebarController {
+    /// Die laufende Sidebar (damit z. B. Link-Fenster der Leiste ausweichen können)
+    static weak var current: SidebarController?
     let state = SidebarState()
     private let store: ConfigStore
     private let geometry = SidebarGeometry()
@@ -146,6 +148,7 @@ final class SidebarController {
 
     init(store: ConfigStore, updater: Updater, actions: SidebarActions) {
         self.store = store
+        defer { SidebarController.current = self }
         panel = SidebarController.makePanel()
         panel.allowsKey = true
         panel.becomesKeyOnlyIfNeeded = true
@@ -888,6 +891,13 @@ final class SidebarController {
             return match
         }
         return screens.first // primärer Bildschirm (mit Menüleiste)
+    }
+
+    /// Platz, den die Sidebar belegt – Link-Fenster halten sich daraus heraus (`nil`, wenn sie nicht sichtbar ist).
+    func windowKeepOut() -> (strip: NSRect, clock: NSRect?, edge: ScreenEdge, area: NSRect)? {
+        let settings = store.config.settings
+        guard isVisible, let screen = targetScreen(for: settings) else { return nil }
+        return (stripFrame(for: settings), clockRect(for: settings), settings.edge, screen.visibleFrame)
     }
 
     /// Rahmen der eigentlichen Leiste (ohne den Teil der Uhr, der herausragt).
