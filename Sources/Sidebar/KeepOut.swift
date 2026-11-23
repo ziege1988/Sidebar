@@ -80,19 +80,42 @@ enum SidebarKeepOut {
         return f
     }
 
+    /// Nach dem Verschieben: Der Schließen-Knopf (obere linke Ecke des Fensters) darf nicht unter der Leiste oder
+    /// der Uhr liegen. Verschiebt das Fenster nur so weit wie nötig – und nur, wenn diese Ecke auf dem Bildschirm
+    /// der Sidebar liegt (wer ein Fenster auf einen anderen Bildschirm zieht, wird nie zurückgeholt).
+    static func reachable(_ frame: NSRect, strip: NSRect, clock: NSRect?, edge: ScreenEdge, area: NSRect) -> NSRect {
+        var f = frame
+        func corner() -> NSRect { NSRect(x: f.minX, y: f.maxY - 36, width: 90, height: 36) }
+        guard area.insetBy(dx: -2, dy: -2).contains(CGPoint(x: corner().midX, y: corner().midY)) else { return frame }
+        if corner().intersects(strip) {
+            switch edge {
+            case .top: f.origin.y -= corner().maxY - (strip.minY - gap)
+            case .bottom: f.origin.y += (strip.maxY + gap) - corner().minY
+            case .left: f.origin.x += (strip.maxX + gap) - corner().minX
+            case .right: f.origin.x -= corner().maxX - (strip.minX - gap)
+            }
+        }
+        if let clock, corner().intersects(clock) {
+            switch edge {
+            case .right: f.origin.x -= corner().maxX - (clock.minX - gap)
+            case .bottom: f.origin.x += (clock.maxX + gap) - corner().minX
+            default: f.origin.x += (clock.maxX + gap) - corner().minX
+            }
+        }
+        return f
+    }
+
+    @MainActor
+    static func reachableForCurrentSidebar(_ frame: NSRect) -> NSRect {
+        guard let info = SidebarController.current?.windowKeepOut() else { return frame }
+        return reachable(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
+    }
+
     /// Für die laufende Sidebar (nur, wenn das Fenster auf ihrem Bildschirm liegt)
     @MainActor
     static func adjustedForCurrentSidebar(_ frame: NSRect) -> NSRect {
         guard let info = SidebarController.current?.windowKeepOut(),
               info.area.insetBy(dx: -2, dy: -2).contains(CGPoint(x: frame.midX, y: frame.midY)) else { return frame }
         return adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
-    }
-}
-
-/// Fenster der Link-Apps: bleibt beim Verschieben und Öffnen außerhalb der Sidebar.
-final class KeepOutWindow: NSWindow {
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        let base = super.constrainFrameRect(frameRect, to: screen)
-        return MainActor.assumeIsolated { SidebarKeepOut.adjustedForCurrentSidebar(base) }
     }
 }

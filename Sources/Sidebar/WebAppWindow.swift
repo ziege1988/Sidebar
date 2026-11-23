@@ -41,6 +41,22 @@ final class WebAppManager {
         controller.show()
     }
 
+    /// Alle offenen Link-Fenster schließen (bei „Im Hintergrund aktiv“ nur ausblenden, wie mit dem Schließen-Knopf)
+    func closeAll() {
+        for controller in controllers.values where controller.window.isVisible {
+            controller.window.performClose(nil)
+        }
+    }
+
+    /// Alle offenen Link-Fenster auf den Bildschirm der Sidebar holen
+    func bringAllBack() {
+        for controller in controllers.values where controller.window.isVisible || controller.window.isMiniaturized {
+            controller.bringBack()
+        }
+    }
+
+    var hasVisibleWindows: Bool { controllers.values.contains { $0.window.isVisible || $0.window.isMiniaturized } }
+
     /// Feste Fenster-IDs je KI (Position und Größe werden pro Anbieter gemerkt)
     static func aiWindowID(_ provider: AIProvider) -> UUID {
         switch provider {
@@ -157,6 +173,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     private let appName: String
     private var titleObservation: NSKeyValueObservation?
     private var popupWindows: [NSWindow] = []
+    private var settleWork: DispatchWorkItem?
     private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
     /// Ersetzt `window.Notification` der Webseite, damit Mitteilungen als macOS-Banner erscheinen.
@@ -199,7 +216,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
 
-        window = KeepOutWindow(
+        window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -351,6 +368,45 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     }
 
     // MARK: - NSWindowDelegate
+
+    /// Nach dem Verschieben (kurz nach dem Loslassen): Schließen-Knopf nicht unter der Sidebar lassen.
+    /// Während des Ziehens passiert nichts – so springt ein Fenster nie zurück, wenn man es auf einen anderen
+    /// Bildschirm zieht.
+    func windowDidMove(_ notification: Notification) {
+        guard let moved = notification.object as? NSWindow else { return }
+        scheduleSettle(moved)
+    }
+
+    private func scheduleSettle(_ moved: NSWindow) {
+        settleWork?.cancel()
+        let work = DispatchWorkItem { [weak self, weak moved] in
+            MainActor.assumeIsolated {
+                guard let self, let moved else { return }
+                // Maus noch gedrückt (Fenster wird gerade gezogen): später noch einmal nachsehen
+                if NSEvent.pressedMouseButtons & 1 != 0 { self.scheduleSettle(moved); return }
+                let fixed = SidebarKeepOut.reachableForCurrentSidebar(moved.frame)
+                if fixed != moved.frame { moved.setFrame(fixed, display: true, animate: true) }
+            }
+        }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+
+    /// Fenster auf den Bildschirm der Sidebar holen, mittig und außerhalb der Leiste (Menü „Link-Fenster zurückholen“)
+    func bringBack() {
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        let info = SidebarController.current?.windowKeepOut()
+        let area = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? window.frame
+        var frame = window.frame
+        frame.size.width = min(frame.width, area.width - 40)
+        frame.size.height = min(frame.height, area.height - 40)
+        frame.origin = NSPoint(x: area.midX - frame.width / 2, y: area.midY - frame.height / 2)
+        if let info {
+            frame = SidebarKeepOut.adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
+        }
+        window.setFrame(frame, display: true, animate: true)
+        DockPresence.present(window)
+    }
 
     func windowWillClose(_ notification: Notification) {
         guard let closing = notification.object as? NSWindow else { return }
@@ -526,7 +582,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         popup.navigationDelegate = self
         popup.uiDelegate = self
 
-        let popupWindow = KeepOutWindow(
+        let popupWindow = NSWindow(
             contentRect: rect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,

@@ -683,6 +683,25 @@ enum WeatherSelfTest {
                 failures.append("Freies Fenster wurde verschoben (\(edge.rawValue))")
             }
         }
+        // Schließen-Knopf erreichbar; Fenster auf anderem Bildschirm bleiben unberührt
+        for edge in [ScreenEdge.top, .bottom, .left, .right] {
+            let thickness: CGFloat = 56
+            let strip: CGRect
+            switch edge {
+            case .top: strip = CGRect(x: 0, y: screenArea.maxY - thickness, width: screenArea.width, height: thickness)
+            case .bottom: strip = CGRect(x: 0, y: 0, width: screenArea.width, height: thickness)
+            case .left: strip = CGRect(x: 0, y: 0, width: thickness, height: screenArea.height)
+            case .right: strip = CGRect(x: screenArea.maxX - thickness, y: 0, width: thickness, height: screenArea.height)
+            }
+            let under = CGRect(x: strip.minX + 10, y: strip.maxY - 200, width: 700, height: 500)
+            let moved = SidebarKeepOut.reachable(under, strip: strip, clock: nil, edge: edge, area: screenArea)
+            let corner = CGRect(x: moved.minX, y: moved.maxY - 36, width: 90, height: 36)
+            if corner.intersects(strip) { failures.append("Schließen-Knopf liegt unter der Leiste (\(edge.rawValue))") }
+            let away = CGRect(x: -1600, y: 100, width: 1200, height: 800)
+            if SidebarKeepOut.reachable(away, strip: strip, clock: nil, edge: edge, area: screenArea) != away {
+                failures.append("Fenster auf anderem Bildschirm wurde verschoben (\(edge.rawValue))")
+            }
+        }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

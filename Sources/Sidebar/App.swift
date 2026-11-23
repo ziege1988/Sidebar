@@ -386,6 +386,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         versionItem.isEnabled = false
         menu.addItem(versionItem)
         menu.addItem(.separator())
+        if WebAppManager.shared.hasVisibleWindows {
+            menu.addItem(menuItem("Link-Fenster zurückholen") { WebAppManager.shared.bringAllBack() })
+            menu.addItem(menuItem("Alle Link-Fenster schließen") { WebAppManager.shared.closeAll() })
+            menu.addItem(.separator())
+        }
         menu.addItem(menuItem("Sidebar neu starten") { [weak self] in self?.relaunch() })
         menu.addItem(menuItem("Sidebar beenden", key: "q") { NSApp.terminate(nil) })
     }
