@@ -702,6 +702,17 @@ enum WeatherSelfTest {
                 failures.append("Fenster auf anderem Bildschirm wurde verschoben (\(edge.rawValue))")
             }
         }
+        // Rüdigers Größe: schwebend wie eingestellt, angedockt immer Standard
+        var sizeSettings = SidebarSettings()
+        sizeSettings.catFloatScale = 1.8
+        sizeSettings.catFloating = true
+        if let decoded = try? JSONDecoder().decode(SidebarSettings.self, from: JSONEncoder().encode(sizeSettings)),
+           decoded.catFloatScale != 1.8 { failures.append("Größe wird nicht gespeichert") }
+        if let old = try? JSONDecoder().decode(SidebarSettings.self, from: Data("{}".utf8)), old.catFloatScale != 1 {
+            failures.append("Größe: Standard ist nicht 100 %")
+        }
+        if let huge = try? JSONDecoder().decode(SidebarSettings.self, from: Data("{\"catFloatScale\": 9}".utf8)),
+           huge.catFloatScale > CatTiming.maxFloatScale { failures.append("Größe: Obergrenze fehlt") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

@@ -323,6 +323,8 @@ struct SidebarSettings: Codable, Equatable {
     var catFloatScreenID: UInt32?
     /// Schwebend immer über allen Fenstern (sonst können Programme ihn verdecken)
     var catFloatOnTop: Bool = true
+    /// Größe des schwebenden Rüdigers (1 = Standard). In der Sidebar ist er immer in Standardgröße.
+    var catFloatScale: Double = 1
     /// Hinweis auf „Text prüfen“ schon gezeigt
     var catHomeworkHint: Bool = false
     /// Hinweis auf das Wetter schon gezeigt
@@ -410,6 +412,7 @@ extension SidebarSettings {
         catFloatY = try c.decodeIfPresent(Double.self, forKey: .catFloatY)
         catFloatScreenID = try c.decodeIfPresent(UInt32.self, forKey: .catFloatScreenID)
         catFloatOnTop = try c.decodeIfPresent(Bool.self, forKey: .catFloatOnTop) ?? catFloatOnTop
+        catFloatScale = min(max(try c.decodeIfPresent(Double.self, forKey: .catFloatScale) ?? catFloatScale, 1), CatTiming.maxFloatScale)
         catHomeworkHint = try c.decodeIfPresent(Bool.self, forKey: .catHomeworkHint) ?? catHomeworkHint
         catWeatherHint = try c.decodeIfPresent(Bool.self, forKey: .catWeatherHint) ?? catWeatherHint
         iconFade = try c.decodeIfPresent(Double.self, forKey: .iconFade) ?? iconFade

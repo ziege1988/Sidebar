@@ -19,8 +19,14 @@ final class FloatingCatState: ObservableObject {
 final class FloatingCat {
     static let shared = FloatingCat()
 
-    /// Größe der Glasblase – immer gleich, nicht verstellbar
-    static let diameter: CGFloat = 96
+    /// Standardgröße der Glasblase (so groß ist er in der Sidebar – dort nicht verstellbar)
+    static let baseDiameter: CGFloat = 96
+
+    /// Aktuelle Größe: schwebend die eingestellte, sonst (angedockt) immer die Standardgröße
+    var diameter: CGFloat {
+        guard let s = store?.config.settings, s.catFloating else { return Self.baseDiameter }
+        return Self.baseDiameter * CGFloat(min(max(s.catFloatScale, 1), CatTiming.maxFloatScale))
+    }
     /// Fenster etwas größer als die Blase: Ohrenspitzen, Leuchten und (beim Tragen) der Schatten ragen heraus.
     /// Klickbar bleibt trotzdem nur der Kreis – der Rest lässt Klicks durch.
     private static let windowFactor: CGFloat = 1.8
@@ -94,7 +100,7 @@ final class FloatingCat {
     /// Rüdigers Kreis auf dem Bildschirm – `nil`, wenn er gerade nicht schwebt
     var catRect: NSRect? {
         guard panel.isVisible else { return nil }
-        let d = Self.diameter
+        let d = diameter
         let f = panel.frame
         return NSRect(x: f.midX - d / 2, y: f.midY - d / 2, width: d, height: d)
     }
@@ -122,6 +128,10 @@ final class FloatingCat {
                 self.panel.animator().alphaValue = 1
             }
         }
+
+        // Größe in den Einstellungen geändert: Fenster um denselben Mittelpunkt neu aufziehen
+        let wantedSide = diameter * Self.windowFactor
+        if abs(panel.frame.width - wantedSide) > 0.5 { place(at: CGPoint(x: panel.frame.midX, y: panel.frame.midY)) }
 
         let mouse = NSEvent.mouseLocation
         if let grab {
@@ -192,7 +202,7 @@ final class FloatingCat {
             let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
                 ?? NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.screens.first
             var c = center
-            if let area = screen?.visibleFrame.insetBy(dx: Self.diameter / 2 + 4, dy: Self.diameter / 2 + 4),
+            if let area = screen?.visibleFrame.insetBy(dx: diameter / 2 + 4, dy: diameter / 2 + 4),
                area.width > 0, area.height > 0 {
                 c.x = min(max(c.x, area.minX), area.maxX)
                 c.y = min(max(c.y, area.minY), area.maxY)
@@ -228,7 +238,7 @@ final class FloatingCat {
     // MARK: Lage
 
     private func place(at center: CGPoint) {
-        let side = Self.diameter * Self.windowFactor
+        let side = diameter * Self.windowFactor
         let frame = NSRect(x: (center.x - side / 2).rounded(), y: (center.y - side / 2).rounded(),
                            width: side, height: side)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
@@ -236,7 +246,7 @@ final class FloatingCat {
 
     /// Gemerkter Platz – oder, wenn es den nicht (mehr) gibt, neben der Uhr ins Bildschirminnere versetzt
     private func savedCenter(_ s: SidebarSettings) -> CGPoint {
-        let half = Self.diameter / 2 + 4
+        let half = diameter / 2 + 4
         if let x = s.catFloatX, let y = s.catFloatY {
             let p = CGPoint(x: x, y: y)
             if NSScreen.screens.contains(where: { $0.visibleFrame.insetBy(dx: half - 2, dy: half - 2).contains(p) }) {
@@ -249,7 +259,7 @@ final class FloatingCat {
         guard let dock = dockRect?() else { return middle }
         let dx = middle.x - dock.midX, dy = middle.y - dock.midY
         let length = max(hypot(dx, dy), 1)
-        let step = Self.diameter * 2
+        let step = diameter * 2
         return CGPoint(x: dock.midX + dx / length * step, y: dock.midY + dy / length * step)
     }
 }
@@ -267,7 +277,7 @@ private struct FloatingCatView: View {
     private enum ShadowPhase { case hidden, lifted, impact }
 
     var body: some View {
-        let d = FloatingCat.diameter
+        let d = FloatingCat.shared.diameter
         ZStack {
             // Schatten am „Boden“ unter der Blase (nur gezeichnet – fängt keine Klicks ab)
             Ellipse()

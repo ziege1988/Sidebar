@@ -47,6 +47,8 @@ enum CatPose: Equatable {
 enum CatTiming {
     /// Sekunden von Start der Sidebar bis Rüdiger auftaucht
     static let introDelay: Double = 15
+    /// Größter Wert der Einstellung „Größe“ des schwebenden Rüdigers (1 = Standardgröße)
+    static let maxFloatScale: Double = 2.5
 }
 
 @MainActor
@@ -985,6 +987,12 @@ struct CatSettingsSection: View {
                     Text(store.config.settings.catFloatOnTop
                          ? "Rüdiger bleibt über allen Fenstern."
                          : "Geöffnete Programme können Rüdiger verdecken – er bleibt dann im Hintergrund.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LabeledContent("Größe: \(Int((store.config.settings.catFloatScale * 100).rounded())) %") {
+                        Slider(value: $store.config.settings.catFloatScale, in: 1...CatTiming.maxFloatScale, step: 0.1)
+                    }
+                    Text("Gilt nur, solange Rüdiger schwebt. In der Sidebar ist er immer in Standardgröße (100 %); ziehst du ihn wieder heraus, nimmt er diese Größe an.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("Rüdiger mit der Maus packen und irgendwo absetzen – auch auf einem anderen Bildschirm. Klickbar ist nur sein Kreis. Zurück in die Sidebar: auf den gestrichelten Kreis an der Uhr ziehen. Sein Platz bleibt gespeichert, auch nach einem Neustart.")
