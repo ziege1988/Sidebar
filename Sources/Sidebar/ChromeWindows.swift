@@ -257,7 +257,8 @@ final class ChromeWindows {
     /// Vor dem Start des App-Fensters: welche Fenster gibt es schon?
     func prepareLaunch(bundleID: String) {
         self.bundleID = bundleID
-        before = windows()
+        // Ohne Rückfrage: der Link soll sich sofort öffnen; die Erklärung zur Freigabe kommt danach
+        before = windows(silent: true)
     }
 
     /// Nach dem Start: das neue Fenster finden, an die gemerkte Stelle setzen und ab jetzt beobachten
@@ -266,6 +267,7 @@ final class ChromeWindows {
         var attempts = 0
         func poll() {
             attempts += 1
+            if !AXIsProcessTrusted() { _ = self.trusted(); return }
             let fresh = self.windows(silent: true).filter { w in
                 !known.contains { CFEqual($0.element, w.element) } && !self.tracked.contains { CFEqual($0.element, w.element) }
             }
