@@ -228,8 +228,8 @@ final class ChromeWindows {
     private func tick() {
         guard !tracked.isEmpty, !denied else { timer?.invalidate(); timer = nil; return }
         let all = Dictionary(uniqueKeysWithValues: windows().map { ($0.id, $0) })
-        // Geschlossene Fenster vergessen (nur wenn die Abfrage geklappt hat)
-        if !all.isEmpty || !isRunning() {
+        // Geschlossene Fenster vergessen (nur wenn die Abfrage nicht an der Erlaubnis gescheitert ist)
+        if !denied {
             for id in tracked.keys where all[id] == nil { tracked[id] = nil }
         }
         if NSEvent.pressedMouseButtons & 1 != 0 { return }
