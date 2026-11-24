@@ -46,6 +46,7 @@ enum UpdateLog {
     }
 
     nonisolated static func writePending(_ pending: Pending) {
+        try? FileManager.default.createDirectory(at: ConfigStore.supportDirectory, withIntermediateDirectories: true)
         try? JSONEncoder().encode(pending).write(to: pendingURL, options: .atomic)
     }
 
