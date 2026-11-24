@@ -147,7 +147,7 @@ const SEQUENCES = {
   angry: { duration: 1.6, fps: 25, loop: true, pose(t) {
     const p = base();
     p.brows = 'angry'; p.earL = 38 + 3 * bump(t % 0.8, 0, 0.12); p.earR = 38 + 3 * bump(t % 0.8, 0, 0.12);
-    p.slant = 9.5; p.lid = 0.34; p.low = 0.03; p.look = [0, 0.8]; p.pupil = 'slit'; p.angryEyes = true; p.mouth = 'hiss'; p.bristle = true;
+    p.slant = 5.5; p.lid = 0.14; p.low = 0.12; p.pupil = 'slit'; p.angryEyes = true; p.mouth = 'hiss'; p.bristle = true;
     p.sc = 0.92 * (1.03 + 0.008 * Math.sin(TAU * t / 0.4)); p.dy = 0;   // leicht vorgebeugt, angespannt
     p.fx = steam(t);
     return p;
