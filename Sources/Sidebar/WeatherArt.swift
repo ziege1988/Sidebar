@@ -769,6 +769,9 @@ enum WeatherSelfTest {
         } catch {
             failures.append("Update-Austausch-Test: \(error.localizedDescription)")
         }
+        // Dauer der Sprechblase: kurz ≥ 8 s, lang höchstens 24 s
+        if CatBubbleController.visibleSeconds(for: "Hallo!") < 8 { failures.append("Blase zu kurz sichtbar") }
+        if CatBubbleController.visibleSeconds(for: String(repeating: "x", count: 400)) > 24 { failures.append("Blase zu lange sichtbar") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

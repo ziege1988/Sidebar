@@ -81,7 +81,12 @@ function brows(kind, raise = 0) {
     <path d="M28.5,${43 - raise} Q37,${41.5 - raise} 45.5,${38 - raise}"/>
     <path d="M71.5,${43 - raise} Q63,${41.5 - raise} 54.5,${38 - raise}"/></g>`;
   // genervt: gerade, innen leicht tiefer, kräftig · wütend: steil nach innen
-  const d = kind === 'angry' ? 5 : 2.4;
+  if (kind === 'angry') return `<g stroke="#ececf0" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M26.5,${40.5 - raise} Q35,${39.5 - raise} 45,${48.5 - raise}"/>
+    <path d="M73.5,${40.5 - raise} Q65,${39.5 - raise} 55,${48.5 - raise}"/></g>
+    <g stroke="#ececf0" stroke-width="1.4" stroke-linecap="round" fill="none" opacity=".85">
+    <path d="M47.4,${42 - raise} L47.8,${46.5 - raise}"/><path d="M52.6,${42 - raise} L52.2,${46.5 - raise}"/></g>`;
+  const d = 2.4;
   return `<g stroke="${OUT}" stroke-width="2.4" stroke-linecap="round" fill="none">
     <path d="M28.5,${41 - raise} Q37,${40 - raise} 45.5,${41 + d - raise}"/>
     <path d="M71.5,${41 - raise * (kind === 'oneUp' ? 3 : 1)} Q63,${40 - raise} 54.5,${41 + d - raise}"/></g>`;
@@ -131,7 +136,8 @@ function headSVG(p) {
     s += `<clipPath id="${cid}"><path d="${headD}"/></clipPath><g clip-path="url(#${cid})">${patch}</g>`;
   }
   const eo = { look: p.look, lid: (p.closed || !(p.lid > 0.001)) ? p.lid : Math.max(p.lid, C.lid), low: p.low, slant: p.slant, closed: p.closed, pupil: p.pupil, angry: p.angryEyes, irisId: p.coat && p.coat.irisId };
-  s += eye(37.5 - C.eyeX, 54 + C.eyeY, 1, eo) + eye(62.5 + C.eyeX, 54 + C.eyeY, -1, eo);
+  const spread = p.angryEyes ? 0 : C.eyeX;
+  s += eye(37.5 - spread, 54 + C.eyeY, 1, eo) + eye(62.5 + spread, 54 + C.eyeY, -1, eo);
   s += brows(p.brows, p.browRaise || 0);
   s += `<path d="M47.6,64 Q50,62.8 52.4,64 Q51.4,66 50,66.6 Q48.6,66 47.6,64 Z" fill="${p.coat && p.coat.darkNose ? '#222225' : PINK}" stroke="${OUT}" stroke-width=".5"/>`;
   if (p.coat && p.coat.darkNose) s += `<ellipse cx="49.2" cy="63.9" rx="1.5" ry=".7" fill="#fff" opacity=".35"/>`;

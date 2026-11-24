@@ -480,13 +480,23 @@ final class CatBubbleController {
         panel.orderFrontRegardless()
 
         hideWork?.cancel()
-        let duration = max(2.8, min(8, Double(text.count) * 0.075))
+        let duration = Self.visibleSeconds(for: text)
+        visibleUntil = Date().addingTimeInterval(duration)
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.hide() }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
+
+    /// Wie lange die Blase steht: etwa dreimal so lange wie früher, damit man sie in Ruhe lesen kann
+    nonisolated static func visibleSeconds(for text: String) -> Double {
+        max(8.4, min(24, Double(text.count) * 0.225))
+    }
+
+    /// Bis wann die aktuelle Blase noch zu sehen ist
+    private(set) var visibleUntil = Date.distantPast
+    var isShowing: Bool { visibleUntil > Date() }
 
     /// Schiebt eine Blase (Mittelpunkt `center`, Größe `size`) aus dem Kreis um `ball` heraus.
     /// Alles in Bildschirmkoordinaten. Bleibt innerhalb von `area`.

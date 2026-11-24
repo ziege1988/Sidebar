@@ -493,7 +493,8 @@ final class CatBrain: ObservableObject {
 
     /// Wartet, bis die vorige Blase gelesen werden konnte
     private func queue(_ action: @escaping @MainActor (CatBrain) -> Void) {
-        let wait = max(0, 4.5 - Date().timeIntervalSince(lastSpoke))
+        // Neue Blase erst, wenn die vorige gelesen werden konnte
+        let wait = max(0, 4.5 - Date().timeIntervalSince(lastSpoke), CatBubbleController.shared.visibleUntil.timeIntervalSinceNow + 0.6)
         lastSpoke = Date().addingTimeInterval(wait)
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             MainActor.assumeIsolated {
@@ -522,7 +523,7 @@ final class CatBrain: ObservableObject {
 
     private var canSpeak: Bool {
         settings.catEnabled && introDone && !snoozed && !away && !sidebarBusy && !AlertState.shared.quiet
-            && Date().timeIntervalSince(lastSpoke) > 8 && locate?() != nil
+            && Date().timeIntervalSince(lastSpoke) > 8 && !CatBubbleController.shared.isShowing && locate?() != nil
     }
 
     private func tick() {
