@@ -741,6 +741,34 @@ enum WeatherSelfTest {
         let fullStrip = CGRect(x: 0, y: 876 - 56, width: 1440, height: 56)
         let maxed = SidebarKeepOut.reachable(visibles[0], strip: fullStrip, clock: nil, edge: .top, area: visibles[0])
         if maxed.minY != 0 || maxed.maxY > fullStrip.minY { failures.append("Bildschirmfüllendes Fenster unter der Leiste: falsch angepasst") }
+        // Update: App austauschen (an Wegwerf-Ordnern) und Version prüfen
+        do {
+            let fm = FileManager.default
+            let base = fm.temporaryDirectory.appendingPathComponent("SidebarUpdateTest-\(UUID().uuidString)")
+            func makeApp(_ name: String, version: String) throws -> URL {
+                let app = base.appendingPathComponent(name)
+                let contents = app.appendingPathComponent("Contents")
+                try fm.createDirectory(at: contents, withIntermediateDirectories: true)
+                let plist: [String: Any] = ["CFBundleShortVersionString": version, "CFBundleIdentifier": "test.sidebar", "CFBundleName": "T"]
+                try (plist as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"))
+                try Data(version.utf8).write(to: contents.appendingPathComponent("marker.txt"))
+                return app
+            }
+            let installed = try makeApp("Sidebar.app", version: "1.0.1")
+            let staged = try makeApp("Sidebar.app.update", version: "1.0.2")
+            try Updater.swapBundle(replacing: installed, with: staged, expectedVersion: "1.0.2")
+            let marker = try? String(contentsOf: installed.appendingPathComponent("Contents/marker.txt"), encoding: .utf8)
+            if marker != "1.0.2" { failures.append("Update-Austausch: neue Dateien fehlen") }
+            if fm.fileExists(atPath: staged.path) { failures.append("Update-Austausch: Zwischenordner bleibt liegen") }
+            // falsche Version muss gemeldet werden
+            let again = try makeApp("Other.app.update", version: "1.0.9")
+            var reported = false
+            do { try Updater.swapBundle(replacing: installed, with: again, expectedVersion: "1.0.3") } catch { reported = true }
+            if !reported { failures.append("Update-Austausch: falsche Version nicht gemeldet") }
+            try? fm.removeItem(at: base)
+        } catch {
+            failures.append("Update-Austausch-Test: \(error.localizedDescription)")
+        }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

@@ -158,7 +158,7 @@ final class Updater: ObservableObject {
     func promptToInstall(_ release: ReleaseInfo) {
         let alert = NSAlert()
         alert.messageText = "Sidebar \(release.version) ist verfügbar"
-        var text = "Installiert ist Version \(currentVersion)."
+        var text = "Installiert ist Version \(currentVersion) (\(Bundle.main.bundleURL.path))."
         let notes = release.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !notes.isEmpty {
             text += "\n\nNeu:\n" + String(notes.prefix(800))
@@ -224,8 +224,9 @@ final class Updater: ObservableObject {
             try? fm.removeItem(at: staged)
             try await Self.run("/usr/bin/ditto", [newApp.path, staged.path])
 
-            // 4. Nach dem Beenden austauschen und neu starten
-            try relaunch(replacing: target, with: staged, cleanup: work)
+            // 4. Austauschen (in der App selbst: Fehler werden gemeldet, die neue Version wird geprüft) und neu starten
+            try Self.swapBundle(replacing: target, with: staged, expectedVersion: release.version)
+            try relaunch(opening: target, cleanup: work)
         } catch {
             try? fm.removeItem(at: staged)
             status = .failed(error.localizedDescription)
@@ -241,27 +242,42 @@ final class Updater: ObservableObject {
         }
     }
 
-    /// Startet ein kleines Hilfsskript, das wartet, bis die App beendet ist,
-    /// dann die App austauscht und neu öffnet. Schlägt der Tausch fehl, bleibt die alte Version.
-    private func relaunch(replacing target: URL, with staged: URL, cleanup: URL) throws {
+    /// Ersetzt die installierte App durch die neue. Das macht die laufende App selbst (nicht ein Hilfsskript nach dem
+    /// Beenden): macOS erlaubt einer App, sich selbst zu aktualisieren, bei einem fremden Hilfsprozess greift dagegen
+    /// der Schutz „App-Verwaltung“ – dann blieb früher die alte Version stehen, ohne dass es jemand merkte.
+    nonisolated static func swapBundle(replacing target: URL, with staged: URL, expectedVersion: String) throws {
+        let fm = FileManager.default
+        do {
+            var result: NSURL?
+            try fm.replaceItem(at: target, withItemAt: staged, backupItemName: nil, options: [], resultingItemURL: &result)
+        } catch {
+            let ns = error as NSError
+            let permission = ns.code == NSFileWriteNoPermissionError || ns.code == NSFileReadNoPermissionError
+                || (ns.domain == NSPOSIXErrorDomain && (ns.code == Int(EPERM) || ns.code == Int(EACCES)))
+                || (ns.userInfo[NSUnderlyingErrorKey] as? NSError).map { $0.domain == NSPOSIXErrorDomain && ($0.code == Int(EPERM) || $0.code == Int(EACCES)) } == true
+            if permission {
+                throw UpdateError.message("Die installierte App darf nicht ersetzt werden (\(target.path)). Ist die App von einem anderen Benutzer installiert? Dann muss dieser (oder ein Administrator) das Update machen. Sonst in den Systemeinstellungen unter „Datenschutz & Sicherheit → App-Verwaltung“ die Sidebar erlauben.")
+            }
+            throw UpdateError.message("Austauschen der App fehlgeschlagen: \(error.localizedDescription)")
+        }
+        // Prüfen, ob wirklich die neue Version an Ort und Stelle liegt
+        let installed = Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        guard installed == expectedVersion else {
+            throw UpdateError.message("Nach dem Austauschen liegt noch Version \(installed ?? "?") unter \(target.path) (erwartet: \(expectedVersion)).")
+        }
+    }
+
+    /// Wartet, bis die App beendet ist, räumt auf und öffnet die (schon ausgetauschte) App neu.
+    private func relaunch(opening target: URL, cleanup: URL) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
         let script = """
         while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done
-        OLD="$1.old"
-        rm -rf "$OLD"
-        if mv "$1" "$OLD"; then
-          if mv "$2" "$1"; then
-            rm -rf "$OLD"
-          else
-            mv "$OLD" "$1"
-          fi
-        fi
-        rm -rf "$2" "$3"
+        rm -rf "$2"
         /usr/bin/open "$1"
         """
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script, "sidebar-update", target.path, staged.path, cleanup.path]
+        process.arguments = ["-c", script, "sidebar-update", target.path, cleanup.path]
         try process.run()
         // Sofort und sicher beenden: ohne Rüdigers Abschied, und falls das Beenden aus irgendeinem Grund
         // hängen bleibt, nach 4 Sekunden hart – sonst wartet das Hilfsskript ewig („wird installiert“).
