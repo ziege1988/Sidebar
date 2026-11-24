@@ -731,6 +731,14 @@ enum WeatherSelfTest {
         let gone = CGRect(x: 5000, y: 100, width: 1200, height: 800)
         let rescued = ChromeBounds.sanitized(gone, areas: displays, preferred: displays[0])
         if !displays[0].contains(rescued) { failures.append("Gemerkte Lage auf fehlendem Bildschirm nicht gerettet") }
+        // Server beim Start verbinden: Erkennung der Einträge
+        let smbItem = LinkItem(name: "NAS", urlString: "smb://nas.local/Daten")
+        if case .address(let u) = ServerMounter.target(for: smbItem), u.host == "nas.local" {} else { failures.append("smb-Eintrag nicht erkannt") }
+        if ServerMounter.canConnect(LinkItem(name: "Web", urlString: "https://example.com")) { failures.append("Webseite als Server erkannt") }
+        if ServerMounter.canConnect(LinkItem(name: "App", urlString: "/Applications/Safari.app")) { failures.append("Programm als Server erkannt") }
+        if let old = try? JSONDecoder().decode(LinkItem.self, from: Data("{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"x\",\"urlString\":\"https://a.b\"}".utf8)),
+           old.connectAtStart != nil { failures.append("Alter Eintrag: Start-Verbinden nicht leer") }
+        if ServerMounter.isMounted(URL(string: "smb://gibt-es-nicht.invalid/xyz")!) { failures.append("Server fälschlich als verbunden erkannt") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

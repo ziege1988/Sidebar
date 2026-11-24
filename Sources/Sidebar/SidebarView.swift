@@ -918,6 +918,13 @@ struct ItemContextMenu: View {
                 Button("Browser beenden …") { ChromeWindows.shared.quitBrowser(bundleID: settings.chromiumBundleID) }
             }
         }
+        if ServerMounter.canConnect(item) {
+            Divider()
+            Button("Nur verbinden (ohne Fenster)") { ServerMounter.shared.connectNow(item, store: store) }
+            Button(item.connectAtStart == true ? "✓ Beim Start automatisch verbinden" : "Beim Start automatisch verbinden") {
+                store.updateItem(id: item.id) { $0.connectAtStart = ($0.connectAtStart == true) ? nil : true }
+            }
+        }
         Divider()
         if isFavorite {
             Button("Aus Favoriten entfernen") { store.removeFromFavorites(id: item.id) }

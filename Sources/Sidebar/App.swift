@@ -120,6 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated { self?.systemShutdown = true }
         }
         setupStatusItem()
+        // Server (NAS) mit „Beim Start automatisch verbinden“ kurz nach dem Start verbinden
+        ServerMounter.shared.start(store: store)
 
         Updater.shared.startAutomaticChecks { [weak self] in
             self?.store.config.settings.autoCheckUpdates ?? false
