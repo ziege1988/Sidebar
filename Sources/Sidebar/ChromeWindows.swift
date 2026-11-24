@@ -1,13 +1,14 @@
 import AppKit
+import ApplicationServices
 
 // MARK: - Chrome-App-Fenster (--app=…)
 //
-// Diese Fenster gehören Chrome, nicht der Sidebar. Über die Automation-Schnittstelle von macOS („Apple Events“)
-// kann die Sidebar sie trotzdem
+// Diese Fenster gehören Chrome, nicht der Sidebar. Über die Bedienungshilfen von macOS (dieselbe Freigabe wie für die
+// Benachrichtigungen) kann die Sidebar sie trotzdem
 //   • beim Öffnen an die zuletzt benutzte Stelle (Bildschirm, Lage, Größe) setzen und die Lage merken,
 //   • aus dem Bereich der Leiste und der Uhr herausholen (sonst liegt der Schließen-Knopf dahinter),
 //   • auf Wunsch zurückholen oder schließen (Rechtsklick auf den Eintrag).
-// Dafür fragt macOS beim ersten Mal einmalig: „Sidebar möchte Google Chrome steuern“.
+// Voraussetzung: Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen → „Sidebar“ eingeschaltet.
 
 /// Reine Rechen- und Textfunktionen (ohne Chrome) – damit sie beim Bau getestet werden können.
 enum ChromeBounds {
@@ -81,24 +82,52 @@ enum ChromeBounds {
 final class ChromeWindows {
     static let shared = ChromeWindows()
 
-    struct Info {
-        let id: Int
-        let url: String
+    struct Win {
+        let element: AXUIElement
+        let title: String
         /// Cocoa-Koordinaten
         let frame: NSRect
     }
 
     private struct Tracked {
+        let element: AXUIElement
         let itemID: UUID
         var lastFrame: NSRect?
         var lastNudge: Date?
     }
 
-    private var tracked: [Int: Tracked] = [:]
+    private var tracked: [Tracked] = []
     private var timer: Timer?
     private var bundleID = "com.google.Chrome"
     private var warnedDenied = false
-    private(set) var denied = false
+
+    // MARK: Berechtigung (Bedienungshilfen)
+
+    /// Darf die Sidebar andere Programme über die Bedienungshilfen steuern? Fragt beim ersten Mal nach und erklärt es einmal.
+    private func trusted() -> Bool {
+        if AXIsProcessTrusted() { return true }
+        explainPermission()
+        return false
+    }
+
+    var denied: Bool { !AXIsProcessTrusted() }
+
+    private func explainPermission() {
+        guard !warnedDenied else { return }
+        warnedDenied = true
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        let alert = NSAlert()
+        alert.messageText = "Sidebar braucht die Freigabe „Bedienungshilfen“"
+        alert.informativeText = "Damit die Sidebar Chrome-App-Fenster an ihren Platz setzen, zurückholen und schließen kann, muss in den Systemeinstellungen unter „Datenschutz & Sicherheit → Bedienungshilfen“ die Sidebar eingeschaltet sein."
+        alert.addButton(withTitle: "Systemeinstellungen öffnen")
+        alert.addButton(withTitle: "Später")
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 
     // MARK: Protokoll und Diagnose
 
@@ -114,7 +143,8 @@ final class ChromeWindows {
 
     /// Text für „Chrome-Fenster-Diagnose kopieren“: Bildschirme, Fenster, gemerkte Lagen, letzte Vorgänge
     func report(store: ConfigStore) -> String {
-        var out = ["Chrome-Fenster-Diagnose", "Browser: \(bundleID)", "Automation: " + (denied ? "VERWEIGERT" : "nicht verweigert")]
+        var out = ["Chrome-Fenster-Diagnose", "Browser: \(bundleID)",
+                   "Bedienungshilfen: " + (AXIsProcessTrusted() ? "erlaubt" : "NICHT erlaubt")]
         out.append("Hauptbildschirm-Höhe: \(Int(primaryHeight))")
         for (i, screen) in NSScreen.screens.enumerated() {
             out.append("Bildschirm \(i): \(f(screen.frame))  sichtbar \(f(screen.visibleFrame))")
@@ -122,20 +152,11 @@ final class ChromeWindows {
         if let info = SidebarController.current?.windowKeepOut() {
             out.append("Sidebar: Seite \(info.edge.rawValue), Leiste \(f(info.strip)), Uhr \(info.clock.map(f) ?? "–"), Bereich \(f(info.area))")
         }
-        let raw = run("""
-        set out to ""
-        repeat with w in windows
-          try
-            set b to bounds of w
-            set out to out & (id of w) & "|" & (item 1 of b) & "|" & (item 2 of b) & "|" & (item 3 of b) & "|" & (item 4 of b) & "|" & (URL of active tab of w) & linefeed
-          end try
-        end repeat
-        return out
-        """)
-        out.append(raw == nil ? "Fensterliste: nicht lesbar (Chrome aus oder keine Erlaubnis)" : "Chrome-Fenster:")
-        for w in ChromeBounds.parse(raw ?? "") {
-            let cocoa = ChromeBounds.cocoa(w, primaryHeight: primaryHeight)
-            out.append("  #\(w.id) AppleScript [\(Int(w.left)),\(Int(w.top)),\(Int(w.right)),\(Int(w.bottom))] → \(f(cocoa))  \(w.url.prefix(60))\(tracked[w.id] != nil ? "  (beobachtet)" : "")")
+        let all = windows(silent: true)
+        out.append(all.isEmpty ? "Chrome-Fenster: keine gefunden (Chrome aus oder keine Erlaubnis)" : "Chrome-Fenster:")
+        for w in all {
+            let mine = tracked.contains { CFEqual($0.element, w.element) }
+            out.append("  \(f(w.frame))  „\(w.title.prefix(50))“\(mine ? "  (beobachtet)" : "")")
         }
         out.append("Gemerkte Lagen:")
         for item in store.config.favorites + store.config.groups.flatMap(\.items) {
@@ -168,113 +189,105 @@ final class ChromeWindows {
         UserDefaults.standard.set(all, forKey: Self.memoryKey)
     }
 
-    // MARK: AppleScript
+    // MARK: Bedienungshilfen: Fenster lesen, verschieben, schließen
 
     private var primaryHeight: CGFloat { NSScreen.screens.first?.frame.height ?? 0 }
 
-    private static func validBundleID(_ id: String) -> Bool {
-        !id.isEmpty && id.allSatisfy { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
+    private func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
     }
 
-    private func isRunning() -> Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    private func axPoint(_ value: CFTypeRef?) -> CGPoint? {
+        guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var p = CGPoint.zero
+        return AXValueGetValue(value as! AXValue, .cgPoint, &p) ? p : nil
     }
 
-    /// Führt ein Skript aus. Ohne Erlaubnis (Automation) wird einmal erklärt, wie man sie gibt.
-    @discardableResult
-    private func run(_ body: String) -> String? {
-        guard Self.validBundleID(bundleID), isRunning() else { return nil }
-        let source = """
-        tell application id "\(bundleID)"
-          with timeout of 4 seconds
-            \(body)
-          end timeout
-        end tell
-        """
-        var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else { return nil }
-        let result = script.executeAndReturnError(&error)
-        if let error {
-            if (error[NSAppleScript.errorNumber] as? Int) == -1743 {
-                denied = true
-                explainPermission()
-            }
-            return nil
-        }
-        denied = false
-        return result.stringValue ?? ""
+    private func axSize(_ value: CFTypeRef?) -> CGSize? {
+        guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var s = CGSize.zero
+        return AXValueGetValue(value as! AXValue, .cgSize, &s) ? s : nil
     }
 
-    private func explainPermission() {
-        guard !warnedDenied else { return }
-        warnedDenied = true
-        let alert = NSAlert()
-        alert.messageText = "Sidebar darf Chrome nicht steuern"
-        alert.informativeText = "Damit die Sidebar Chrome-App-Fenster an ihren Platz setzen, zurückholen und schließen kann, muss sie in den Systemeinstellungen unter „Datenschutz & Sicherheit → Automation“ bei Sidebar den Browser einschalten."
-        alert.addButton(withTitle: "Systemeinstellungen öffnen")
-        alert.addButton(withTitle: "Später")
-        NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    /// Alle Fenster des Browsers (Cocoa-Koordinaten)
-    func windows() -> [Info] {
-        let text = run("""
-        set out to ""
-        repeat with w in windows
-          try
-            set b to bounds of w
-            set out to out & (id of w) & "|" & (item 1 of b) & "|" & (item 2 of b) & "|" & (item 3 of b) & "|" & (item 4 of b) & "|" & (URL of active tab of w) & linefeed
-          end try
-        end repeat
-        return out
-        """) ?? ""
+    /// Alle normalen Fenster des Browsers (Cocoa-Koordinaten)
+    func windows(silent: Bool = false) -> [Win] {
+        if silent ? !AXIsProcessTrusted() : !trusted() { return [] }
+        var result: [Win] = []
         let height = primaryHeight
-        return ChromeBounds.parse(text).map { Info(id: $0.id, url: $0.url, frame: ChromeBounds.cocoa($0, primaryHeight: height)) }
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+            let root = AXUIElementCreateApplication(app.processIdentifier)
+            guard let list = attribute(root, kAXWindowsAttribute as String) as? [AXUIElement] else { continue }
+            for element in list {
+                guard let p = axPoint(attribute(element, kAXPositionAttribute as String)),
+                      let s = axSize(attribute(element, kAXSizeAttribute as String)), s.width > 80, s.height > 60 else { continue }
+                let title = attribute(element, kAXTitleAttribute as String) as? String ?? ""
+                let raw = ChromeBounds.Raw(id: 0, url: title, left: p.x, top: p.y, right: p.x + s.width, bottom: p.y + s.height)
+                result.append(Win(element: element, title: title, frame: ChromeBounds.cocoa(raw, primaryHeight: height)))
+            }
+        }
+        return result
     }
 
-    private func setFrame(_ frame: NSRect, windowID: Int) {
+    private func setFrame(_ frame: NSRect, of element: AXUIElement) {
         let b = ChromeBounds.script(frame, primaryHeight: primaryHeight)
-        run("set bounds of (first window whose id is \(windowID)) to {\(b.l), \(b.t), \(b.r), \(b.b)}")
+        var position = CGPoint(x: b.l, y: b.t)
+        var size = CGSize(width: b.r - b.l, height: b.b - b.t)
+        // Position, Größe, Position noch einmal (die Größe kann die Position verschieben)
+        if let v = AXValueCreate(.cgPoint, &position) { AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, v) }
+        if let v = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, v) }
+        if let v = AXValueCreate(.cgPoint, &position) { AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, v) }
+    }
+
+    private func close(_ element: AXUIElement) {
+        if let button = attribute(element, kAXCloseButtonAttribute as String), CFGetTypeID(button) == AXUIElementGetTypeID() {
+            AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString)
+        }
+    }
+
+    private func raise(_ element: AXUIElement) {
+        AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.activate()
     }
 
     // MARK: Öffnen (aus dem LinkOpener)
 
-    private var idsBeforeLaunch: Set<Int> = []
+    private var before: [Win] = []
 
     /// Vor dem Start des App-Fensters: welche Fenster gibt es schon?
     func prepareLaunch(bundleID: String) {
         self.bundleID = bundleID
-        idsBeforeLaunch = isRunning() ? Set(windows().map(\.id)) : []
+        before = windows()
     }
 
     /// Nach dem Start: das neue Fenster finden, an die gemerkte Stelle setzen und ab jetzt beobachten
     func adopt(item: LinkItem) {
-        let before = idsBeforeLaunch
-        let host = item.url?.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0.lowercased() }
+        let known = before
         var attempts = 0
         func poll() {
             attempts += 1
-            let fresh = self.windows().filter { !before.contains($0.id) && self.tracked[$0.id] == nil }
-            let match = fresh.first { host != nil && ChromeBounds.host(of: $0.url) == host } ?? (fresh.count == 1 ? fresh.first : nil)
+            let fresh = self.windows(silent: true).filter { w in
+                !known.contains { CFEqual($0.element, w.element) } && !self.tracked.contains { CFEqual($0.element, w.element) }
+            }
+            let name = item.displayName.lowercased()
+            let match = fresh.first { !name.isEmpty && $0.title.lowercased().contains(name) } ?? fresh.first
             if let match {
-                self.tracked[match.id] = Tracked(itemID: item.id, lastFrame: nil)
+                self.tracked.append(Tracked(element: match.element, itemID: item.id, lastFrame: nil, lastNudge: nil))
                 self.place(match, for: item.id)
                 self.startTimer()
-            } else if attempts < 24, !self.denied {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { MainActor.assumeIsolated { poll() } }
+            } else if attempts < 30, AXIsProcessTrusted() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { poll() } }
+            } else {
+                self.log("kein neues Fenster gefunden für „\(item.displayName)“")
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { MainActor.assumeIsolated { poll() } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { poll() } }
     }
 
     /// Neues Fenster: Chrome hat es schon irgendwo hingesetzt. Ist eine Lage gemerkt und liegt sie auf einem angeschlossenen
     /// Bildschirm, wandert es dorthin; sonst bleibt es, wo es ist. Nur wenn es unter der Leiste/Uhr der Sidebar läge
     /// (oder auf gar keinem Bildschirm), wird es verschoben.
-    private func place(_ window: Info, for itemID: UUID) {
+    private func place(_ window: Win, for itemID: UUID) {
         let screens = NSScreen.screens.map(\.frame)
         let visible = NSScreen.screens.map(\.visibleFrame)
         let info = SidebarController.current?.windowKeepOut()
@@ -283,10 +296,10 @@ final class ChromeWindows {
         let wanted = saved ?? window.frame
         var target = ChromeBounds.sanitized(wanted, screens: screens, visible: visible, preferred: preferred)
         target = SidebarKeepOut.reachableForCurrentSidebar(target)
-        log("öffnen #\(window.id): Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target))")
-        if target != window.frame { setFrame(target, windowID: window.id) }
+        log("öffnen „\(window.title.prefix(30))“: Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target))")
+        if target != window.frame { setFrame(target, of: window.element) }
         remember(target, for: itemID)
-        tracked[window.id]?.lastFrame = target
+        if let i = tracked.firstIndex(where: { CFEqual($0.element, window.element) }) { tracked[i].lastFrame = target }
     }
 
     // MARK: Beobachten (Lage merken, Schließen-Knopf erreichbar halten)
@@ -299,29 +312,28 @@ final class ChromeWindows {
     }
 
     private func tick() {
-        guard !tracked.isEmpty, !denied else { timer?.invalidate(); timer = nil; return }
-        let all = Dictionary(uniqueKeysWithValues: windows().map { ($0.id, $0) })
-        // Geschlossene Fenster vergessen (nur wenn die Abfrage nicht an der Erlaubnis gescheitert ist)
-        if !denied {
-            for id in tracked.keys where all[id] == nil { tracked[id] = nil }
-        }
+        guard !tracked.isEmpty, AXIsProcessTrusted() else { timer?.invalidate(); timer = nil; return }
+        let all = windows(silent: true)
+        // Geschlossene Fenster vergessen
+        tracked.removeAll { entry in !all.contains { CFEqual($0.element, entry.element) } }
         if NSEvent.pressedMouseButtons & 1 != 0 { return }
-        for (id, entry) in tracked {
-            guard let window = all[id] else { continue }
+        for index in tracked.indices {
+            let entry = tracked[index]
+            guard let window = all.first(where: { CFEqual($0.element, entry.element) }) else { continue }
             // Nur wenn das Fenster zur Ruhe gekommen ist (gleiche Lage wie beim letzten Mal), sonst wird gerade gezogen
             guard let last = entry.lastFrame, last.equalTo(window.frame) else {
-                tracked[id]?.lastFrame = window.frame
+                tracked[index].lastFrame = window.frame
                 continue
             }
             let fixed = SidebarKeepOut.reachableForCurrentSidebar(window.frame)
             if fixed != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
-                log("Schließen-Knopf verdeckt #\(id): \(f(window.frame)) → \(f(fixed))")
-                setFrame(fixed, windowID: id)
-                tracked[id]?.lastFrame = fixed
-                tracked[id]?.lastNudge = Date()
+                log("Schließen-Knopf verdeckt: \(f(window.frame)) → \(f(fixed))")
+                setFrame(fixed, of: window.element)
+                tracked[index].lastFrame = fixed
+                tracked[index].lastNudge = Date()
                 remember(fixed, for: entry.itemID)
             } else if remembered(entry.itemID) != window.frame {
-                log("Lage gemerkt #\(id): \(f(window.frame))")
+                log("Lage gemerkt: \(f(window.frame))")
                 remember(window.frame, for: entry.itemID)
             }
         }
@@ -330,13 +342,17 @@ final class ChromeWindows {
 
     // MARK: Rechtsklick: Fenster schließen / zurückholen / Browser beenden
 
-    /// Fenster eines Eintrags: die beobachteten, sonst Fenster mit einem Tab und passender Adresse
-    private func candidates(for item: LinkItem) -> [Info] {
+    /// Fenster eines Eintrags: die beobachteten, sonst solche, deren Titel zum Namen des Eintrags passt
+    private func candidates(for item: LinkItem) -> [Win] {
         let all = windows()
-        let mine = all.filter { tracked[$0.id]?.itemID == item.id }
+        let mine = all.filter { w in tracked.contains { CFEqual($0.element, w.element) && $0.itemID == item.id } }
         if !mine.isEmpty { return mine }
-        guard let host = item.url?.host.map({ $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0.lowercased() }) else { return [] }
-        return all.filter { ChromeBounds.host(of: $0.url) == host }
+        let name = item.displayName.lowercased()
+        let host = item.url?.host?.lowercased().replacingOccurrences(of: "www.", with: "").split(separator: ".").first.map(String.init)
+        return all.filter { w in
+            let title = w.title.lowercased()
+            return (!name.isEmpty && title.contains(name)) || (host.map { !$0.isEmpty && title.contains($0) } ?? false)
+        }
     }
 
     func closeWindows(of item: LinkItem, bundleID: String) {
@@ -344,9 +360,10 @@ final class ChromeWindows {
         let found = candidates(for: item)
         if found.isEmpty { return noWindow(item) }
         for window in found {
-            run("close (first window whose id is \(window.id))")
-            tracked[window.id] = nil
+            close(window.element)
+            tracked.removeAll { CFEqual($0.element, window.element) }
         }
+        log("geschlossen: \(found.count) Fenster für „\(item.displayName)“")
     }
 
     func bringBack(item: LinkItem, bundleID: String) {
@@ -363,10 +380,11 @@ final class ChromeWindows {
             if let info {
                 frame = SidebarKeepOut.adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
             }
-            setFrame(frame, windowID: window.id)
+            setFrame(frame, of: window.element)
             remember(frame, for: item.id)
-            run("set index of (first window whose id is \(window.id)) to 1\nactivate")
+            raise(window.element)
         }
+        log("zurückgeholt: \(found.count) Fenster für „\(item.displayName)“")
     }
 
     /// Notbremse: den Browser ganz beenden (wenn gar nichts anderes mehr geht)
@@ -383,10 +401,10 @@ final class ChromeWindows {
     }
 
     private func noWindow(_ item: LinkItem) {
-        guard !denied else { return }
+        guard AXIsProcessTrusted() else { return }
         let alert = NSAlert()
         alert.messageText = "Kein Fenster für „\(item.displayName)“ gefunden"
-        alert.informativeText = "Das Chrome-App-Fenster ist nicht (mehr) offen."
+        alert.informativeText = "Das Chrome-App-Fenster ist nicht (mehr) offen, oder sein Titel passt nicht zum Namen des Eintrags."
         alert.addButton(withTitle: "OK")
         NSApp.activate()
         alert.runModal()
