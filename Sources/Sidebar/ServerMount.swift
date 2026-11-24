@@ -75,7 +75,7 @@ final class ServerMounter {
             }
             return .none
         }
-        if (try? url.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile) == true { return .alias(url) }
+        if LinkOpener.isFinderAlias(url) { return .alias(url) }
         return .none
     }
 

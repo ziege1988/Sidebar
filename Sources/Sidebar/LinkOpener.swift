@@ -63,7 +63,13 @@ enum LinkOpener {
         guard url.isFileURL else { return false }
         let ext = url.pathExtension.lowercased()
         if ["inetloc", "smbloc", "afploc", "ftploc", "nfsloc", "vncloc"].contains(ext) { return true }
-        return (try? url.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile) == true
+        return isFinderAlias(url)
+    }
+
+    /// Echter Finder-Alias (nicht eine symbolische Verknüpfung – die zählt macOS bei „Alias“ mit)
+    static func isFinderAlias(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isAliasFileKey, .isSymbolicLinkKey]) else { return false }
+        return values.isAliasFile == true && values.isSymbolicLink != true
     }
 
     /// Mit dem System öffnen und bei Fehlern eine verständliche Meldung zeigen
