@@ -713,6 +713,24 @@ enum WeatherSelfTest {
         }
         if let huge = try? JSONDecoder().decode(SidebarSettings.self, from: Data("{\"catFloatScale\": 9}".utf8)),
            huge.catFloatScale > CatTiming.maxFloatScale { failures.append("Größe: Obergrenze fehlt") }
+        // Chrome-Fenster: Koordinaten, Abfrage-Text, gemerkte Lage prüfen
+        let raws = ChromeBounds.parse("12|100|50|1380|870|https://www.example.com/a|b\n7|0|0|10|10|x\nkaputt\n")
+        if raws.count != 2 || raws.first?.id != 12 || raws.first?.url != "https://www.example.com/a|b" {
+            failures.append("Chrome-Fensterliste falsch gelesen")
+        }
+        if let raw = raws.first {
+            let cocoa = ChromeBounds.cocoa(raw, primaryHeight: 900)
+            let back = ChromeBounds.script(cocoa, primaryHeight: 900)
+            if back.l != 100 || back.t != 50 || back.r != 1380 || back.b != 870 { failures.append("Chrome-Koordinaten stimmen nicht") }
+            if cocoa.minY != 30 || cocoa.height != 820 { failures.append("Chrome-Koordinaten (Cocoa) falsch") }
+        }
+        if ChromeBounds.host(of: "https://www.Pinterest.com/x") != "pinterest.com" { failures.append("Adresse → Host falsch") }
+        let displays = [CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 1440, y: 0, width: 1920, height: 1080)]
+        let there = CGRect(x: 1600, y: 100, width: 1200, height: 800)
+        if ChromeBounds.sanitized(there, areas: displays, preferred: displays[0]) != there { failures.append("Gemerkte Lage auf 2. Bildschirm geändert") }
+        let gone = CGRect(x: 5000, y: 100, width: 1200, height: 800)
+        let rescued = ChromeBounds.sanitized(gone, areas: displays, preferred: displays[0])
+        if !displays[0].contains(rescued) { failures.append("Gemerkte Lage auf fehlendem Bildschirm nicht gerettet") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

@@ -35,6 +35,8 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Die Sidebar setzt Chrome-App-Fenster an ihren zuletzt benutzten Platz, holt sie zurück oder schließt sie auf Wunsch.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Web-Apps in einem integrierten App-Fenster möchten auf die Kamera zugreifen (z. B. Videocalls).</string>
 	<key>NSMicrophoneUsageDescription</key>

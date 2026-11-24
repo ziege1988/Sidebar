@@ -44,7 +44,7 @@ enum LinkOpener {
         case .appWindow:
             WebAppManager.shared.open(item: item, url: url)
         case .chromiumApp:
-            openChromiumApp(url: url, bundleID: settings.chromiumBundleID)
+            openChromiumApp(url: url, bundleID: settings.chromiumBundleID, item: item)
         }
     }
 
@@ -114,11 +114,13 @@ enum LinkOpener {
 
     /// Öffnet die Seite als eigenständiges App-Fenster (ohne Tabs/Adressleiste)
     /// in Chrome/Edge/Brave … – mit den dort vorhandenen Logins.
-    static func openChromiumApp(url: URL, bundleID: String) {
+    static func openChromiumApp(url: URL, bundleID: String, item: LinkItem? = nil) {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil else {
             NSWorkspace.shared.open(url)
             return
         }
+        // Vorher merken, welche Fenster es schon gibt – so erkennt die Sidebar das neue und setzt es an die gemerkte Stelle
+        if item != nil { ChromeWindows.shared.prepareLaunch(bundleID: bundleID) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-n", "-b", bundleID, "--args", "--app=\(url.absoluteString)"]
@@ -129,6 +131,7 @@ enum LinkOpener {
         }
         do {
             try process.run()
+            if let item { ChromeWindows.shared.adopt(item: item) }
         } catch {
             NSWorkspace.shared.open(url)
         }

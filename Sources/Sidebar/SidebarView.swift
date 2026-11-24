@@ -902,6 +902,21 @@ struct ItemContextMenu: View {
                     Button(mode.title) { actions.open(item, mode) }
                 }
             }
+            // Notbremse: Fenster, das nicht mehr erreichbar ist
+            let settings = store.config.settings
+            let mode = item.openMode ?? (item.runsInBackground(autoMessengers: settings.messengerBackground) ? .appWindow : settings.defaultOpenMode)
+            if WebAppManager.shared.hasWindow(for: item) {
+                Divider()
+                Button("Fenster schließen") { WebAppManager.shared.closeWindow(for: item) }
+                Button("Fenster zurückholen") { WebAppManager.shared.bringBack(for: item) }
+                Button("Anwendung beenden") { WebAppManager.shared.quit(for: item) }
+            }
+            if mode == .chromiumApp {
+                Divider()
+                Button("Chrome-Fenster schließen") { ChromeWindows.shared.closeWindows(of: item, bundleID: settings.chromiumBundleID) }
+                Button("Chrome-Fenster zurückholen") { ChromeWindows.shared.bringBack(item: item, bundleID: settings.chromiumBundleID) }
+                Button("Browser beenden …") { ChromeWindows.shared.quitBrowser(bundleID: settings.chromiumBundleID) }
+            }
         }
         Divider()
         if isFavorite {

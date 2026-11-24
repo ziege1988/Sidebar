@@ -41,6 +41,18 @@ final class WebAppManager {
         controller.show()
     }
 
+    func hasWindow(for item: LinkItem) -> Bool {
+        controllers[item.id].map { $0.window.isVisible || $0.window.isMiniaturized } ?? false
+    }
+
+    /// Schließen wie mit dem Schließen-Knopf (bei „Im Hintergrund aktiv“ nur ausblenden)
+    func closeWindow(for item: LinkItem) { controllers[item.id]?.window.performClose(nil) }
+
+    func bringBack(for item: LinkItem) { controllers[item.id]?.bringBack() }
+
+    /// Wirklich beenden: Fenster zu, Seite entladen, kein Hintergrundbetrieb mehr
+    func quit(for item: LinkItem) { controllers[item.id]?.window.close() }
+
     /// Alle offenen Link-Fenster schließen (bei „Im Hintergrund aktiv“ nur ausblenden, wie mit dem Schließen-Knopf)
     func closeAll() {
         for controller in controllers.values where controller.window.isVisible {
