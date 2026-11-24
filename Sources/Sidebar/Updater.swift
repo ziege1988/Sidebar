@@ -18,6 +18,44 @@ enum UpdateError: LocalizedError {
     }
 }
 
+/// Protokoll des Updates (im Programmordner der Sidebar) – für „Diagnose kopieren“
+enum UpdateLog {
+    nonisolated static var url: URL { ConfigStore.supportDirectory.appendingPathComponent("update.log") }
+    nonisolated static var pendingURL: URL { ConfigStore.supportDirectory.appendingPathComponent("update-pending.json") }
+
+    nonisolated static func add(_ text: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let fm = FileManager.default
+        try? fm.createDirectory(at: ConfigStore.supportDirectory, withIntermediateDirectories: true)
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append("\(stamp)  \(text)")
+        if lines.count > 200 { lines.removeFirst(lines.count - 200) }
+        try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    nonisolated static func read(last: Int = 40) -> String {
+        let lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        return lines.suffix(last).joined(separator: "\n")
+    }
+
+    /// Vor dem Austausch notiert: welche Version nach dem Neustart laufen müsste
+    struct Pending: Codable, Equatable {
+        var expected: String
+        var fromVersion: String
+        var fromPath: String
+    }
+
+    nonisolated static func writePending(_ pending: Pending) {
+        try? JSONEncoder().encode(pending).write(to: pendingURL, options: .atomic)
+    }
+
+    nonisolated static func takePending() -> Pending? {
+        guard let data = try? Data(contentsOf: pendingURL), let pending = try? JSONDecoder().decode(Pending.self, from: data) else { return nil }
+        try? FileManager.default.removeItem(at: pendingURL)
+        return pending
+    }
+}
+
 /// Prüft GitHub-Releases auf eine neuere Version und installiert sie per Klick.
 @MainActor
 final class Updater: ObservableObject {
@@ -153,6 +191,70 @@ final class Updater: ObservableObject {
         candidate.compare(current, options: .numeric) == .orderedDescending
     }
 
+    // MARK: - Ergebnis des letzten Updates prüfen und Diagnose
+
+    /// Beim Start: Wurde vor dem Neustart ein Update vorbereitet? Dann prüfen, ob die erwartete Version läuft.
+    func reportPendingResult() {
+        guard let pending = UpdateLog.takePending() else { return }
+        let path = Bundle.main.bundleURL.path
+        if currentVersion == pending.expected {
+            UpdateLog.add("Update ok: läuft jetzt \(currentVersion) aus \(path).")
+            return
+        }
+        UpdateLog.add("UPDATE NICHT ÜBERNOMMEN: erwartet \(pending.expected), es läuft \(currentVersion) aus \(path) (vorbereitet in \(pending.fromPath)).")
+        let alert = NSAlert()
+        alert.messageText = "Das Update wurde nicht übernommen"
+        alert.informativeText = "Erwartet war Version \(pending.expected), es läuft aber \(currentVersion).\n\nGestartet aus: \(path)\nAktualisiert wurde: \(pending.fromPath)\n\n" + (path != pending.fromPath
+            ? "Es läuft also eine andere Kopie der Sidebar als die, die aktualisiert wurde. Lösche die Kopie, die du nicht brauchst, oder starte die in „Programme“."
+            : "Bitte im Menü der Sidebar „Diagnose kopieren“ wählen und den Text schicken.")
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
+    }
+
+    nonisolated static func permissionSummary(for target: URL) -> String {
+        let fm = FileManager.default
+        let parent = target.deletingLastPathComponent()
+        let owner = (try? fm.attributesOfItem(atPath: target.path)[.ownerAccountName] as? String) ?? "?"
+        let quarantine = getxattr(target.path, "com.apple.quarantine", nil, 0, 0, 0) >= 0
+        return "Besitzer der App: \(owner), angemeldet: \(NSUserName()), Ordner beschreibbar: \(fm.isWritableFile(atPath: parent.path)), Quarantäne-Markierung: \(quarantine)"
+    }
+
+    /// Alle Kopien der Sidebar auf dem Mac (Spotlight) mit ihrer Version
+    nonisolated static func installedCopies() -> [String] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        process.arguments = ["kMDItemCFBundleIdentifier == 'app.sidebar.Sidebar'"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) { if process.isRunning { process.terminate() } }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let paths = (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").map(String.init)
+        return paths.map { path in
+            let version = Bundle(url: URL(fileURLWithPath: path))?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+            return "  \(path)  (Version \(version))"
+        }
+    }
+
+    /// Text für „Diagnose kopieren“
+    func diagnosticReport() -> String {
+        var out = ["Update-Diagnose",
+                   "Läuft: Version \(currentVersion), Prozess \(ProcessInfo.processInfo.processIdentifier)",
+                   "Ort: \(Bundle.main.bundleURL.path)",
+                   "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+                   Self.permissionSummary(for: Bundle.main.bundleURL),
+                   "Status: \(status)"]
+        out.append("Kopien der Sidebar auf diesem Mac:")
+        let copies = Self.installedCopies()
+        out.append(contentsOf: copies.isEmpty ? ["  (keine gefunden)"] : copies)
+        out.append("Update-Protokoll:")
+        out.append(UpdateLog.read().isEmpty ? "  (leer)" : UpdateLog.read())
+        return out.joined(separator: "\n")
+    }
+
     // MARK: - Dialoge
 
     func promptToInstall(_ release: ReleaseInfo) {
@@ -189,6 +291,7 @@ final class Updater: ObservableObject {
         let fm = FileManager.default
         let target = Bundle.main.bundleURL
         let staged = target.deletingLastPathComponent().appendingPathComponent("Sidebar.app.update")
+        UpdateLog.add("Update auf \(release.version) gestartet. Läuft: \(currentVersion) aus \(target.path). \(Self.permissionSummary(for: target))")
 
         do {
             guard target.pathExtension == "app" else {
@@ -226,8 +329,11 @@ final class Updater: ObservableObject {
 
             // 4. Austauschen (in der App selbst: Fehler werden gemeldet, die neue Version wird geprüft) und neu starten
             try Self.swapBundle(replacing: target, with: staged, expectedVersion: release.version)
+            UpdateLog.add("Austausch ok, neue Version liegt unter \(target.path). Neustart …")
+            UpdateLog.writePending(.init(expected: release.version, fromVersion: currentVersion, fromPath: target.path))
             try relaunch(opening: target, cleanup: work)
         } catch {
+            UpdateLog.add("Fehler: \(error.localizedDescription)")
             try? fm.removeItem(at: staged)
             status = .failed(error.localizedDescription)
             let alert = NSAlert()

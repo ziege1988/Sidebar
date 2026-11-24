@@ -772,6 +772,12 @@ enum WeatherSelfTest {
         // Dauer der Sprechblase: kurz ≥ 8 s, lang höchstens 24 s
         if CatBubbleController.visibleSeconds(for: "Hallo!") < 8 { failures.append("Blase zu kurz sichtbar") }
         if CatBubbleController.visibleSeconds(for: String(repeating: "x", count: 400)) > 24 { failures.append("Blase zu lange sichtbar") }
+        // Update-Merkzettel und Protokoll
+        let pending = UpdateLog.Pending(expected: "1.0.9", fromVersion: "1.0.8", fromPath: "/Applications/Sidebar.app")
+        UpdateLog.writePending(pending)
+        if UpdateLog.takePending() != pending { failures.append("Update-Merkzettel nicht lesbar") }
+        if UpdateLog.takePending() != nil { failures.append("Update-Merkzettel bleibt liegen") }
+        if Updater.permissionSummary(for: URL(fileURLWithPath: "/Applications")).isEmpty { failures.append("Update: Rechte-Zusammenfassung leer") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

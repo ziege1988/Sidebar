@@ -120,6 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated { self?.systemShutdown = true }
         }
         setupStatusItem()
+        // Wurde vor dem Neustart ein Update vorbereitet? Dann prüfen, ob es wirklich übernommen wurde
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Updater.shared.reportPendingResult() }
         // Server (NAS) mit „Beim Start automatisch verbinden“ kurz nach dem Start verbinden
         ServerMounter.shared.start(store: store)
 
@@ -388,9 +390,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         versionItem.isEnabled = false
         menu.addItem(versionItem)
         menu.addItem(.separator())
-        menu.addItem(menuItem("Chrome-Fenster-Diagnose kopieren") { [weak self] in
+        menu.addItem(menuItem("Diagnose kopieren (Update und Fenster)") { [weak self] in
             guard let store = self?.store else { return }
-            ChromeWindows.shared.copyReport(store: store)
+            let text = Updater.shared.diagnosticReport() + "\n\n" + ChromeWindows.shared.report(store: store)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
         })
         if WebAppManager.shared.hasVisibleWindows {
             menu.addItem(menuItem("Link-Fenster zurückholen") { WebAppManager.shared.bringAllBack() })
