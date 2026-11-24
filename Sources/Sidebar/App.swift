@@ -388,6 +388,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         versionItem.isEnabled = false
         menu.addItem(versionItem)
         menu.addItem(.separator())
+        menu.addItem(menuItem("Chrome-Fenster-Diagnose kopieren") { [weak self] in
+            guard let store = self?.store else { return }
+            ChromeWindows.shared.copyReport(store: store)
+        })
         if WebAppManager.shared.hasVisibleWindows {
             menu.addItem(menuItem("Link-Fenster zurückholen") { WebAppManager.shared.bringAllBack() })
             menu.addItem(menuItem("Alle Link-Fenster schließen") { WebAppManager.shared.closeAll() })

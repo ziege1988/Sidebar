@@ -89,17 +89,30 @@ enum SidebarKeepOut {
         guard area.insetBy(dx: -2, dy: -2).contains(CGPoint(x: corner().midX, y: corner().midY)) else { return frame }
         if corner().intersects(strip) {
             switch edge {
-            case .top: f.origin.y -= corner().maxY - (strip.minY - gap)
-            case .bottom: f.origin.y += (strip.maxY + gap) - corner().minY
-            case .left: f.origin.x += (strip.maxX + gap) - corner().minX
-            case .right: f.origin.x -= corner().maxX - (strip.minX - gap)
+            case .top:
+                // Passt das Fenster nach unten nicht mehr in den Bildschirm (z. B. bildschirmfüllend), wird es kürzer statt aus dem Bildschirm geschoben
+                let d = corner().maxY - (strip.minY - gap)
+                if f.minY - d >= area.minY { f.origin.y -= d } else { f.size.height = max(120, f.height - d) }
+            case .bottom:
+                // Obere linke Ecke liegt in der Leiste unten: Fenster nach oben schieben
+                f.origin.y += (strip.maxY + gap) - corner().minY
+            case .left:
+                let d = (strip.maxX + gap) - corner().minX
+                if f.maxX + d <= area.maxX { f.origin.x += d } else { f.origin.x += d; f.size.width = max(160, f.width - d) }
+            case .right:
+                let d = corner().maxX - (strip.minX - gap)
+                f.origin.x = max(area.minX, f.origin.x - d)
             }
         }
         if let clock, corner().intersects(clock) {
+            // Seitlich ausweichen, solange das Fenster im Bildschirm bleibt; sonst kürzer machen
             switch edge {
-            case .right: f.origin.x -= corner().maxX - (clock.minX - gap)
-            case .bottom: f.origin.x += (clock.maxX + gap) - corner().minX
-            default: f.origin.x += (clock.maxX + gap) - corner().minX
+            case .right:
+                let d = corner().maxX - (clock.minX - gap)
+                f.origin.x = max(area.minX, f.origin.x - d)
+            default:
+                let d = (clock.maxX + gap) - corner().minX
+                if f.maxX + d <= area.maxX { f.origin.x += d } else { f.origin.x += d; f.size.width = max(160, f.width - d) }
             }
         }
         return f

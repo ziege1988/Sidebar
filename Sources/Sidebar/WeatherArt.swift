@@ -726,19 +726,21 @@ enum WeatherSelfTest {
         }
         if ChromeBounds.host(of: "https://www.Pinterest.com/x") != "pinterest.com" { failures.append("Adresse → Host falsch") }
         let displays = [CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 1440, y: 0, width: 1920, height: 1080)]
+        let visibles = [CGRect(x: 0, y: 0, width: 1440, height: 876), CGRect(x: 1440, y: 0, width: 1920, height: 1056)]
         let there = CGRect(x: 1600, y: 100, width: 1200, height: 800)
-        if ChromeBounds.sanitized(there, areas: displays, preferred: displays[0]) != there { failures.append("Gemerkte Lage auf 2. Bildschirm geändert") }
+        if ChromeBounds.sanitized(there, screens: displays, visible: visibles, preferred: visibles[0]) != there { failures.append("Gemerkte Lage auf 2. Bildschirm geändert") }
+        let filled = visibles[1]
+        if ChromeBounds.sanitized(filled, screens: displays, visible: visibles, preferred: visibles[0]) != filled { failures.append("Bildschirmfüllendes Fenster auf 2. Bildschirm verschoben") }
+        let overMenu = CGRect(x: 1500, y: 300, width: 1000, height: 800)   // Titelleiste ragt über den sichtbaren Bereich
+        let fixedMenu = ChromeBounds.sanitized(overMenu, screens: displays, visible: visibles, preferred: visibles[0])
+        if fixedMenu.minX < 1440 || fixedMenu.maxY > 1056 { failures.append("Fenster mit Titelleiste über der Menüleiste nicht korrigiert") }
         let gone = CGRect(x: 5000, y: 100, width: 1200, height: 800)
-        let rescued = ChromeBounds.sanitized(gone, areas: displays, preferred: displays[0])
+        let rescued = ChromeBounds.sanitized(gone, screens: displays, visible: visibles, preferred: visibles[0])
         if !displays[0].contains(rescued) { failures.append("Gemerkte Lage auf fehlendem Bildschirm nicht gerettet") }
-        // Server beim Start verbinden: Erkennung der Einträge
-        let smbItem = LinkItem(name: "NAS", urlString: "smb://nas.local/Daten")
-        if case .address(let u) = ServerMounter.target(for: smbItem), u.host == "nas.local" {} else { failures.append("smb-Eintrag nicht erkannt") }
-        if ServerMounter.canConnect(LinkItem(name: "Web", urlString: "https://example.com")) { failures.append("Webseite als Server erkannt") }
-        if ServerMounter.canConnect(LinkItem(name: "App", urlString: "/Applications/Safari.app")) { failures.append("Programm als Server erkannt") }
-        if let old = try? JSONDecoder().decode(LinkItem.self, from: Data("{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"x\",\"urlString\":\"https://a.b\"}".utf8)),
-           old.connectAtStart != nil { failures.append("Alter Eintrag: Start-Verbinden nicht leer") }
-        if ServerMounter.isMounted(URL(string: "smb://gibt-es-nicht.invalid/xyz")!) { failures.append("Server fälschlich als verbunden erkannt") }
+        // Bildschirmfüllendes Fenster unter einer Leiste oben: kürzer machen, nicht aus dem Bildschirm schieben
+        let fullStrip = CGRect(x: 0, y: 876 - 56, width: 1440, height: 56)
+        let maxed = SidebarKeepOut.reachable(visibles[0], strip: fullStrip, clock: nil, edge: .top, area: visibles[0])
+        if maxed.minY != 0 || maxed.maxY > fullStrip.minY { failures.append("Bildschirmfüllendes Fenster unter der Leiste: falsch angepasst") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

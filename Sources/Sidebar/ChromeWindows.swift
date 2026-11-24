@@ -39,16 +39,30 @@ enum ChromeBounds {
          Int(rect.maxX.rounded()), Int((primaryHeight - rect.minY).rounded()))
     }
 
-    /// Gemerkten Rahmen prüfen: liegt der Titelbalken auf keinem Bildschirm (Bildschirm abgesteckt), wird das Fenster
-    /// mittig auf `preferred` gesetzt; zu große Fenster werden verkleinert.
-    static func sanitized(_ frame: NSRect, areas: [NSRect], preferred: NSRect) -> NSRect {
+    /// Gemerkten Rahmen prüfen: Liegt das Fenster (zu mindestens einem Drittel seiner Fläche) auf einem angeschlossenen
+    /// Bildschirm, bleibt es genau dort (nur zu große Fenster werden verkleinert). Nur wenn es auf keinem Bildschirm
+    /// mehr liegt (Bildschirm abgesteckt), kommt es mittig auf `preferred`.
+    /// - Parameters: `screens`: die ganzen Bildschirme, `visible`: deren sichtbare Bereiche (ohne Menüleiste/Dock), gleiche Reihenfolge
+    static func sanitized(_ frame: NSRect, screens: [NSRect], visible: [NSRect], preferred: NSRect) -> NSRect {
         var f = frame
-        let titlePoint = CGPoint(x: f.minX + min(60, f.width / 2), y: f.maxY - 16)
-        if let area = areas.first(where: { $0.contains(titlePoint) }) {
+        let own = max(f.width * f.height, 1)
+        var best: Int?
+        var bestShare: CGFloat = 0
+        for (i, screen) in screens.enumerated() {
+            let overlap = f.intersection(screen)
+            guard !overlap.isNull else { continue }
+            let share = overlap.width * overlap.height / own
+            if share > bestShare { bestShare = share; best = i }
+        }
+        if let best, bestShare >= 0.33 {
+            let area = visible.indices.contains(best) ? visible[best] : screens[best]
             f.size.width = min(f.width, area.width)
             f.size.height = min(f.height, area.height)
-            f.origin.x = min(max(f.minX, area.minX), area.maxX - f.width)
-            f.origin.y = min(max(f.minY, area.minY), area.maxY - f.height)
+            // Titelleiste nie über den sichtbaren Bereich hinaus (Menüleiste) und das Fenster nicht aus dem Bildschirm schieben
+            if f.maxY > area.maxY { f.origin.y = area.maxY - f.height }
+            if f.minY < area.minY { f.origin.y = area.minY }
+            if f.maxX > area.maxX { f.origin.x = area.maxX - f.width }
+            if f.minX < area.minX { f.origin.x = area.minX }
             return f
         }
         f.size.width = min(f.width, preferred.width * 0.95)
@@ -77,6 +91,7 @@ final class ChromeWindows {
     private struct Tracked {
         let itemID: UUID
         var lastFrame: NSRect?
+        var lastNudge: Date?
     }
 
     private var tracked: [Int: Tracked] = [:]
@@ -84,6 +99,58 @@ final class ChromeWindows {
     private var bundleID = "com.google.Chrome"
     private var warnedDenied = false
     private(set) var denied = false
+
+    // MARK: Protokoll und Diagnose
+
+    private var logLines: [String] = []
+
+    private func log(_ text: String) {
+        let stamp = Date().formatted(date: .omitted, time: .standard)
+        logLines.append("\(stamp)  \(text)")
+        if logLines.count > 80 { logLines.removeFirst(logLines.count - 80) }
+    }
+
+    private func f(_ r: NSRect) -> String { "x\(Int(r.minX)) y\(Int(r.minY)) \(Int(r.width))×\(Int(r.height))" }
+
+    /// Text für „Chrome-Fenster-Diagnose kopieren“: Bildschirme, Fenster, gemerkte Lagen, letzte Vorgänge
+    func report(store: ConfigStore) -> String {
+        var out = ["Chrome-Fenster-Diagnose", "Browser: \(bundleID)", "Automation: " + (denied ? "VERWEIGERT" : "nicht verweigert")]
+        out.append("Hauptbildschirm-Höhe: \(Int(primaryHeight))")
+        for (i, screen) in NSScreen.screens.enumerated() {
+            out.append("Bildschirm \(i): \(f(screen.frame))  sichtbar \(f(screen.visibleFrame))")
+        }
+        if let info = SidebarController.current?.windowKeepOut() {
+            out.append("Sidebar: Seite \(info.edge.rawValue), Leiste \(f(info.strip)), Uhr \(info.clock.map(f) ?? "–"), Bereich \(f(info.area))")
+        }
+        let raw = run("""
+        set out to ""
+        repeat with w in windows
+          try
+            set b to bounds of w
+            set out to out & (id of w) & "|" & (item 1 of b) & "|" & (item 2 of b) & "|" & (item 3 of b) & "|" & (item 4 of b) & "|" & (URL of active tab of w) & linefeed
+          end try
+        end repeat
+        return out
+        """)
+        out.append(raw == nil ? "Fensterliste: nicht lesbar (Chrome aus oder keine Erlaubnis)" : "Chrome-Fenster:")
+        for w in ChromeBounds.parse(raw ?? "") {
+            let cocoa = ChromeBounds.cocoa(w, primaryHeight: primaryHeight)
+            out.append("  #\(w.id) AppleScript [\(Int(w.left)),\(Int(w.top)),\(Int(w.right)),\(Int(w.bottom))] → \(f(cocoa))  \(w.url.prefix(60))\(tracked[w.id] != nil ? "  (beobachtet)" : "")")
+        }
+        out.append("Gemerkte Lagen:")
+        for item in store.config.favorites + store.config.groups.flatMap(\.items) {
+            if let r = remembered(item.id) { out.append("  \(item.displayName): \(f(r))") }
+        }
+        out.append("Letzte Vorgänge:")
+        out.append(contentsOf: logLines.suffix(40).map { "  " + $0 })
+        return out.joined(separator: "\n")
+    }
+
+    func copyReport(store: ConfigStore) {
+        let text = report(store: store)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 
     // MARK: Gemerkte Lage
 
@@ -204,13 +271,19 @@ final class ChromeWindows {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { MainActor.assumeIsolated { poll() } }
     }
 
-    /// An die gemerkte Stelle – oder, wenn es die nicht mehr gibt, auf den Bildschirm der Sidebar; nie unter die Leiste
+    /// Neues Fenster: Chrome hat es schon irgendwo hingesetzt. Ist eine Lage gemerkt und liegt sie auf einem angeschlossenen
+    /// Bildschirm, wandert es dorthin; sonst bleibt es, wo es ist. Nur wenn es unter der Leiste/Uhr der Sidebar läge
+    /// (oder auf gar keinem Bildschirm), wird es verschoben.
     private func place(_ window: Info, for itemID: UUID) {
+        let screens = NSScreen.screens.map(\.frame)
+        let visible = NSScreen.screens.map(\.visibleFrame)
         let info = SidebarController.current?.windowKeepOut()
-        let areas = NSScreen.screens.map(\.visibleFrame)
         let preferred = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? window.frame
-        var target = ChromeBounds.sanitized(remembered(itemID) ?? window.frame, areas: areas, preferred: preferred)
+        let saved = remembered(itemID)
+        let wanted = saved ?? window.frame
+        var target = ChromeBounds.sanitized(wanted, screens: screens, visible: visible, preferred: preferred)
         target = SidebarKeepOut.reachableForCurrentSidebar(target)
+        log("öffnen #\(window.id): Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target))")
         if target != window.frame { setFrame(target, windowID: window.id) }
         remember(target, for: itemID)
         tracked[window.id]?.lastFrame = target
@@ -241,11 +314,14 @@ final class ChromeWindows {
                 continue
             }
             let fixed = SidebarKeepOut.reachableForCurrentSidebar(window.frame)
-            if fixed != window.frame {
+            if fixed != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
+                log("Schließen-Knopf verdeckt #\(id): \(f(window.frame)) → \(f(fixed))")
                 setFrame(fixed, windowID: id)
                 tracked[id]?.lastFrame = fixed
+                tracked[id]?.lastNudge = Date()
                 remember(fixed, for: entry.itemID)
-            } else {
+            } else if remembered(entry.itemID) != window.frame {
+                log("Lage gemerkt #\(id): \(f(window.frame))")
                 remember(window.frame, for: entry.itemID)
             }
         }
