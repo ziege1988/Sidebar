@@ -83,6 +83,8 @@ struct LinkItem: Codable, Identifiable, Hashable {
     var keepAlive: Bool?
     /// Server (NAS): beim Start der Sidebar automatisch verbinden (ohne Fenster)
     var connectAtStart: Bool?
+    /// Beim Start der Sidebar öffnen (Programm, Ordner, Link …)
+    var openAtStart: Bool?
     /// Merker: Mitteilungen dieser Seite sind in Chrome erlaubt (nur zur Übersicht – Chrome selbst stellt das ein)
     var chromeNotify: Bool?
 
@@ -468,5 +470,28 @@ extension SidebarConfig {
                 LinkItem(name: "Google Analytics", urlString: "https://analytics.google.com"),
             ]),
         ])
+    }
+}
+
+/// Was die Sidebar mit einem Eintrag beim Start macht
+enum StartMode: String, CaseIterable, Identifiable {
+    case none, connect, open
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .none: return "Nichts tun"
+        case .connect: return "Verbinden (ohne Fenster)"
+        case .open: return "Öffnen"
+        }
+    }
+}
+
+extension LinkItem {
+    var startMode: StartMode {
+        get { openAtStart == true ? .open : (connectAtStart == true ? .connect : .none) }
+        set {
+            connectAtStart = newValue == .connect ? true : nil
+            openAtStart = newValue == .open ? true : nil
+        }
     }
 }

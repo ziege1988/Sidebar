@@ -122,8 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
         // Wurde vor dem Neustart ein Update vorbereitet? Dann prüfen, ob es wirklich übernommen wurde
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Updater.shared.reportPendingResult() }
-        // Server (NAS) mit „Beim Start automatisch verbinden“ kurz nach dem Start verbinden
-        ServerMounter.shared.start(store: store)
+        // Einträge mit „Beim Start der Sidebar“ (Verbinden/Öffnen) kurz nach dem Start ausführen
+        StartupRunner.shared.start(store: store)
 
         Updater.shared.startAutomaticChecks { [weak self] in
             self?.store.config.settings.autoCheckUpdates ?? false

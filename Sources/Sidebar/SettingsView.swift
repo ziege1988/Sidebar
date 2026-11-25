@@ -1122,6 +1122,21 @@ struct ItemEditorSheet: View {
                         Label(group.name, systemImage: group.symbol).tag(group.id)
                     }
                 }
+                Picker("Beim Start der Sidebar", selection: Binding(get: { item.startMode }, set: { item.startMode = $0 })) {
+                    ForEach(StartMode.allCases.filter { $0 != .connect || ServerMounter.canConnect(item) || item.startMode == .connect }) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                if item.startMode != .none || ServerMounter.canConnect(item) {
+                    Text("Etwa 8 Sekunden nach dem Start der Sidebar. „Verbinden“ hängt einen Server (NAS) ein, ohne ein Fenster zu öffnen; ist er noch nicht erreichbar, versucht die Sidebar es bis zu dreimal später noch einmal.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if item.url?.isFileURL == true, item.url?.path.hasPrefix("/Volumes/") == true {
+                    Text("Tipp: Für ein Netzlaufwerk besser die Serveradresse (z. B. smb://server/freigabe) eintragen, dann kann die Sidebar es selbst verbinden.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 if !item.isLocal {
                     Picker("Öffnen als", selection: $item.openMode) {
                         Text("Standard (aus Einstellungen)").tag(OpenMode?.none)

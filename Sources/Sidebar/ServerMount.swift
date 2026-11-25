@@ -20,41 +20,9 @@ enum ServerTarget {
 final class ServerMounter {
     static let shared = ServerMounter()
 
-    private var started = false
-    /// Wartezeiten bis zum jeweils nächsten Versuch (Netzwerk, WLAN, VPN brauchen nach dem Start etwas)
-    private static let delays: [Double] = [8, 25, 60, 120]
-
-    /// Einträge, die beim Start verbunden werden sollen
-    private func startItems(_ store: ConfigStore) -> [LinkItem] {
-        (store.config.favorites + store.config.groups.flatMap(\.items)).filter { $0.connectAtStart == true }
-    }
-
-    func start(store: ConfigStore) {
-        guard !started else { return }
-        started = true
-        let ids = startItems(store).map(\.id)
-        for id in ids { attempt(id: id, store: store, index: 0) }
-    }
-
     /// Manuell („Nur verbinden“): ein Versuch, ohne Wiederholung
     func connectNow(_ item: LinkItem, store: ConfigStore) {
         Task { _ = await Self.connect(item) }
-    }
-
-    private func attempt(id: UUID, store: ConfigStore, index: Int) {
-        guard index < Self.delays.count else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.delays[index]) { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self, let item = store.item(id: id), item.connectAtStart == true else { return }
-                Task { @MainActor in
-                    let result = await Self.connect(item)
-                    switch result {
-                    case .connected, .cancelled: break
-                    case .failed: self.attempt(id: id, store: store, index: index + 1)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: Verbinden
@@ -133,6 +101,71 @@ final class ServerMounter {
     /// Gibt es für den Eintrag etwas zu verbinden? (für das Rechtsklick-Menü)
     static func canConnect(_ item: LinkItem) -> Bool {
         if case .none = target(for: item) { return false }
+        return true
+    }
+}
+
+
+// MARK: - Beim Start der Sidebar ausführen
+//
+// Pro Eintrag einstellbar („Beim Start der Sidebar“): nichts tun, einen Server verbinden (ohne Fenster) oder öffnen
+// (Programm, Ordner, Link). Etwa 8 Sekunden nach dem Start, die Einträge nacheinander. Ist das Ziel noch nicht da
+// (Netzwerk, NAS), versucht es die Sidebar später noch bis zu dreimal. Nach einem Update-Neustart werden Einträge mit
+// „Öffnen“ nicht noch einmal geöffnet.
+
+@MainActor
+final class StartupRunner {
+    static let shared = StartupRunner()
+    private var started = false
+    private static let delays: [Double] = [8, 25, 60, 120]
+
+    /// Alle Einträge, die beim Start etwas tun sollen
+    static func startItems(in config: SidebarConfig) -> [LinkItem] {
+        (config.favorites + config.groups.flatMap(\.items)).filter { $0.startMode != .none }
+    }
+
+    func start(store: ConfigStore) {
+        guard !started else { return }
+        started = true
+        let afterUpdate = FileManager.default.fileExists(atPath: UpdateLog.pendingURL.path)
+        for (index, item) in Self.startItems(in: store.config).enumerated() {
+            if afterUpdate && item.startMode == .open { continue }
+            attempt(id: item.id, store: store, index: 0, stagger: Double(index) * 1.5)
+        }
+    }
+
+    private func attempt(id: UUID, store: ConfigStore, index: Int, stagger: Double = 0) {
+        guard index < Self.delays.count else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.delays[index] + (index == 0 ? stagger : 0)) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let item = store.item(id: id) else { return }
+                switch item.startMode {
+                case .none:
+                    return
+                case .connect:
+                    Task { @MainActor in
+                        if await ServerMounter.connect(item) == .failed {
+                            self.attempt(id: id, store: store, index: index + 1)
+                        }
+                    }
+                case .open:
+                    if !Self.openQuietly(item, settings: store.config.settings) {
+                        self.attempt(id: id, store: store, index: index + 1)
+                    }
+                }
+            }
+        }
+    }
+
+    /// `true`: geöffnet (oder nichts zu tun). `false`: das Ziel ist noch nicht da (z. B. Laufwerk nicht verbunden) –
+    /// dann später noch einmal, ohne Fehlermeldung.
+    static func openQuietly(_ item: LinkItem, settings: SidebarSettings) -> Bool {
+        guard let url = item.url else { return true }
+        if url.isFileURL, !LinkOpener.isFinderAlias(url), !LinkOpener.isServerShortcut(url),
+           !FileManager.default.fileExists(atPath: url.path) {
+            return false
+        }
+        LinkOpener.open(item, mode: nil, settings: settings)
         return true
     }
 }

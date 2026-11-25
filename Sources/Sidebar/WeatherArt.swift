@@ -784,6 +784,23 @@ enum WeatherSelfTest {
         let twoScreens = [CGRect(x: 0, y: 0, width: 1728, height: 1117), CGRect(x: -1920, y: 0, width: 1920, height: 1080)]
         if ChromeBounds.bestShare(CGRect(x: -1898, y: 22, width: 1200, height: 1006), screens: twoScreens) < 0.8 { failures.append("Fenster auf linkem Bildschirm nicht brauchbar") }
         if ChromeBounds.bestShare(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: twoScreens) >= 0.8 { failures.append("Fenster zwischen zwei Bildschirmen gilt als brauchbar") }
+        // Beim Start: Modus je Eintrag speichern und auswählen
+        var startItem = LinkItem(name: "NAS", urlString: "smb://nas.local/Daten")
+        startItem.startMode = .open
+        if startItem.startMode != .open || startItem.connectAtStart != nil { failures.append("Start-Modus „Öffnen“ falsch gesetzt") }
+        startItem.startMode = .connect
+        if startItem.startMode != .connect || startItem.openAtStart != nil { failures.append("Start-Modus „Verbinden“ falsch gesetzt") }
+        startItem.startMode = .none
+        if startItem.connectAtStart != nil || startItem.openAtStart != nil { failures.append("Start-Modus „Nichts“ falsch gesetzt") }
+        var startConfig = SidebarConfig()
+        var openItem = LinkItem(name: "Ordner", urlString: "/Applications")
+        openItem.startMode = .open
+        startConfig.favorites = [openItem, LinkItem(name: "Web", urlString: "https://example.com")]
+        if StartupRunner.startItems(in: startConfig).count != 1 { failures.append("Start-Einträge falsch ausgewählt") }
+        if !StartupRunner.openQuietly(LinkItem(name: "x", urlString: ""), settings: SidebarSettings()) { failures.append("Leerer Eintrag blockiert den Start") }
+        if StartupRunner.openQuietly(LinkItem(name: "Weg", urlString: "/Volumes/gibt-es-nicht-\(UUID().uuidString)"), settings: SidebarSettings()) {
+            failures.append("Fehlendes Laufwerk gilt als geöffnet")
+        }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {
