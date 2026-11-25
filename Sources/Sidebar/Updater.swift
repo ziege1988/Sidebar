@@ -367,11 +367,20 @@ final class Updater: ObservableObject {
             }
             throw UpdateError.message("Austauschen der App fehlgeschlagen: \(error.localizedDescription)")
         }
-        // Prüfen, ob wirklich die neue Version an Ort und Stelle liegt
-        let installed = Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        // Prüfen, ob wirklich die neue Version an Ort und Stelle liegt. Die Version wird direkt aus der Datei gelesen:
+        // `Bundle(url:)` liefert für den Pfad der laufenden App immer deren beim Start zwischengespeicherte (alte) Daten.
+        let installed = installedVersion(at: target)
         guard installed == expectedVersion else {
             throw UpdateError.message("Nach dem Austauschen liegt noch Version \(installed ?? "?") unter \(target.path) (erwartet: \(expectedVersion)).")
         }
+    }
+
+    /// Version der App-Datei, wie sie jetzt auf der Festplatte liegt (nicht aus dem Zwischenspeicher)
+    nonisolated static func installedVersion(at app: URL) -> String? {
+        let plist = app.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return nil }
+        return dict["CFBundleShortVersionString"] as? String
     }
 
     /// Wartet, bis die App beendet ist, räumt auf und öffnet die (schon ausgetauschte) App neu.

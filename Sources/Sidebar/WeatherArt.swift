@@ -755,6 +755,8 @@ enum WeatherSelfTest {
                 return app
             }
             let installed = try makeApp("Sidebar.app", version: "1.0.1")
+            // wie bei der laufenden App: Bundle ist vorher schon geladen (zwischengespeichert)
+            _ = Bundle(url: installed)?.object(forInfoDictionaryKey: "CFBundleShortVersionString")
             let staged = try makeApp("Sidebar.app.update", version: "1.0.2")
             try Updater.swapBundle(replacing: installed, with: staged, expectedVersion: "1.0.2")
             let marker = try? String(contentsOf: installed.appendingPathComponent("Contents/marker.txt"), encoding: .utf8)
