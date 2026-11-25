@@ -72,6 +72,15 @@ enum ChromeBounds {
         return f
     }
 
+    /// Welcher Anteil der Fläche liegt auf dem Bildschirm, auf dem das Fenster am meisten liegt? (0 … 1)
+    static func bestShare(_ frame: NSRect, screens: [NSRect]) -> CGFloat {
+        let own = max(frame.width * frame.height, 1)
+        return screens.map { screen -> CGFloat in
+            let overlap = frame.intersection(screen)
+            return overlap.isNull ? 0 : overlap.width * overlap.height / own
+        }.max() ?? 0
+    }
+
     static func host(of text: String) -> String? {
         guard let host = URL(string: text)?.host?.lowercased() else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -286,21 +295,33 @@ final class ChromeWindows {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { poll() } }
     }
 
-    /// Neues Fenster: Chrome hat es schon irgendwo hingesetzt. Ist eine Lage gemerkt und liegt sie auf einem angeschlossenen
-    /// Bildschirm, wandert es dorthin; sonst bleibt es, wo es ist. Nur wenn es unter der Leiste/Uhr der Sidebar läge
-    /// (oder auf gar keinem Bildschirm), wird es verschoben.
+    /// Eine brauchbare Lage: liegt (fast) ganz auf einem Bildschirm und der Schließen-Knopf ist nicht unter der Sidebar
+    private func isUsable(_ frame: NSRect) -> Bool {
+        ChromeBounds.bestShare(frame, screens: NSScreen.screens.map(\.frame)) >= 0.8
+            && SidebarKeepOut.reachableForCurrentSidebar(frame) == frame
+    }
+
+    /// Neues Fenster: Chrome hat es schon irgendwo hingesetzt – meist genau dorthin, wo es zuletzt war (auch auf einem
+    /// anderen Bildschirm). Ist diese Lage brauchbar, bleibt sie unangetastet. Nur wenn sie es nicht ist (unter der
+    /// Sidebar, zwischen Bildschirmen, auf einem abgesteckten Bildschirm), kommt die gemerkte Lage bzw. ein Platz auf dem
+    /// Bildschirm der Sidebar.
     private func place(_ window: Win, for itemID: UUID) {
         let screens = NSScreen.screens.map(\.frame)
         let visible = NSScreen.screens.map(\.visibleFrame)
         let info = SidebarController.current?.windowKeepOut()
         let preferred = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? window.frame
         let saved = remembered(itemID)
-        let wanted = saved ?? window.frame
-        var target = ChromeBounds.sanitized(wanted, screens: screens, visible: visible, preferred: preferred)
-        target = SidebarKeepOut.reachableForCurrentSidebar(target)
-        log("öffnen „\(window.title.prefix(30))“: Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target))")
+        var target = window.frame
+        var reason = "Chrome-Lage ist brauchbar"
+        if !isUsable(window.frame) {
+            let candidate = saved.flatMap { isUsable($0) ? $0 : nil } ?? window.frame
+            target = ChromeBounds.sanitized(candidate, screens: screens, visible: visible, preferred: preferred)
+            target = SidebarKeepOut.reachableForCurrentSidebar(target)
+            reason = saved.flatMap({ isUsable($0) ? $0 : nil }) != nil ? "gemerkte Lage" : "korrigiert"
+        }
+        log("öffnen „\(window.title.prefix(30))“: Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target)) (\(reason))")
         if target != window.frame { setFrame(target, of: window.element) }
-        remember(target, for: itemID)
+        if isUsable(target) { remember(target, for: itemID) }
         if let i = tracked.firstIndex(where: { CFEqual($0.element, window.element) }) { tracked[i].lastFrame = target }
     }
 
@@ -333,8 +354,8 @@ final class ChromeWindows {
                 setFrame(fixed, of: window.element)
                 tracked[index].lastFrame = fixed
                 tracked[index].lastNudge = Date()
-                remember(fixed, for: entry.itemID)
-            } else if remembered(entry.itemID) != window.frame {
+                // die eigene Korrektur wird bewusst nicht gemerkt – nur Lagen, die du selbst eingestellt hast
+            } else if isUsable(window.frame), remembered(entry.itemID) != window.frame {
                 log("Lage gemerkt: \(f(window.frame))")
                 remember(window.frame, for: entry.itemID)
             }

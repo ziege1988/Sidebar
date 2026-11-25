@@ -780,6 +780,10 @@ enum WeatherSelfTest {
         if UpdateLog.takePending() != pending { failures.append("Update-Merkzettel nicht lesbar") }
         if UpdateLog.takePending() != nil { failures.append("Update-Merkzettel bleibt liegen") }
         if Updater.permissionSummary(for: URL(fileURLWithPath: "/Applications")).isEmpty { failures.append("Update: Rechte-Zusammenfassung leer") }
+        // Chrome-Lage: zwischen zwei Bildschirmen ist nicht brauchbar, ganz auf einem schon
+        let twoScreens = [CGRect(x: 0, y: 0, width: 1728, height: 1117), CGRect(x: -1920, y: 0, width: 1920, height: 1080)]
+        if ChromeBounds.bestShare(CGRect(x: -1898, y: 22, width: 1200, height: 1006), screens: twoScreens) < 0.8 { failures.append("Fenster auf linkem Bildschirm nicht brauchbar") }
+        if ChromeBounds.bestShare(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: twoScreens) >= 0.8 { failures.append("Fenster zwischen zwei Bildschirmen gilt als brauchbar") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {
