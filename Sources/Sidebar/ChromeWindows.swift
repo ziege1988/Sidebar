@@ -81,6 +81,35 @@ enum ChromeBounds {
         }.max() ?? 0
     }
 
+    /// Fenster liegt (länger) zwischen zwei Bildschirmen: ganz auf den Bildschirm ziehen, auf den es passt.
+    /// Ist es zu groß für den Bildschirm mit dem größten Anteil (z. B. ein 1920 Punkte breites Fenster, das in den kleineren
+    /// Hauptbildschirm gepresst wurde), wird der Bildschirm gewählt, auf den es passt.
+    static func snapped(_ frame: NSRect, screens: [NSRect], visible: [NSRect]) -> NSRect {
+        guard bestShare(frame, screens: screens) < 0.98 else { return frame }
+        var best: (index: Int, share: CGFloat, fits: Bool)?
+        let own = max(frame.width * frame.height, 1)
+        for (i, screen) in screens.enumerated() {
+            let overlap = frame.intersection(screen)
+            guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { continue }
+            let share = overlap.width * overlap.height / own
+            let area = visible.indices.contains(i) ? visible[i] : screen
+            let fits = frame.width <= area.width + 2 && frame.height <= area.height + 2
+            if let current = best {
+                if (fits && !current.fits) || (fits == current.fits && share > current.share) { best = (i, share, fits) }
+            } else {
+                best = (i, share, fits)
+            }
+        }
+        guard let best else { return frame }
+        let area = visible.indices.contains(best.index) ? visible[best.index] : screens[best.index]
+        var f = frame
+        f.size.width = min(f.width, area.width)
+        f.size.height = min(f.height, area.height)
+        f.origin.x = min(max(f.minX, area.minX), area.maxX - f.width)
+        f.origin.y = min(max(f.minY, area.minY), area.maxY - f.height)
+        return f
+    }
+
     static func host(of text: String) -> String? {
         guard let host = URL(string: text)?.host?.lowercased() else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -103,6 +132,8 @@ final class ChromeWindows {
         let itemID: UUID
         var lastFrame: NSRect?
         var lastNudge: Date?
+        /// wie viele Prüfungen in Folge das Fenster an derselben Stelle lag
+        var calm = 0
     }
 
     private var tracked: [Tracked] = []
@@ -297,7 +328,7 @@ final class ChromeWindows {
 
     /// Eine brauchbare Lage: liegt (fast) ganz auf einem Bildschirm und der Schließen-Knopf ist nicht unter der Sidebar
     private func isUsable(_ frame: NSRect) -> Bool {
-        ChromeBounds.bestShare(frame, screens: NSScreen.screens.map(\.frame)) >= 0.8
+        ChromeBounds.bestShare(frame, screens: NSScreen.screens.map(\.frame)) >= 0.98
             && SidebarKeepOut.reachableForCurrentSidebar(frame) == frame
     }
 
@@ -334,20 +365,44 @@ final class ChromeWindows {
         }
     }
 
+    private func screenIndex(of point: CGPoint) -> String {
+        NSScreen.screens.firstIndex(where: { $0.frame.contains(point) }).map(String.init) ?? "?"
+    }
+
     private func tick() {
         guard !tracked.isEmpty, AXIsProcessTrusted() else { timer?.invalidate(); timer = nil; return }
         let all = windows(silent: true)
         // Geschlossene Fenster vergessen
         tracked.removeAll { entry in !all.contains { CFEqual($0.element, entry.element) } }
-        if NSEvent.pressedMouseButtons & 1 != 0 { return }
+        let mouseDown = NSEvent.mouseButtons & 1 != 0
+        let screens = NSScreen.screens.map(\.frame)
+        let visible = NSScreen.screens.map(\.visibleFrame)
         for index in tracked.indices {
             let entry = tracked[index]
             guard let window = all.first(where: { CFEqual($0.element, entry.element) }) else { continue }
-            // Nur wenn das Fenster zur Ruhe gekommen ist (gleiche Lage wie beim letzten Mal), sonst wird gerade gezogen
-            guard let last = entry.lastFrame, last.equalTo(window.frame) else {
+            let moved = entry.lastFrame.map { !$0.equalTo(window.frame) } ?? true
+            if moved {
+                // Jede Änderung der Lage ins Protokoll – mit Mauszeiger und Bildschirm, damit man den Ablauf sieht
+                let mouse = NSEvent.mouseLocation
+                log("Fenster \(f(window.frame)) – Maus auf Bildschirm \(screenIndex(of: mouse)), \(mouseDown ? "gedrückt" : "losgelassen")")
                 tracked[index].lastFrame = window.frame
+                tracked[index].calm = 0
                 continue
             }
+            tracked[index].calm += 1
+            if mouseDown { continue }
+            // 1. Zwischen zwei Bildschirmen (länger so liegengeblieben): ganz auf den passenden Bildschirm
+            if entry.calm >= 2 {
+                let snapped = ChromeBounds.snapped(window.frame, screens: screens, visible: visible)
+                if snapped != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
+                    log("zwischen Bildschirmen: \(f(window.frame)) → \(f(snapped))")
+                    setFrame(snapped, of: window.element)
+                    tracked[index].lastFrame = snapped
+                    tracked[index].lastNudge = Date()
+                    continue
+                }
+            }
+            // 2. Schließen-Knopf unter der Leiste/Uhr
             let fixed = SidebarKeepOut.reachableForCurrentSidebar(window.frame)
             if fixed != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
                 log("Schließen-Knopf verdeckt: \(f(window.frame)) → \(f(fixed))")
@@ -404,7 +459,6 @@ final class ChromeWindows {
                 frame = SidebarKeepOut.adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
             }
             setFrame(frame, of: window.element)
-            remember(frame, for: item.id)
             raise(window.element)
         }
         log("zurückgeholt: \(found.count) Fenster für „\(item.displayName)“")

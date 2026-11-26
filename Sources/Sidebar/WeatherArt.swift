@@ -782,8 +782,8 @@ enum WeatherSelfTest {
         if Updater.permissionSummary(for: URL(fileURLWithPath: "/Applications")).isEmpty { failures.append("Update: Rechte-Zusammenfassung leer") }
         // Chrome-Lage: zwischen zwei Bildschirmen ist nicht brauchbar, ganz auf einem schon
         let twoScreens = [CGRect(x: 0, y: 0, width: 1728, height: 1117), CGRect(x: -1920, y: 0, width: 1920, height: 1080)]
-        if ChromeBounds.bestShare(CGRect(x: -1898, y: 22, width: 1200, height: 1006), screens: twoScreens) < 0.8 { failures.append("Fenster auf linkem Bildschirm nicht brauchbar") }
-        if ChromeBounds.bestShare(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: twoScreens) >= 0.8 { failures.append("Fenster zwischen zwei Bildschirmen gilt als brauchbar") }
+        if ChromeBounds.bestShare(CGRect(x: -1898, y: 22, width: 1200, height: 1006), screens: twoScreens) < 0.98 { failures.append("Fenster auf linkem Bildschirm nicht brauchbar") }
+        if ChromeBounds.bestShare(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: twoScreens) >= 0.98 { failures.append("Fenster zwischen zwei Bildschirmen gilt als brauchbar") }
         // Beim Start: Modus je Eintrag speichern und auswählen
         var startItem = LinkItem(name: "NAS", urlString: "smb://nas.local/Daten")
         startItem.startMode = .open
@@ -801,6 +801,15 @@ enum WeatherSelfTest {
         if StartupRunner.openQuietly(LinkItem(name: "Weg", urlString: "/Volumes/gibt-es-nicht-\(UUID().uuidString)"), settings: SidebarSettings()) {
             failures.append("Fehlendes Laufwerk gilt als geöffnet")
         }
+        // Fenster zwischen Bildschirmen: das 1920 breite, in den Hauptbildschirm gepresste Fenster geht auf den linken Bildschirm
+        let mainScreen = CGRect(x: 0, y: 0, width: 1728, height: 1117), leftScreen = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
+        let mainVisible = CGRect(x: 0, y: 61, width: 1728, height: 1023), leftVisible = CGRect(x: -1920, y: 0, width: 1920, height: 1050)
+        let pressed = ChromeBounds.snapped(CGRect(x: -192, y: 61, width: 1920, height: 1023), screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible])
+        if pressed.minX != -1920 || pressed.width != 1920 { failures.append("Gepresstes Fenster ging nicht auf den linken Bildschirm: \(pressed)") }
+        let halfway = ChromeBounds.snapped(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible])
+        if halfway.minX < 0 && halfway.maxX > 0 { failures.append("Fenster zwischen Bildschirmen bleibt dazwischen") }
+        let fine = CGRect(x: -1900, y: 20, width: 1200, height: 1000)
+        if ChromeBounds.snapped(fine, screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible]) != fine { failures.append("Ganz auf einem Bildschirm liegendes Fenster verschoben") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {
