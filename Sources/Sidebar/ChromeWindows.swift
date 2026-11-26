@@ -374,7 +374,7 @@ final class ChromeWindows {
         let all = windows(silent: true)
         // Geschlossene Fenster vergessen
         tracked.removeAll { entry in !all.contains { CFEqual($0.element, entry.element) } }
-        let mouseDown = NSEvent.mouseButtons & 1 != 0
+        let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
         let screens = NSScreen.screens.map(\.frame)
         let visible = NSScreen.screens.map(\.visibleFrame)
         for index in tracked.indices {
