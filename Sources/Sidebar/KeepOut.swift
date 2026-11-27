@@ -132,3 +132,40 @@ enum SidebarKeepOut {
         return adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
     }
 }
+
+/// Gemerkte Fensterlagen (Programme/Link-Fenster) – gemeinsame Regeln für Chrome-App-Fenster und integrierte Fenster
+enum WindowPlacement {
+    /// Brauchbar: praktisch ganz auf einem Bildschirm und der Schließen-Knopf nicht unter der Sidebar
+    @MainActor
+    static func isUsable(_ frame: NSRect) -> Bool {
+        ChromeBounds.bestShare(frame, screens: NSScreen.screens.map(\.frame)) >= 0.98
+            && SidebarKeepOut.reachableForCurrentSidebar(frame) == frame
+    }
+
+    /// Gemerkte Lage auf die aktuell angeschlossenen Bildschirme anpassen (Bildschirm abgesteckt → Bildschirm der Sidebar)
+    @MainActor
+    static func fitted(_ frame: NSRect) -> NSRect {
+        let info = SidebarController.current?.windowKeepOut()
+        let preferred = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? frame
+        let fixed = ChromeBounds.sanitized(frame, screens: NSScreen.screens.map(\.frame),
+                                           visible: NSScreen.screens.map(\.visibleFrame), preferred: preferred)
+        return SidebarKeepOut.reachableForCurrentSidebar(fixed)
+    }
+}
+
+/// Lage der integrierten Link-Fenster pro Eintrag (überlebt Neustarts)
+enum WebFrameMemory {
+    private static let key = "Sidebar.WebWindowFrames"
+
+    static func frame(for id: UUID) -> NSRect? {
+        guard let all = UserDefaults.standard.dictionary(forKey: key) as? [String: [Double]],
+              let v = all[id.uuidString], v.count == 4, v[2] > 100, v[3] > 100 else { return nil }
+        return NSRect(x: v[0], y: v[1], width: v[2], height: v[3])
+    }
+
+    static func save(_ frame: NSRect, for id: UUID) {
+        var all = (UserDefaults.standard.dictionary(forKey: key) as? [String: [Double]]) ?? [:]
+        all[id.uuidString] = [frame.minX, frame.minY, frame.width, frame.height].map { Double($0) }
+        UserDefaults.standard.set(all, forKey: key)
+    }
+}

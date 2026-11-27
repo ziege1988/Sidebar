@@ -326,29 +326,28 @@ final class ChromeWindows {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { poll() } }
     }
 
-    /// Eine brauchbare Lage: liegt (fast) ganz auf einem Bildschirm und der Schließen-Knopf ist nicht unter der Sidebar
-    private func isUsable(_ frame: NSRect) -> Bool {
-        ChromeBounds.bestShare(frame, screens: NSScreen.screens.map(\.frame)) >= 0.98
-            && SidebarKeepOut.reachableForCurrentSidebar(frame) == frame
-    }
+    /// Eine brauchbare Lage: praktisch ganz auf einem Bildschirm und der Schließen-Knopf nicht unter der Sidebar
+    private func isUsable(_ frame: NSRect) -> Bool { WindowPlacement.isUsable(frame) }
 
-    /// Neues Fenster: Chrome hat es schon irgendwo hingesetzt – meist genau dorthin, wo es zuletzt war (auch auf einem
-    /// anderen Bildschirm). Ist diese Lage brauchbar, bleibt sie unangetastet. Nur wenn sie es nicht ist (unter der
-    /// Sidebar, zwischen Bildschirmen, auf einem abgesteckten Bildschirm), kommt die gemerkte Lage bzw. ein Platz auf dem
-    /// Bildschirm der Sidebar.
+    /// Neues Fenster: Chrome setzt es oft einfach auf den Hauptbildschirm. Ist eine brauchbare Lage gemerkt (zuletzt
+    /// benutzter Bildschirm, Ort und Größe), kommt es dorthin. Sonst bleibt eine brauchbare Chrome-Lage unangetastet;
+    /// ist auch die unbrauchbar (unter der Sidebar, zwischen Bildschirmen), wird sie korrigiert.
     private func place(_ window: Win, for itemID: UUID) {
         let screens = NSScreen.screens.map(\.frame)
         let visible = NSScreen.screens.map(\.visibleFrame)
         let info = SidebarController.current?.windowKeepOut()
         let preferred = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? window.frame
         let saved = remembered(itemID)
+        let savedUsable = saved.flatMap { isUsable($0) ? $0 : nil }
         var target = window.frame
         var reason = "Chrome-Lage ist brauchbar"
-        if !isUsable(window.frame) {
-            let candidate = saved.flatMap { isUsable($0) ? $0 : nil } ?? window.frame
-            target = ChromeBounds.sanitized(candidate, screens: screens, visible: visible, preferred: preferred)
+        if let savedUsable {
+            target = savedUsable
+            reason = "gemerkte Lage"
+        } else if !isUsable(window.frame) {
+            target = ChromeBounds.sanitized(window.frame, screens: screens, visible: visible, preferred: preferred)
             target = SidebarKeepOut.reachableForCurrentSidebar(target)
-            reason = saved.flatMap({ isUsable($0) ? $0 : nil }) != nil ? "gemerkte Lage" : "korrigiert"
+            reason = "korrigiert"
         }
         log("öffnen „\(window.title.prefix(30))“: Chrome \(f(window.frame)), gemerkt \(saved.map(f) ?? "–"), Ziel \(f(target)) (\(reason))")
         if target != window.frame { setFrame(target, of: window.element) }
@@ -360,7 +359,7 @@ final class ChromeWindows {
 
     private func startTimer() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
@@ -372,7 +371,13 @@ final class ChromeWindows {
     private func tick() {
         guard !tracked.isEmpty, AXIsProcessTrusted() else { timer?.invalidate(); timer = nil; return }
         let all = windows(silent: true)
-        // Geschlossene Fenster vergessen
+        // Geschlossene Fenster: die zuletzt gesehene Lage merken (war sie brauchbar), dann vergessen
+        for entry in tracked where !all.contains(where: { CFEqual($0.element, entry.element) }) {
+            if let last = entry.lastFrame, isUsable(last) {
+                log("geschlossen, Lage gemerkt: \(f(last))")
+                remember(last, for: entry.itemID)
+            }
+        }
         tracked.removeAll { entry in !all.contains { CFEqual($0.element, entry.element) } }
         let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
         let screens = NSScreen.screens.map(\.frame)
@@ -392,7 +397,7 @@ final class ChromeWindows {
             tracked[index].calm += 1
             if mouseDown { continue }
             // 1. Zwischen zwei Bildschirmen (länger so liegengeblieben): ganz auf den passenden Bildschirm
-            if entry.calm >= 2 {
+            if entry.calm >= 5 {
                 let snapped = ChromeBounds.snapped(window.frame, screens: screens, visible: visible)
                 if snapped != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
                     log("zwischen Bildschirmen: \(f(window.frame)) → \(f(snapped))")
@@ -403,6 +408,7 @@ final class ChromeWindows {
                 }
             }
             // 2. Schließen-Knopf unter der Leiste/Uhr
+            guard entry.calm >= 2 else { continue }
             let fixed = SidebarKeepOut.reachableForCurrentSidebar(window.frame)
             if fixed != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
                 log("Schließen-Knopf verdeckt: \(f(window.frame)) → \(f(fixed))")

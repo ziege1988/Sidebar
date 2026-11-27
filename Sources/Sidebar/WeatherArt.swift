@@ -810,6 +810,11 @@ enum WeatherSelfTest {
         if halfway.minX < 0 && halfway.maxX > 0 { failures.append("Fenster zwischen Bildschirmen bleibt dazwischen") }
         let fine = CGRect(x: -1900, y: 20, width: 1200, height: 1000)
         if ChromeBounds.snapped(fine, screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible]) != fine { failures.append("Ganz auf einem Bildschirm liegendes Fenster verschoben") }
+        // Fenster-Lage der integrierten Link-Fenster merken
+        let webID = UUID()
+        WebFrameMemory.save(CGRect(x: -1900, y: 20, width: 1200, height: 900), for: webID)
+        if WebFrameMemory.frame(for: webID) != CGRect(x: -1900, y: 20, width: 1200, height: 900) { failures.append("Fensterlage wird nicht gemerkt") }
+        if WebFrameMemory.frame(for: UUID()) != nil { failures.append("Unbekanntes Fenster hat eine Lage") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

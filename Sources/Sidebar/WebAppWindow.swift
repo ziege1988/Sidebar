@@ -244,8 +244,14 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         window.delegate = self
         window.center()
         let autosaveName = "WebApp-\(item.id.uuidString)"
-        window.setFrameAutosaveName(autosaveName)
+        // Alte, von AppKit gespeicherte Lage einmalig übernehmen (ohne den Autosave-Namen zu setzen: der speichert beim
+        // Öffnen sofort die Mitte des Bildschirms und überschrieb so die gemerkte Lage – die Fenster gingen immer auf dem
+        // Hauptbildschirm auf). Ab jetzt merkt sich die Sidebar die Lage selbst.
         hasSavedFrame = window.setFrameUsingName(autosaveName)
+        if let saved = WebFrameMemory.frame(for: item.id) {
+            window.setFrame(WindowPlacement.fitted(saved), display: false)
+            hasSavedFrame = true
+        }
         installToolbarButtons()
 
         webView.navigationDelegate = self
@@ -389,6 +395,11 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
         scheduleSettle(moved)
     }
 
+    func windowDidResize(_ notification: Notification) {
+        guard let resized = notification.object as? NSWindow, resized === window else { return }
+        scheduleSettle(resized)
+    }
+
     private func scheduleSettle(_ moved: NSWindow) {
         settleWork?.cancel()
         let work = DispatchWorkItem { [weak self, weak moved] in
@@ -398,6 +409,9 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
                 if NSEvent.pressedMouseButtons & 1 != 0 { self.scheduleSettle(moved); return }
                 let fixed = SidebarKeepOut.reachableForCurrentSidebar(moved.frame)
                 if fixed != moved.frame { moved.setFrame(fixed, display: true, animate: true) }
+                if moved === self.window, WindowPlacement.isUsable(moved.frame) {
+                    WebFrameMemory.save(moved.frame, for: self.item.id)
+                }
             }
         }
         settleWork = work
@@ -423,6 +437,7 @@ final class WebAppController: NSObject, NSWindowDelegate, WKNavigationDelegate, 
     func windowWillClose(_ notification: Notification) {
         guard let closing = notification.object as? NSWindow else { return }
         if closing === window {
+            if WindowPlacement.isUsable(window.frame) { WebFrameMemory.save(window.frame, for: item.id) }
             let popups = popupWindows
             popupWindows.removeAll()
             popups.forEach { $0.close() }
