@@ -826,6 +826,21 @@ enum WeatherSelfTest {
         if ChromeBounds.retargetedFill(CGRect(x: 100, y: 100, width: 800, height: 600), mouse: CGPoint(x: -900, y: 1075), screens: tileScreens, visible: tileVisible) != nil { failures.append("Normales Fenster als Füllen erkannt") }
         if !ChromeBounds.isSqueezed(CGRect(x: -192, y: 61, width: 1920, height: 1023), screens: tileScreens, visible: tileVisible) { failures.append("Gepresstes Fenster nicht erkannt") }
         if ChromeBounds.isSqueezed(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: tileScreens, visible: tileVisible) { failures.append("Normales Fenster zwischen Bildschirmen als gepresst erkannt") }
+        // Siri-Knopf: Lage und Ausblenden
+        var siriSettings = SidebarSettings()
+        siriSettings.edge = .top; siriSettings.showClock = true; siriSettings.clockSize = 187
+        if let siri = SiriButtonLayout.layout(siriSettings) {
+            let panel = ClockLayout.panelSize(siriSettings)
+            if siri.center.x >= panel.width / 2 || siri.center.y <= panel.height / 2 { failures.append("Siri-Knopf nicht links unten an der Uhr") }
+            if siri.diameter < 28 || siri.diameter > 40 { failures.append("Siri-Knopf: Größe außerhalb 28–40") }
+        } else { failures.append("Siri-Knopf fehlt bei Leiste oben") }
+        siriSettings.clockSize = 100
+        if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf bei kleiner Uhr nicht ausgeblendet") }
+        siriSettings.clockSize = 187; siriSettings.edge = .left
+        if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf bei senkrechter Leiste sichtbar") }
+        siriSettings.edge = .top; siriSettings.showSiriButton = false
+        if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf trotz Ausschalten sichtbar") }
+        render("Siri-Knopf", SiriOrbButton(diameter: 40).frame(width: 60, height: 60))
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {

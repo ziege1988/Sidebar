@@ -392,7 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(menuItem("Diagnose kopieren (Update und Fenster)") { [weak self] in
             guard let store = self?.store else { return }
-            let text = Updater.shared.diagnosticReport() + "\n\n" + ChromeWindows.shared.report(store: store)
+            let text = Updater.shared.diagnosticReport() + "\n\n" + ChromeWindows.shared.report(store: store) + "\n\n" + SiriLauncher.shared.report()
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         })

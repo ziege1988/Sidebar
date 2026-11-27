@@ -146,6 +146,17 @@ struct SidebarView: View {
                     HoverBubble(edge: edge, cell: state.hoverRect, barThickness: thickness)
                         .clipShape(outline)
                     content(palette, clockOn: clockOn, clockSize: clockSize)
+                    // Siri-Knopf am Rand der Uhr
+                    if clockOn, let siri = SiriButtonLayout.layout(settings) {
+                        SiriOrbButton(diameter: siri.diameter)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(key: ActionFramesKey.self,
+                                                           value: ["siri": proxy.frame(in: .named("bar"))])
+                                }
+                            )
+                            .position(siri.center)
+                    }
                     if let cat {
                         GeometryReader { proxy in
                             CatView(palette: palette, openSettings: {

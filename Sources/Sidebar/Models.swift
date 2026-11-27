@@ -264,6 +264,8 @@ struct SidebarSettings: Codable, Equatable {
     var clockShowSeconds: Bool = true
     /// Datum als Klapptafeln im unteren Teil der Uhr
     var clockShowDate: Bool = true
+    /// Siri-Knopf am Rand der Uhr (nur bei Leiste oben/unten und größerer Uhr)
+    var showSiriButton: Bool = true
     /// Wetter: Rüdiger spiegelt das Wetter am Standort
     var weatherEnabled: Bool = false
     /// eingegebener Ort bzw. Postleitzahl und das gefundene Ergebnis
@@ -376,6 +378,7 @@ extension SidebarSettings {
         revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         clockShowDate = try c.decodeIfPresent(Bool.self, forKey: .clockShowDate) ?? clockShowDate
+        showSiriButton = try c.decodeIfPresent(Bool.self, forKey: .showSiriButton) ?? showSiriButton
         weatherEnabled = try c.decodeIfPresent(Bool.self, forKey: .weatherEnabled) ?? weatherEnabled
         weatherPlace = try c.decodeIfPresent(String.self, forKey: .weatherPlace) ?? weatherPlace
         weatherPlaceName = try c.decodeIfPresent(String.self, forKey: .weatherPlaceName) ?? weatherPlaceName
