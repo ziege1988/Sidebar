@@ -23,8 +23,8 @@ enum SiriButtonLayout {
             let panel = ClockLayout.panelSize(s)
             let bar = CGFloat(s.collapsedThickness)
             let size = size ?? CGSize(width: 10_000, height: panel.height)
-            let diameter: CGFloat = 22
-            let along = panel.width + 2, cross = bar - 3
+            let diameter: CGFloat = 20
+            let along = panel.width - 4, cross = bar + 3
             let p: CGPoint
             switch s.edge {
             case .bottom: p = CGPoint(x: along, y: size.height - cross)
