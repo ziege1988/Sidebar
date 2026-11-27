@@ -845,10 +845,10 @@ enum WeatherSelfTest {
         siriSettings.catEnabled = true; siriSettings.catFloating = false
         if SiriButtonLayout.layout(siriSettings) == nil { failures.append("Siri-Knopf „Kurve“ fehlt (Rüdiger angedockt: Rand)") }
         siriSettings.catFloating = true
-        if let siri = SiriButtonLayout.layout(siriSettings), let slot = CatGeometry.slot(siriSettings) {
+        if let siri = SiriButtonLayout.layout(siriSettings) {
             let panel = ClockLayout.panelSize(siriSettings)
             if siri.center.x <= panel.width * 0.5 { failures.append("Siri-Knopf in der Kurve liegt nicht rechts der Uhrmitte") }
-            if abs(siri.center.x - slot.centerAlong) > 1 { failures.append("Siri-Knopf nicht in der Mulde") }
+            if siri.center.y + siri.diameter / 2 > CGFloat(siriSettings.collapsedThickness) + 12 { failures.append("Siri-Knopf in der Kurve ragt aus der Glasfläche") }
         } else { failures.append("Siri-Knopf in der Kurve fehlt bei ausgekoppeltem Rüdiger") }
         siriSettings.catFloating = false
         siriSettings.siriPlacement = .rim

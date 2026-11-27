@@ -18,9 +18,19 @@ enum SiriButtonLayout {
     /// „In der Kurve“: in der Mulde zwischen Uhr und Leiste, solange Rüdiger dort nicht sitzt; sonst am Uhrrand.
     static func layout(_ s: SidebarSettings, size: CGSize? = nil) -> (center: CGPoint, diameter: CGFloat)? {
         guard s.siriPlacement != .off, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
-        if s.siriPlacement == .curve, !catDocked(s), let slot = CatGeometry.slot(s) {
-            let size = size ?? CGSize(width: 10_000, height: CGFloat(s.collapsedThickness) + slot.centerCross * 2)
-            return (slot.point(in: size, edge: s.edge), min(36, max(24, slot.diameter * 0.4)))
+        if s.siriPlacement == .curve, !catDocked(s) {
+            // Innerhalb der Glasfläche: im Winkel zwischen Uhr und Leiste, links unterhalb der Lupe des Google-Felds
+            let panel = ClockLayout.panelSize(s)
+            let bar = CGFloat(s.collapsedThickness)
+            let size = size ?? CGSize(width: 10_000, height: panel.height)
+            let diameter: CGFloat = 22
+            let along = panel.width + 2, cross = bar - 3
+            let p: CGPoint
+            switch s.edge {
+            case .bottom: p = CGPoint(x: along, y: size.height - cross)
+            default: p = CGPoint(x: along, y: cross)
+            }
+            return (p, diameter)
         }
         let panel = ClockLayout.panelSize(s)
         let radius = CGFloat(s.clockSize) / 2
