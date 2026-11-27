@@ -17,14 +17,15 @@ enum SiriButtonLayout {
         s.showSiriButton && s.showClock && CGFloat(s.clockSize) >= minClock
     }
 
-    /// Größe des Knopfes: ein Drittel größer als zuvor
+    /// Größe des Knopfes: wächst und schrumpft proportional mit der Uhr (32 % des Uhrradius)
     static func diameter(_ s: SidebarSettings) -> CGFloat {
-        min(43, max(29, CGFloat(s.clockSize) / 2 * 0.45))
+        CGFloat(s.clockSize) / 2 * 0.32
     }
 
-    /// Abstand des Knopfmittelpunkts von der Uhrmitte nach oben: mittig zwischen 12-Uhr-Strich und Zeigerachse
+    /// Abstand des Knopfmittelpunkts von der Uhrmitte nach oben: genau mittig zwischen Unterkante des
+    /// 12-Uhr-Strichs (bei 70 % des Radius) und der Zeigerachse
     static func offsetUp(_ s: SidebarSettings) -> CGFloat {
-        CGFloat(s.clockSize) / 2 * 0.42
+        CGFloat(s.clockSize) / 2 * 0.35
     }
 }
 

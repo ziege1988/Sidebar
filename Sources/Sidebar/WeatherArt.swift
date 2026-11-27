@@ -831,8 +831,12 @@ enum WeatherSelfTest {
         siriSettings.edge = .top; siriSettings.showClock = true; siriSettings.clockSize = 187
         if !SiriButtonLayout.visible(siriSettings) { failures.append("Siri-Knopf fehlt bei normaler Uhr") }
         let sd = SiriButtonLayout.diameter(siriSettings), so = SiriButtonLayout.offsetUp(siriSettings)
-        if sd < 29 || sd > 43 { failures.append("Siri-Knopf: Größe außerhalb 29–43") }
-        if so - sd / 2 <= 0 || so + sd / 2 >= CGFloat(siriSettings.clockSize) / 2 * 0.72 + 4 { failures.append("Siri-Knopf liegt nicht zwischen 12 Uhr und Zeigerachse") }
+        let sr = CGFloat(siriSettings.clockSize) / 2
+        if abs(sd / sr - 0.32) > 0.001 { failures.append("Siri-Knopf wächst nicht proportional mit der Uhr") }
+        if abs(so - sr * 0.35) > 0.001 || so - sd / 2 <= 0 || so + sd / 2 >= sr * 0.70 + 1 { failures.append("Siri-Knopf nicht mittig zwischen 12-Uhr-Strich und Zeigerachse") }
+        siriSettings.clockSize = 280
+        if abs(SiriButtonLayout.diameter(siriSettings) / (CGFloat(280) / 2) - 0.32) > 0.001 { failures.append("Siri-Knopf wächst nicht mit großer Uhr") }
+        siriSettings.clockSize = 187
         siriSettings.clockSize = 100
         if SiriButtonLayout.visible(siriSettings) { failures.append("Siri-Knopf bei kleiner Uhr nicht ausgeblendet") }
         siriSettings.clockSize = 187; siriSettings.showSiriButton = false
