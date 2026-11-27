@@ -266,7 +266,7 @@ struct SidebarSettings: Codable, Equatable {
     var clockShowDate: Bool = true
     /// Siri-Knopf am Rand der Uhr (nur bei Leiste oben/unten und größerer Uhr)
     var showSiriButton: Bool = true
-    /// Siri-Knopf in der Leiste (neben dem Google-Feld) statt am Uhrrand
+    /// Siri-Knopf in der Kurve zwischen Uhr und Leiste (dort, wo Rüdiger sitzt) statt am Uhrrand
     var siriInBar: Bool = false
     /// Wetter: Rüdiger spiegelt das Wetter am Standort
     var weatherEnabled: Bool = false
@@ -504,12 +504,12 @@ extension LinkItem {
 
 /// Wo der Siri-Knopf sitzt
 enum SiriPlacement: String, CaseIterable, Identifiable {
-    case rim, bar, off
+    case rim, curve, off
     var id: String { rawValue }
     var title: String {
         switch self {
         case .rim: return "Am Uhrrand"
-        case .bar: return "In der Leiste (neben dem Google-Feld)"
+        case .curve: return "In der Kurve zwischen Uhr und Google-Feld"
         case .off: return "Aus"
         }
     }
@@ -517,10 +517,10 @@ enum SiriPlacement: String, CaseIterable, Identifiable {
 
 extension SidebarSettings {
     var siriPlacement: SiriPlacement {
-        get { !showSiriButton ? .off : (siriInBar ? .bar : .rim) }
+        get { !showSiriButton ? .off : (siriInBar ? .curve : .rim) }
         set {
             showSiriButton = newValue != .off
-            siriInBar = newValue == .bar
+            siriInBar = newValue == .curve
         }
     }
 }

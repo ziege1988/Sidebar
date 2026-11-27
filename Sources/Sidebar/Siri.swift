@@ -13,14 +13,15 @@ enum SiriButtonLayout {
     /// Unter dieser Uhrgröße wird der Knopf ausgeblendet (zu wenig Platz neben Rüdiger und der Leiste)
     static let minClock: CGFloat = 120
 
-    /// Knopf in der Leiste (neben dem Google-Feld): nur bei Leiste oben/unten, unabhängig von der Uhr
-    static func inBar(_ s: SidebarSettings) -> Bool {
-        s.siriPlacement == .bar && !s.edge.isVertical
-    }
-
     /// Mittelpunkt und Größe des Knopfes in den Koordinaten der Sidebar (Ursprung oben links). `nil` = nicht sichtbar.
-    static func layout(_ s: SidebarSettings) -> (center: CGPoint, diameter: CGFloat)? {
-        guard s.siriPlacement == .rim, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
+    /// `size` = Größe des Leistenfensters (für Leiste unten nötig).
+    /// „In der Kurve“: in der Mulde zwischen Uhr und Leiste, solange Rüdiger dort nicht sitzt; sonst am Uhrrand.
+    static func layout(_ s: SidebarSettings, size: CGSize? = nil) -> (center: CGPoint, diameter: CGFloat)? {
+        guard s.siriPlacement != .off, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
+        if s.siriPlacement == .curve, !catDocked(s), let slot = CatGeometry.slot(s) {
+            let size = size ?? CGSize(width: 10_000, height: CGFloat(s.collapsedThickness) + slot.centerCross * 2)
+            return (slot.point(in: size, edge: s.edge), min(36, max(24, slot.diameter * 0.4)))
+        }
         let panel = ClockLayout.panelSize(s)
         let radius = CGFloat(s.clockSize) / 2
         let diameter = min(32, max(22, radius * 0.34))
@@ -30,6 +31,11 @@ enum SiriButtonLayout {
         let cx = panel.width / 2, cy = panel.height / 2
         let y = s.edge == .top ? cy + d * 1.12 : cy - d * 1.12
         return (CGPoint(x: cx - d * 0.95, y: y), diameter)
+    }
+
+    /// Rüdiger sitzt gerade in der Mulde
+    static func catDocked(_ s: SidebarSettings) -> Bool {
+        !s.catFloating && CatGeometry.make(s, clockOn: s.showClock) != nil
     }
 }
 

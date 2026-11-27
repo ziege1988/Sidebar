@@ -268,7 +268,7 @@ struct GeneralSettingsView: View {
                             ForEach(SiriPlacement.allCases) { Text($0.title).tag($0) }
                         }
                     }
-                    Text("Klick auf die Uhr öffnet den Kalender. Der Siri-Knopf sitzt am Uhrrand (Uhr nicht zu klein) oder in der Leiste; beides nur, wenn die Leiste oben oder unten liegt.")
+                    Text("Klick auf die Uhr öffnet den Kalender. Der Siri-Knopf sitzt am Uhrrand oder in der Kurve zwischen Uhr und Google-Feld (dort, wo Rüdiger sitzt; solange er angedockt ist, bleibt der Knopf am Uhrrand). Nur bei Leiste oben oder unten und nicht zu kleiner Uhr.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

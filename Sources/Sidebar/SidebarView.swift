@@ -147,15 +147,17 @@ struct SidebarView: View {
                         .clipShape(outline)
                     content(palette, clockOn: clockOn, clockSize: clockSize)
                     // Siri-Knopf am Rand der Uhr
-                    if clockOn, let siri = SiriButtonLayout.layout(settings) {
-                        SiriOrbButton(diameter: siri.diameter)
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(key: ActionFramesKey.self,
-                                                           value: ["siri": proxy.frame(in: .named("bar"))])
-                                }
-                            )
-                            .position(siri.center)
+                    GeometryReader { outer in
+                        if clockOn, let siri = SiriButtonLayout.layout(settings, size: outer.size) {
+                            SiriOrbButton(diameter: siri.diameter)
+                                .background(
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(key: ActionFramesKey.self,
+                                                               value: ["siri": proxy.frame(in: .named("bar"))])
+                                    }
+                                )
+                                .position(siri.center)
+                        }
                     }
                     if let cat {
                         GeometryReader { proxy in
@@ -238,12 +240,6 @@ struct SidebarView: View {
     private func barContent(_ palette: Palette) -> some View {
         let outer = vertical ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
         return outer {
-            // Siri-Knopf links in der Leiste (zwischen Uhr und Google-Feld)
-            if SiriButtonLayout.inBar(settings) {
-                SiriOrbButton(diameter: 28)
-                    .padding(.leading, 10)
-                    .padding(.trailing, 2)
-            }
             // Quer: Google-Suche als festes, kurzes Eingabefeld
             if !vertical && settings.showSearch {
                 InlineField(kind: .google, width: 200, palette: palette) { text in

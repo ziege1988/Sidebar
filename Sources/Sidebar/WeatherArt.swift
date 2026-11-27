@@ -840,13 +840,17 @@ enum WeatherSelfTest {
         siriSettings.clockSize = 187; siriSettings.edge = .left
         if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf bei senkrechter Leiste sichtbar") }
         siriSettings.edge = .top; siriSettings.siriPlacement = .off
-        if SiriButtonLayout.layout(siriSettings) != nil || SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf trotz Ausschalten sichtbar") }
-        siriSettings.siriPlacement = .bar
-        if !SiriButtonLayout.inBar(siriSettings) || SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf „In der Leiste“ falsch") }
-        siriSettings.clockSize = 100
-        if !SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf in der Leiste fehlt bei kleiner Uhr") }
-        siriSettings.edge = .left
-        if SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf in senkrechter Leiste sichtbar") }
+        if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf trotz Ausschalten sichtbar") }
+        siriSettings.siriPlacement = .curve
+        siriSettings.catEnabled = true; siriSettings.catFloating = false
+        if SiriButtonLayout.layout(siriSettings) == nil { failures.append("Siri-Knopf „Kurve“ fehlt (Rüdiger angedockt: Rand)") }
+        siriSettings.catFloating = true
+        if let siri = SiriButtonLayout.layout(siriSettings), let slot = CatGeometry.slot(siriSettings) {
+            let panel = ClockLayout.panelSize(siriSettings)
+            if siri.center.x <= panel.width * 0.5 { failures.append("Siri-Knopf in der Kurve liegt nicht rechts der Uhrmitte") }
+            if abs(siri.center.x - slot.centerAlong) > 1 { failures.append("Siri-Knopf nicht in der Mulde") }
+        } else { failures.append("Siri-Knopf in der Kurve fehlt bei ausgekoppeltem Rüdiger") }
+        siriSettings.catFloating = false
         siriSettings.siriPlacement = .rim
         if siriSettings.showSiriButton != true || siriSettings.siriInBar { failures.append("Siri-Platz „Am Uhrrand“ falsch gespeichert") }
         render("Siri-Knopf", SiriOrbButton(diameter: 32).frame(width: 60, height: 60))

@@ -20,12 +20,17 @@ struct CatGeometry {
     /// Rüdiger sitzt frei in der Mulde des Bogens zwischen Uhr und Leiste.
     static func make(_ s: SidebarSettings, clockOn: Bool) -> CatGeometry? {
         guard s.catEnabled, clockOn else { return nil }
+        guard let g = slot(s), g.diameter >= 56 else { return nil }
+        return g
+    }
+
+    /// Die Mulde selbst (auch wenn Rüdiger gerade nicht darin sitzt, z. B. ausgekoppelt): Mitte und größtmöglicher Durchmesser
+    static func slot(_ s: SidebarSettings) -> CatGeometry? {
         let size = ClockLayout.panelSize(s)
         guard abs(size.width - size.height) < 1,
               let sweep = ClockSweep.make(clock: size.width, bar: CGFloat(s.collapsedThickness)) else { return nil }
         // Größe folgt dem Bogen; ist die Mulde zu klein, ist dort kein Platz für ihn
         let diameter = min(96, 0.8 * sweep.radius)
-        guard diameter >= 56 else { return nil }
         // Mitte: vom Mittelpunkt des Bogens zur Mitte der Mulde hin (zwischen Leiste und Uhr)
         var bx = -1 - sweep.direction.x, by = -sweep.direction.y
         let length = max((bx * bx + by * by).squareRoot(), 0.001)
