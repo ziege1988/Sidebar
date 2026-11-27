@@ -695,13 +695,7 @@ final class SidebarController {
         }
         let inCat = !settings.catFloating && ((catLocation()?.cat.insetBy(dx: -2, dy: -2).contains(mouse) ?? false)
                                               || (homeworkBadgeRect()?.contains(mouse) ?? false))
-        // Siri-Knopf am Uhrrand: ragt über die runde Fassung hinaus, muss aber klickbar sein
-        var inSiri = false
-        if let frame = geometry.actionFrames["siri"] {
-            let local = CGPoint(x: mouse.x - panel.frame.minX, y: panel.frame.maxY - mouse.y)
-            inSiri = frame.insetBy(dx: -4, dy: -4).contains(local)
-        }
-        let ignore = !(inStrip || inClock || inCat || inSiri)
+        let ignore = !(inStrip || inClock || inCat)
         if panel.ignoresMouseEvents != ignore { panel.ignoresMouseEvents = ignore }
     }
 

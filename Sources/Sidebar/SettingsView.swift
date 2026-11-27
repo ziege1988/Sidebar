@@ -264,11 +264,9 @@ struct GeneralSettingsView: View {
                         }
                         Toggle("Sekundenzeiger", isOn: $store.config.settings.clockShowSeconds)
                         Toggle("Datum als Klapptafeln", isOn: $store.config.settings.clockShowDate)
-                        Picker("Siri-Knopf", selection: $store.config.settings.siriPlacement) {
-                            ForEach(SiriPlacement.allCases) { Text($0.title).tag($0) }
-                        }
+                        Toggle("Siri-Knopf im Zifferblatt", isOn: $store.config.settings.showSiriButton)
                     }
-                    Text("Klick auf die Uhr öffnet den Kalender. Der Siri-Knopf sitzt am Uhrrand oder in der Kurve zwischen Uhr und Google-Feld (dort, wo Rüdiger sitzt; solange er angedockt ist, bleibt der Knopf am Uhrrand). Nur bei Leiste oben oder unten und nicht zu kleiner Uhr.")
+                    Text("Klick auf die Uhr öffnet den Kalender. Der Siri-Knopf sitzt im Zifferblatt zwischen 12 Uhr und Zeigerachse und verschwindet bei zu kleiner Uhr.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

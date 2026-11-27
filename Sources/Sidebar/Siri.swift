@@ -4,48 +4,27 @@ import SwiftUI
 
 // MARK: - Siri-Knopf an der Uhr
 //
-// Kleine, animierte Farbkugel (rot → magenta → violett → blau) am unteren linken Rand der Uhr (Sidebar oben bzw. unten).
+// Kleine, animierte Farbkugel (rosé → flieder → blau) mitten im Zifferblatt, zwischen 12 Uhr und Zeigerachse.
 // Ein Klick startet Siri, öffnet bei eingeschaltetem „Tippen für Siri“ das Eingabefeld und versucht, das Siri-Fenster
 // in die Mitte des Hauptbildschirms zu legen. Das offizielle Siri-Symbol gehört Apple und wird nicht nachgebaut –
 // die Kugel ist eine eigene Zeichnung.
 
 enum SiriButtonLayout {
-    /// Unter dieser Uhrgröße wird der Knopf ausgeblendet (zu wenig Platz neben Rüdiger und der Leiste)
+    /// Unter dieser Uhrgröße wird der Knopf ausgeblendet (zu wenig Platz im Zifferblatt)
     static let minClock: CGFloat = 120
 
-    /// Mittelpunkt und Größe des Knopfes in den Koordinaten der Sidebar (Ursprung oben links). `nil` = nicht sichtbar.
-    /// `size` = Größe des Leistenfensters (für Leiste unten nötig).
-    /// „In der Kurve“: in der Mulde zwischen Uhr und Leiste, solange Rüdiger dort nicht sitzt; sonst am Uhrrand.
-    static func layout(_ s: SidebarSettings, size: CGSize? = nil) -> (center: CGPoint, diameter: CGFloat)? {
-        guard s.siriPlacement != .off, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
-        if s.siriPlacement == .curve, !catDocked(s) {
-            // Innerhalb der Glasfläche: im Winkel zwischen Uhr und Leiste, links unterhalb der Lupe des Google-Felds
-            let panel = ClockLayout.panelSize(s)
-            let bar = CGFloat(s.collapsedThickness)
-            let size = size ?? CGSize(width: 10_000, height: panel.height)
-            let diameter: CGFloat = 18
-            let along = panel.width + 7, cross = bar - 1
-            let p: CGPoint
-            switch s.edge {
-            case .bottom: p = CGPoint(x: along, y: size.height - cross)
-            default: p = CGPoint(x: along, y: cross)
-            }
-            return (p, diameter)
-        }
-        let panel = ClockLayout.panelSize(s)
-        let radius = CGFloat(s.clockSize) / 2
-        let diameter = min(32, max(22, radius * 0.34))
-        let d = radius * 0.7071
-        // Mitte der Uhr im Uhrfeld; der Knopf sitzt am Rand, etwas nach unten gerückt (nicht mehr so sehr in der Uhr):
-        // links unten (Leiste oben) bzw. links oben (Leiste unten)
-        let cx = panel.width / 2, cy = panel.height / 2
-        let y = s.edge == .top ? cy + d * 1.12 : cy - d * 1.12
-        return (CGPoint(x: cx - d * 0.95, y: y), diameter)
+    static func visible(_ s: SidebarSettings) -> Bool {
+        s.showSiriButton && s.showClock && CGFloat(s.clockSize) >= minClock
     }
 
-    /// Rüdiger sitzt gerade in der Mulde
-    static func catDocked(_ s: SidebarSettings) -> Bool {
-        !s.catFloating && CatGeometry.make(s, clockOn: s.showClock) != nil
+    /// Größe des Knopfes: ein Drittel größer als zuvor
+    static func diameter(_ s: SidebarSettings) -> CGFloat {
+        min(43, max(29, CGFloat(s.clockSize) / 2 * 0.45))
+    }
+
+    /// Abstand des Knopfmittelpunkts von der Uhrmitte nach oben: mittig zwischen 12-Uhr-Strich und Zeigerachse
+    static func offsetUp(_ s: SidebarSettings) -> CGFloat {
+        CGFloat(s.clockSize) / 2 * 0.42
     }
 }
 
@@ -55,12 +34,14 @@ struct SiriOrbButton: View {
     @State private var hovering = false
     @State private var pressed = false
 
-    /// Pastellig und leicht entsättigt: rosé → flieder → himmelblau
+    /// Pastellig und deutlich entsättigt: rosé → flieder → himmelblau (je 35 % zum Grau gemischt)
+    private static func soft(_ r: Double, _ g: Double, _ b: Double) -> Color {
+        let l = 0.3 * r + 0.59 * g + 0.11 * b, k = 0.35
+        return Color(red: r + (l - r) * k, green: g + (l - g) * k, blue: b + (l - b) * k)
+    }
     private static let colors: [Color] = [
-        Color(red: 0.96, green: 0.55, blue: 0.62), Color(red: 0.96, green: 0.63, blue: 0.78),
-        Color(red: 0.78, green: 0.64, blue: 0.94), Color(red: 0.58, green: 0.67, blue: 0.96),
-        Color(red: 0.62, green: 0.82, blue: 0.95), Color(red: 0.72, green: 0.68, blue: 0.96),
-        Color(red: 0.96, green: 0.55, blue: 0.62),
+        soft(0.96, 0.55, 0.62), soft(0.96, 0.63, 0.78), soft(0.78, 0.64, 0.94), soft(0.58, 0.67, 0.96),
+        soft(0.62, 0.82, 0.95), soft(0.72, 0.68, 0.96), soft(0.96, 0.55, 0.62),
     ]
 
     var body: some View {

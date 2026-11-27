@@ -48,6 +48,13 @@ struct ClockFace: View {
                         showDate: settings.clockShowDate, palette: palette)
         }
         .frame(width: CGFloat(settings.clockSize), height: CGFloat(settings.clockSize))
+        .overlay {
+            // Siri-Knopf mitten im Zifferblatt, zwischen 12 Uhr und Zeigerachse
+            if SiriButtonLayout.visible(settings) {
+                SiriOrbButton(diameter: SiriButtonLayout.diameter(settings))
+                    .offset(y: -SiriButtonLayout.offsetUp(settings))
+            }
+        }
         .contentShape(Circle())
         .onTapGesture {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
