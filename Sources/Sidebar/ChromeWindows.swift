@@ -110,6 +110,38 @@ enum ChromeBounds {
         return f
     }
 
+    /// Chromes Standardlage für ein neues Fenster: 22 Punkte von der linken und oberen Ecke des sichtbaren Hauptbildschirms
+    static func looksLikeChromeDefault(_ frame: NSRect, mainVisible: NSRect) -> Bool {
+        abs(frame.minX - (mainVisible.minX + 22)) < 4 && abs(frame.maxY - (mainVisible.maxY - 22)) < 4
+    }
+
+    /// Bildschirmfüllend eingerastet (macOS „Füllen“), aber auf einem anderen Bildschirm als dem, an dessen oberem Rand die
+    /// Maus beim Loslassen war: gemeint war der Bildschirm der Maus. Gibt dessen sichtbaren Bereich zurück (sonst `nil`).
+    static func retargetedFill(_ frame: NSRect, mouse: CGPoint, screens: [NSRect], visible: [NSRect]) -> NSRect? {
+        func same(_ a: NSRect, _ b: NSRect) -> Bool {
+            abs(a.minX - b.minX) < 3 && abs(a.maxX - b.maxX) < 3 && abs(a.minY - b.minY) < 3 && abs(a.maxY - b.maxY) < 3
+        }
+        guard let filled = visible.firstIndex(where: { same(frame, $0) }),
+              let under = screens.firstIndex(where: { $0.contains(mouse) }), under != filled,
+              visible.indices.contains(under), mouse.y >= screens[under].maxY - 60 else { return nil }
+        return visible[under]
+    }
+
+    /// In den Bildschirm mit dem größten Anteil „gepresst“: Das Fenster ist größer als dessen sichtbarer Bereich
+    static func isSqueezed(_ frame: NSRect, screens: [NSRect], visible: [NSRect]) -> Bool {
+        guard bestShare(frame, screens: screens) < 0.98 else { return false }
+        let own = max(frame.width * frame.height, 1)
+        var best: (Int, CGFloat)?
+        for (i, screen) in screens.enumerated() {
+            let overlap = frame.intersection(screen)
+            guard !overlap.isNull else { continue }
+            let share = overlap.width * overlap.height / own
+            if best == nil || share > best!.1 { best = (i, share) }
+        }
+        guard let best, visible.indices.contains(best.0) else { return false }
+        return frame.width > visible[best.0].width + 2 || frame.height > visible[best.0].height + 2
+    }
+
     static func host(of text: String) -> String? {
         guard let host = URL(string: text)?.host?.lowercased() else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -304,6 +336,8 @@ final class ChromeWindows {
     /// Nach dem Start: das neue Fenster finden, an die gemerkte Stelle setzen und ab jetzt beobachten
     func adopt(item: LinkItem) {
         let known = before
+        // Ein Eintrag, dessen Fenster schon beobachtet wird: kein zweites dazunehmen (sonst springt die gemerkte Lage hin und her)
+        if tracked.contains(where: { $0.itemID == item.id }) { return }
         var attempts = 0
         func poll() {
             attempts += 1
@@ -329,9 +363,10 @@ final class ChromeWindows {
     /// Eine brauchbare Lage: praktisch ganz auf einem Bildschirm und der Schließen-Knopf nicht unter der Sidebar
     private func isUsable(_ frame: NSRect) -> Bool { WindowPlacement.isUsable(frame) }
 
-    /// Neues Fenster: Chrome setzt es oft einfach auf den Hauptbildschirm. Ist eine brauchbare Lage gemerkt (zuletzt
-    /// benutzter Bildschirm, Ort und Größe), kommt es dorthin. Sonst bleibt eine brauchbare Chrome-Lage unangetastet;
-    /// ist auch die unbrauchbar (unter der Sidebar, zwischen Bildschirmen), wird sie korrigiert.
+    /// Neues Fenster: Chrome merkt sich seinen Platz meist selbst (auch auf einem anderen Bildschirm) – diese Lage bleibt,
+    /// solange sie brauchbar ist. Nur wenn Chrome seine Standardlage nimmt (oben links auf dem Hauptbildschirm), weil es
+    /// nichts weiß, kommt die gemerkte Lage der Sidebar (Bildschirm, Ort, Größe). Ist die Lage unbrauchbar (unter der
+    /// Sidebar, zwischen Bildschirmen), wird sie korrigiert.
     private func place(_ window: Win, for itemID: UUID) {
         let screens = NSScreen.screens.map(\.frame)
         let visible = NSScreen.screens.map(\.visibleFrame)
@@ -339,11 +374,12 @@ final class ChromeWindows {
         let preferred = info?.area ?? (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? window.frame
         let saved = remembered(itemID)
         let savedUsable = saved.flatMap { isUsable($0) ? $0 : nil }
+        let isDefault = visible.first.map { ChromeBounds.looksLikeChromeDefault(window.frame, mainVisible: $0) } ?? false
         var target = window.frame
         var reason = "Chrome-Lage ist brauchbar"
-        if let savedUsable {
+        if isDefault, let savedUsable {
             target = savedUsable
-            reason = "gemerkte Lage"
+            reason = "gemerkte Lage (Chrome nimmt die Standardlage)"
         } else if !isUsable(window.frame) {
             target = ChromeBounds.sanitized(window.frame, screens: screens, visible: visible, preferred: preferred)
             target = SidebarKeepOut.reachableForCurrentSidebar(target)
@@ -396,8 +432,18 @@ final class ChromeWindows {
             }
             tracked[index].calm += 1
             if mouseDown { continue }
-            // 1. Zwischen zwei Bildschirmen (länger so liegengeblieben): ganz auf den passenden Bildschirm
-            if entry.calm >= 5 {
+            // 0. Bildschirmfüllend eingerastet, aber auf dem falschen Bildschirm (macOS richtet sich nach dem Fenster, nicht
+            //    nach der Maus): auf den Bildschirm der Maus legen
+            if entry.calm >= 1, let fill = ChromeBounds.retargetedFill(window.frame, mouse: NSEvent.mouseLocation, screens: screens, visible: visible),
+               Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 5 {
+                log("Füllen auf dem Bildschirm der Maus: \(f(window.frame)) → \(f(fill))")
+                setFrame(fill, of: window.element)
+                tracked[index].lastFrame = fill
+                tracked[index].lastNudge = Date()
+                continue
+            }
+            // 1. Zwischen zwei Bildschirmen (länger so liegengeblieben; „gepresste“ Fenster schon nach 2 s): ganz auf den passenden Bildschirm
+            if entry.calm >= (ChromeBounds.isSqueezed(window.frame, screens: screens, visible: visible) ? 2 : 5) {
                 let snapped = ChromeBounds.snapped(window.frame, screens: screens, visible: visible)
                 if snapped != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
                     log("zwischen Bildschirmen: \(f(window.frame)) → \(f(snapped))")

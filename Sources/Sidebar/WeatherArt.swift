@@ -815,6 +815,17 @@ enum WeatherSelfTest {
         WebFrameMemory.save(CGRect(x: -1900, y: 20, width: 1200, height: 900), for: webID)
         if WebFrameMemory.frame(for: webID) != CGRect(x: -1900, y: 20, width: 1200, height: 900) { failures.append("Fensterlage wird nicht gemerkt") }
         if WebFrameMemory.frame(for: UUID()) != nil { failures.append("Unbekanntes Fenster hat eine Lage") }
+        // Chrome-Standardlage, Füllen auf dem falschen Bildschirm, gepresste Fenster
+        let mvis = CGRect(x: 0, y: 61, width: 1728, height: 1023)
+        if !ChromeBounds.looksLikeChromeDefault(CGRect(x: 22, y: 83, width: 1200, height: 979), mainVisible: mvis) { failures.append("Chrome-Standardlage nicht erkannt") }
+        if ChromeBounds.looksLikeChromeDefault(CGRect(x: -1898, y: 22, width: 1200, height: 1006), mainVisible: mvis) { failures.append("Fenster auf anderem Bildschirm als Standardlage erkannt") }
+        let tileScreens = [CGRect(x: 0, y: 0, width: 1728, height: 1117), CGRect(x: -1920, y: 0, width: 1920, height: 1080)]
+        let tileVisible = [mvis, CGRect(x: -1920, y: 0, width: 1920, height: 1050)]
+        if ChromeBounds.retargetedFill(mvis, mouse: CGPoint(x: -900, y: 1075), screens: tileScreens, visible: tileVisible) != tileVisible[1] { failures.append("Füllen: Bildschirm der Maus nicht gewählt") }
+        if ChromeBounds.retargetedFill(mvis, mouse: CGPoint(x: 900, y: 1110), screens: tileScreens, visible: tileVisible) != nil { failures.append("Füllen auf dem richtigen Bildschirm verschoben") }
+        if ChromeBounds.retargetedFill(CGRect(x: 100, y: 100, width: 800, height: 600), mouse: CGPoint(x: -900, y: 1075), screens: tileScreens, visible: tileVisible) != nil { failures.append("Normales Fenster als Füllen erkannt") }
+        if !ChromeBounds.isSqueezed(CGRect(x: -192, y: 61, width: 1920, height: 1023), screens: tileScreens, visible: tileVisible) { failures.append("Gepresstes Fenster nicht erkannt") }
+        if ChromeBounds.isSqueezed(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: tileScreens, visible: tileVisible) { failures.append("Normales Fenster zwischen Bildschirmen als gepresst erkannt") }
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }
         for scheme in [ColorScheme.light, ColorScheme.dark] {
