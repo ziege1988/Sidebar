@@ -18,12 +18,13 @@ enum SiriButtonLayout {
         guard s.showSiriButton, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
         let panel = ClockLayout.panelSize(s)
         let radius = CGFloat(s.clockSize) / 2
-        let diameter = min(40, max(28, radius * 0.43))
+        let diameter = min(32, max(22, radius * 0.34))
         let d = radius * 0.7071
-        // Mitte der Uhr im Uhrfeld; der Knopf sitzt halb auf dem Rand: links unten (Leiste oben) bzw. links oben (Leiste unten)
+        // Mitte der Uhr im Uhrfeld; der Knopf sitzt am Rand, etwas nach unten gerückt (nicht mehr so sehr in der Uhr):
+        // links unten (Leiste oben) bzw. links oben (Leiste unten)
         let cx = panel.width / 2, cy = panel.height / 2
-        let y = s.edge == .top ? cy + d : cy - d
-        return (CGPoint(x: cx - d, y: y), diameter)
+        let y = s.edge == .top ? cy + d * 1.12 : cy - d * 1.12
+        return (CGPoint(x: cx - d * 0.95, y: y), diameter)
     }
 }
 
@@ -33,11 +34,12 @@ struct SiriOrbButton: View {
     @State private var hovering = false
     @State private var pressed = false
 
+    /// Pastellig und leicht entsättigt: rosé → flieder → himmelblau
     private static let colors: [Color] = [
-        Color(red: 1.00, green: 0.23, blue: 0.36), Color(red: 1.00, green: 0.31, blue: 0.63),
-        Color(red: 0.69, green: 0.29, blue: 1.00), Color(red: 0.23, green: 0.42, blue: 1.00),
-        Color(red: 0.20, green: 0.78, blue: 1.00), Color(red: 0.42, green: 0.36, blue: 1.00),
-        Color(red: 1.00, green: 0.23, blue: 0.36),
+        Color(red: 0.96, green: 0.55, blue: 0.62), Color(red: 0.96, green: 0.63, blue: 0.78),
+        Color(red: 0.78, green: 0.64, blue: 0.94), Color(red: 0.58, green: 0.67, blue: 0.96),
+        Color(red: 0.62, green: 0.82, blue: 0.95), Color(red: 0.72, green: 0.68, blue: 0.96),
+        Color(red: 0.96, green: 0.55, blue: 0.62),
     ]
 
     var body: some View {
@@ -53,10 +55,10 @@ struct SiriOrbButton: View {
                                              center: UnitPoint(x: 0.35, y: 0.28), startRadius: 0, endRadius: diameter * 0.45))
                 Circle().fill(RadialGradient(colors: [Color.black.opacity(0.32), Color.black.opacity(0)],
                                              center: UnitPoint(x: 0.7, y: 0.85), startRadius: 0, endRadius: diameter * 0.55))
-                Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.4)
+                Circle().stroke(Color.white.opacity(0.5), lineWidth: 1.2)
             }
             .brightness(pressed ? 0.25 : 0)
-            .shadow(color: Color(red: 0.51, green: 0.35, blue: 1).opacity(hovering ? 0.8 : 0.5), radius: hovering ? 9 : 6)
+            .shadow(color: Color(red: 0.62, green: 0.55, blue: 0.95).opacity(hovering ? 0.6 : 0.3), radius: hovering ? 8 : 5)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
         }
         .frame(width: diameter, height: diameter)
