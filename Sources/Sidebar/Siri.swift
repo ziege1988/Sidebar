@@ -4,7 +4,7 @@ import SwiftUI
 
 // MARK: - Siri-Knopf an der Uhr
 //
-// Kleine, animierte Farbkugel (rot → violett → blau) am unteren linken Rand der Uhr (Sidebar oben bzw. unten).
+// Kleine, animierte Farbkugel (rot → magenta → violett → blau) am unteren linken Rand der Uhr (Sidebar oben bzw. unten).
 // Ein Klick startet Siri, öffnet bei eingeschaltetem „Tippen für Siri“ das Eingabefeld und versucht, das Siri-Fenster
 // in die Mitte des Hauptbildschirms zu legen. Das offizielle Siri-Symbol gehört Apple und wird nicht nachgebaut –
 // die Kugel ist eine eigene Zeichnung.
