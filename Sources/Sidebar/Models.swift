@@ -266,6 +266,8 @@ struct SidebarSettings: Codable, Equatable {
     var clockShowDate: Bool = true
     /// Siri-Knopf am Rand der Uhr (nur bei Leiste oben/unten und größerer Uhr)
     var showSiriButton: Bool = true
+    /// Siri-Knopf in der Leiste (neben dem Google-Feld) statt am Uhrrand
+    var siriInBar: Bool = false
     /// Wetter: Rüdiger spiegelt das Wetter am Standort
     var weatherEnabled: Bool = false
     /// eingegebener Ort bzw. Postleitzahl und das gefundene Ergebnis
@@ -379,6 +381,7 @@ extension SidebarSettings {
         clockShowSeconds = try c.decodeIfPresent(Bool.self, forKey: .clockShowSeconds) ?? clockShowSeconds
         clockShowDate = try c.decodeIfPresent(Bool.self, forKey: .clockShowDate) ?? clockShowDate
         showSiriButton = try c.decodeIfPresent(Bool.self, forKey: .showSiriButton) ?? showSiriButton
+        siriInBar = try c.decodeIfPresent(Bool.self, forKey: .siriInBar) ?? siriInBar
         weatherEnabled = try c.decodeIfPresent(Bool.self, forKey: .weatherEnabled) ?? weatherEnabled
         weatherPlace = try c.decodeIfPresent(String.self, forKey: .weatherPlace) ?? weatherPlace
         weatherPlaceName = try c.decodeIfPresent(String.self, forKey: .weatherPlaceName) ?? weatherPlaceName
@@ -495,6 +498,29 @@ extension LinkItem {
         set {
             connectAtStart = newValue == .connect ? true : nil
             openAtStart = newValue == .open ? true : nil
+        }
+    }
+}
+
+/// Wo der Siri-Knopf sitzt
+enum SiriPlacement: String, CaseIterable, Identifiable {
+    case rim, bar, off
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .rim: return "Am Uhrrand"
+        case .bar: return "In der Leiste (neben dem Google-Feld)"
+        case .off: return "Aus"
+        }
+    }
+}
+
+extension SidebarSettings {
+    var siriPlacement: SiriPlacement {
+        get { !showSiriButton ? .off : (siriInBar ? .bar : .rim) }
+        set {
+            showSiriButton = newValue != .off
+            siriInBar = newValue == .bar
         }
     }
 }

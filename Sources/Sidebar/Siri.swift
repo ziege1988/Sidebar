@@ -13,9 +13,14 @@ enum SiriButtonLayout {
     /// Unter dieser Uhrgröße wird der Knopf ausgeblendet (zu wenig Platz neben Rüdiger und der Leiste)
     static let minClock: CGFloat = 120
 
+    /// Knopf in der Leiste (neben dem Google-Feld): nur bei Leiste oben/unten, unabhängig von der Uhr
+    static func inBar(_ s: SidebarSettings) -> Bool {
+        s.siriPlacement == .bar && !s.edge.isVertical
+    }
+
     /// Mittelpunkt und Größe des Knopfes in den Koordinaten der Sidebar (Ursprung oben links). `nil` = nicht sichtbar.
     static func layout(_ s: SidebarSettings) -> (center: CGPoint, diameter: CGFloat)? {
-        guard s.showSiriButton, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
+        guard s.siriPlacement == .rim, s.showClock, !s.edge.isVertical, CGFloat(s.clockSize) >= minClock else { return nil }
         let panel = ClockLayout.panelSize(s)
         let radius = CGFloat(s.clockSize) / 2
         let diameter = min(32, max(22, radius * 0.34))

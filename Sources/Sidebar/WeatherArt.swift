@@ -839,8 +839,16 @@ enum WeatherSelfTest {
         if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf bei kleiner Uhr nicht ausgeblendet") }
         siriSettings.clockSize = 187; siriSettings.edge = .left
         if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf bei senkrechter Leiste sichtbar") }
-        siriSettings.edge = .top; siriSettings.showSiriButton = false
-        if SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf trotz Ausschalten sichtbar") }
+        siriSettings.edge = .top; siriSettings.siriPlacement = .off
+        if SiriButtonLayout.layout(siriSettings) != nil || SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf trotz Ausschalten sichtbar") }
+        siriSettings.siriPlacement = .bar
+        if !SiriButtonLayout.inBar(siriSettings) || SiriButtonLayout.layout(siriSettings) != nil { failures.append("Siri-Knopf „In der Leiste“ falsch") }
+        siriSettings.clockSize = 100
+        if !SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf in der Leiste fehlt bei kleiner Uhr") }
+        siriSettings.edge = .left
+        if SiriButtonLayout.inBar(siriSettings) { failures.append("Siri-Knopf in senkrechter Leiste sichtbar") }
+        siriSettings.siriPlacement = .rim
+        if siriSettings.showSiriButton != true || siriSettings.siriInBar { failures.append("Siri-Platz „Am Uhrrand“ falsch gespeichert") }
         render("Siri-Knopf", SiriOrbButton(diameter: 32).frame(width: 60, height: 60))
         // Notiz-Kacheln (Raster, mit und ohne bearbeiteter Kachel)
         let sample = (0..<5).map { i in QuickNote(text: "Notiz \(i): Rückruf Frau Meier, Do 14 Uhr", tint: i) }

@@ -123,6 +123,17 @@ enum Snapshots {
             }
         }
 
+        // 3b · Siri-Knopf in der Leiste (zweite Lage)
+        var barSettings = store.config.settings
+        barSettings.siriPlacement = .bar
+        store.config.settings = barSettings
+        save("leiste-siri-leiste", size: CGSize(width: 1280, height: barHeight + 40), dark: true) {
+            SidebarView(store: store, state: state, updater: Updater.shared, geometry: SidebarGeometry(), actions: actions)
+                .frame(width: 1280, height: barHeight)
+        }
+        barSettings.siriPlacement = .rim
+        store.config.settings = barSettings
+
         // 4 · Notizfenster mit Kacheln
         var notes = store.config.notes
         if notes.isEmpty {
