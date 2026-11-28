@@ -312,7 +312,12 @@ final class ChromeWindows {
         return result
     }
 
-    private func setFrame(_ frame: NSRect, of element: AXUIElement) {
+    private func setFrame(_ frame: NSRect, of element: AXUIElement, manual: Bool = false) {
+        // Zum Eingrenzen von Fensterproblemen abschaltbar (Einstellungen → Links): dann wird nur beobachtet und protokolliert
+        guard manual || ConfigStore.shared.config.settings.chromeAutoPlace else {
+            log("(Automatik aus) hätte verschoben: \(f(frame))")
+            return
+        }
         let b = ChromeBounds.script(frame, primaryHeight: primaryHeight)
         var position = CGPoint(x: b.l, y: b.t)
         var size = CGSize(width: b.r - b.l, height: b.b - b.t)
@@ -522,7 +527,7 @@ final class ChromeWindows {
             if let info {
                 frame = SidebarKeepOut.adjust(frame, strip: info.strip, clock: info.clock, edge: info.edge, area: info.area)
             }
-            setFrame(frame, of: window.element)
+            setFrame(frame, of: window.element, manual: true)
             raise(window.element)
         }
         log("zurückgeholt: \(found.count) Fenster für „\(item.displayName)“")

@@ -496,6 +496,10 @@ struct GeneralSettingsView: View {
                                 .tag(browser.bundleID)
                         }
                     }
+                    Toggle("Chrome-Fenster automatisch zurechtrücken", isOn: $store.config.settings.chromeAutoPlace)
+                    Text("Aus: Die Sidebar verschiebt Chrome-Fenster nie selbst und merkt sich nur das Protokoll. Hilfreich, um herauszufinden, ob ein Springen von der Sidebar kommt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text("""
                     • Standard-Browser: öffnet einen neuen Tab in Safari/Chrome/…
                     • Integriertes App-Fenster: eigenes Fenster in dieser App, Logins bleiben gespeichert (getrennt von deinem Browser).
