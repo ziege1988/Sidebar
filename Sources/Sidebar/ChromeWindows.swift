@@ -84,8 +84,15 @@ enum ChromeBounds {
     /// Fenster liegt (länger) zwischen zwei Bildschirmen: ganz auf den Bildschirm ziehen, auf den es passt.
     /// Ist es zu groß für den Bildschirm mit dem größten Anteil (z. B. ein 1920 Punkte breites Fenster, das in den kleineren
     /// Hauptbildschirm gepresst wurde), wird der Bildschirm gewählt, auf den es passt.
-    static func snapped(_ frame: NSRect, screens: [NSRect], visible: [NSRect]) -> NSRect {
+    /// `mouse`: Mauszeiger beim Ziehen. Liegt er auf einem Bildschirm, den das Fenster berührt, hat dieser Vorrang
+    /// (gemeint war der Bildschirm, auf den man es zieht – auch wenn der Großteil des Fensters noch auf dem anderen liegt).
+    static func snapped(_ frame: NSRect, screens: [NSRect], visible: [NSRect], mouse: CGPoint? = nil) -> NSRect {
         guard bestShare(frame, screens: screens) < 0.98 else { return frame }
+        var preferred: Int?
+        if let mouse, let under = screens.firstIndex(where: { $0.contains(mouse) }) {
+            let overlap = frame.intersection(screens[under])
+            if !overlap.isNull, overlap.width > 0, overlap.height > 0 { preferred = under }
+        }
         var best: (index: Int, share: CGFloat, fits: Bool)?
         let own = max(frame.width * frame.height, 1)
         for (i, screen) in screens.enumerated() {
@@ -94,7 +101,9 @@ enum ChromeBounds {
             let share = overlap.width * overlap.height / own
             let area = visible.indices.contains(i) ? visible[i] : screen
             let fits = frame.width <= area.width + 2 && frame.height <= area.height + 2
-            if let current = best {
+            if let preferred {
+                if i == preferred { best = (i, share, fits) }
+            } else if let current = best {
                 if (fits && !current.fits) || (fits == current.fits && share > current.share) { best = (i, share, fits) }
             } else {
                 best = (i, share, fits)
@@ -164,6 +173,8 @@ final class ChromeWindows {
         let itemID: UUID
         var lastFrame: NSRect?
         var lastNudge: Date?
+        /// Mauszeiger bei der letzten Bewegung des Fensters (Ziel beim Loslassen zwischen zwei Bildschirmen)
+        var lastMouse: NSPoint?
         /// wie viele Prüfungen in Folge das Fenster an derselben Stelle lag
         var calm = 0
     }
@@ -427,6 +438,7 @@ final class ChromeWindows {
                 let mouse = NSEvent.mouseLocation
                 log("Fenster \(f(window.frame)) – Maus auf Bildschirm \(screenIndex(of: mouse)), \(mouseDown ? "gedrückt" : "losgelassen")")
                 tracked[index].lastFrame = window.frame
+                tracked[index].lastMouse = mouse
                 tracked[index].calm = 0
                 continue
             }
@@ -444,7 +456,7 @@ final class ChromeWindows {
             }
             // 1. Zwischen zwei Bildschirmen (länger so liegengeblieben; „gepresste“ Fenster schon nach 2 s): ganz auf den passenden Bildschirm
             if entry.calm >= (ChromeBounds.isSqueezed(window.frame, screens: screens, visible: visible) ? 2 : 5) {
-                let snapped = ChromeBounds.snapped(window.frame, screens: screens, visible: visible)
+                let snapped = ChromeBounds.snapped(window.frame, screens: screens, visible: visible, mouse: entry.lastMouse)
                 if snapped != window.frame, Date().timeIntervalSince(entry.lastNudge ?? .distantPast) > 20 {
                     log("zwischen Bildschirmen: \(f(window.frame)) → \(f(snapped))")
                     setFrame(snapped, of: window.element)

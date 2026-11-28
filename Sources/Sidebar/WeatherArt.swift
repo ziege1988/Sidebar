@@ -809,6 +809,13 @@ enum WeatherSelfTest {
         let halfway = ChromeBounds.snapped(CGRect(x: -546, y: 53, width: 1513, height: 979), screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible])
         if halfway.minX < 0 && halfway.maxX > 0 { failures.append("Fenster zwischen Bildschirmen bleibt dazwischen") }
         let fine = CGRect(x: -1900, y: 20, width: 1200, height: 1000)
+        // Fenster am linken Ende gegriffen und auf den linken Bildschirm gezogen (nur 105 pt drüber): Maus entscheidet
+        let dragged = ChromeBounds.snapped(CGRect(x: -105, y: 61, width: 1728, height: 1023), screens: [mainScreen, leftScreen],
+                                           visible: [mainVisible, leftVisible], mouse: CGPoint(x: -60, y: 500))
+        if dragged.minX >= 0 { failures.append("Fenster springt trotz Ziehen auf den linken Bildschirm zurück") }
+        let draggedBack = ChromeBounds.snapped(CGRect(x: -105, y: 61, width: 1728, height: 1023), screens: [mainScreen, leftScreen],
+                                               visible: [mainVisible, leftVisible], mouse: CGPoint(x: 400, y: 500))
+        if draggedBack.minX < 0 { failures.append("Fenster mit Maus auf dem Hauptbildschirm nicht dorthin gelegt") }
         if ChromeBounds.snapped(fine, screens: [mainScreen, leftScreen], visible: [mainVisible, leftVisible]) != fine { failures.append("Ganz auf einem Bildschirm liegendes Fenster verschoben") }
         // Fenster-Lage der integrierten Link-Fenster merken
         let webID = UUID()
